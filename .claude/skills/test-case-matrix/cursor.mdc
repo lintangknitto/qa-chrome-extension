@@ -1,0 +1,74 @@
+---
+description: Turn a feature's requirements into a complete, checkable list of test scenarios in markdown before any test code is written — mirroring a manual-tester spreadsheet layout. Trigger on "buatkan test matrix", "buatkan test case", "test scenario apa aja", or as the mandatory first step before any test automation. Does not write or run test code.
+globs:
+alwaysApply: false
+---
+
+# test-case-matrix (Cursor)
+
+Produces the scenario list that `react-testing`/`e2e-testing`/
+`webapp-testing` implement against — a planning artifact, not automation.
+Table column headers stay in English (matches tester convention); cell
+content is written in Bahasa Indonesia; translate an English requirement
+source when writing it into the matrix.
+
+## Step 1 — Find the requirement source
+
+Priority order: a PRD/ISSUES pair (`docs/prd/**/PRD.md`,
+`docs/prd/**/ISSUES.md`) or a BRD read via `brd-reader`, if the
+slug/feature matches; a GitHub issue if referenced; any other spec doc that
+plausibly covers the feature. If nothing structured exists, ask the user
+for a short description rather than inventing requirements — note in the
+output that requirements are informal.
+
+## Step 2 — Parameter matrix (when relevant)
+
+Skip for simple single-input features. For features with multiple
+interacting variables (order type × payment method, form field ×
+validation mode), list each variable and its values, then build a
+pairwise-coverage combination table rather than a full cartesian product
+past ~3 variables. Reference each combination id in the case's `Test
+Variable` column later.
+
+## Step 3 — Extract scenarios
+
+Cover functional (every documented behavior/acceptance criterion), edge
+case (boundaries, empty/null, max-size), error handling (invalid input,
+failed dependencies, permission denied, concurrency conflicts), and state
+transition (any multi-step flow) — don't stop at the happy path. Group into
+PB items (one per distinct feature/BRD/PRD), then into `Group No` clusters
+sharing the same precondition. Identify source file(s) per scenario via a
+quick Glob/Grep pass.
+
+## Step 4 — Write the matrix
+
+One file: `docs/qa/<slug>/test-matrix.md`. Structure: header (feature,
+requirement source link, tester/programmer, dates, scope), a two-part
+Summary (pass/fail/re-test/skip counts, plus automation-usage percentage —
+both recounted live from the table, never maintained separately), then per
+PB a mini traceability table (spec → covered? → test case id) followed by
+the test case table in this exact column order: `Group No | Feature |
+Process No (FC) | TYPE | Test Case ID | Test Variable | Test Case |
+Pre-Condition | Test Data | Test Steps | Expected Result | Status |
+Evidence | Remarks | Automation Tools | Date | Files | Requirement`.
+
+Key column rules: `Test Case ID` is `TC<GroupNo>-<sequence>` (e.g.
+`TC1-1`); `TYPE` is `+`/`-` for positive/negative; `Status` is one of
+`⚪ Not Run`/`🟡 Progress`/`✅ Passed`/`❌ Failed`/`🔁 Re-Test`/`⏭ Skip`;
+`Automation Tools` is exactly one of `Masuk Test Step`/`Test Data`/
+`Tanpa Automation`; `Test Steps`/`Expected Result` are numbered, joined
+with `<br>` inside the cell, matched to each other by number. Steps must be
+concrete and UI-accurate (real button/field/route names from a quick code
+check), not generic ("test the form").
+
+## Step 5 — Report gaps
+
+After writing, tell the user which spec rows have no covering test case
+(⚠️ Gap) and which Step 3 categories came up empty for a PB, with your
+best read on whether that's genuine inapplicability or under-specified
+requirements.
+
+## What this skill does not do
+
+Write test code, execute tests, update Status/Evidence/Date itself, or
+decide release-blocking priority.

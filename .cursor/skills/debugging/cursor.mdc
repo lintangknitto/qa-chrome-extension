@@ -1,0 +1,55 @@
+---
+description: Systematic root-cause debugging — reproduce reliably, isolate the smallest failing case, bisect to the change that introduced it, fix the root cause instead of the symptom. Trigger when investigating a bug, an unexpected error, a regression, or "this used to work and now it doesn't". Not for general code review or writing new tests from scratch.
+globs:
+alwaysApply: false
+---
+
+# debugging (Cursor)
+
+A disciplined loop for finding *why* something is broken, not just making
+the symptom disappear.
+
+## When NOT to use
+
+Writing a brand-new feature (no bug to investigate — use
+`incremental-implementation`/`test-driven-development`); reviewing code
+with no known bug (use `code-review-and-quality`); the cause is already
+known and it's just applying the fix (skip the full loop, just fix it).
+
+## Steps
+
+1. **Reproduce it first, before touching any code.** Don't change anything
+   until the bug triggers consistently. If it can't be reproduced after
+   reasonable effort, report that as a finding — don't guess a fix for an
+   unconfirmed bug. For intermittent bugs, look for a pattern (specific
+   conditions, race, timing, environment) before treating it as random.
+2. **Read the error/stack trace all the way through before assuming
+   anything.** The first line is often not the root cause — follow it to
+   the frame in the project's own code, read the message literally.
+3. **Isolate to the smallest case that still fails.** Strip irrelevant
+   variables one at a time (smaller data, disable other features, call the
+   function directly instead of the full UI flow).
+4. **Bisect to the change that caused it, for regressions.** Use `git log`
+   on the relevant file or `git bisect` when the range isn't obvious —
+   don't guess which commit broke it.
+5. **Form a hypothesis, then verify it before writing a fix.** Temporary
+   logging, a breakpoint, or an assertion to confirm the suspected cause —
+   a fix pasted without verifying the cause often just papers over the
+   symptom.
+6. **Tell symptom apart from root cause.** If the fix is a
+   null-check/try-catch right at the crash site, ask why the value is
+   null/invalid there in the first place — fix at the source if there's a
+   deeper preventable cause.
+7. **Verify the fix closes the case from steps 1 and 3**, then run the
+   relevant test suite (not just the fixed case) to check for new
+   regressions. Write a regression test if none exists yet.
+8. **Report the finding, not just "it's fixed now"** — root cause, why it
+   happened, what changed, especially if the fix touches a wider area than
+   the original crash site.
+
+## When reproduction fails after reasonable attempts
+
+Don't keep guessing fixes at random. Report what's been tried, what
+signals exist, and what additional information is needed — a stuck
+investigation is a valid finding, not something to paper over with a
+speculative fix.

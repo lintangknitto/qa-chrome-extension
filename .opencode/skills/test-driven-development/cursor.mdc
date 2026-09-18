@@ -1,0 +1,63 @@
+---
+description: Drives development with tests — write a failing test before the code that makes it pass; reproduce a bug with a test before fixing it. Trigger when implementing any logic, fixing any bug, or changing any behavior. Not for pure config/doc/static-content changes with no behavioral impact.
+globs:
+alwaysApply: false
+---
+
+# test-driven-development (Cursor)
+
+Tests are proof — "seems right" is not done.
+
+## Discover the stack first
+
+Before writing the first test, find how *this* repo tests: language/build
+system files, checked-in wrappers (`./gradlew`, `make test`) over globally
+installed tools, the test framework and how it runs a single test vs the
+full suite, existing conventions, and documented commands (README, CI).
+Never assume `npm test` by default.
+
+## The cycle
+
+RED — write a test that fails, proving nothing works yet. GREEN — write
+the minimum code to pass, no over-engineering. REFACTOR — clean up with
+tests still green, running them after every step.
+
+## The Prove-It Pattern (bug fixes)
+
+Don't start by trying to fix a reported bug. Write a test that reproduces
+it first (it should fail, confirming the bug), then fix, then the test
+passes (proving the fix), then run the full suite for regressions.
+
+## Test pyramid and sizing
+
+Most tests small (single process, no I/O, milliseconds) — pure logic. Some
+medium (multi-process, localhost, no external services) — API/component
+tests with a test DB. Few large (multi-machine, external services allowed)
+— E2E, limited to critical paths. The Beyonce Rule: if you liked it, you
+should have put a test on it.
+
+## Writing good tests
+
+- Test state/outcome, not internal interactions (don't assert which
+  methods were called).
+- DAMP over DRY in tests — each test self-contained and readable even at
+  the cost of some duplication.
+- Prefer real implementations > fakes > stubs > mocks, in that order; mock
+  only when the real thing is slow, non-deterministic, or has
+  uncontrollable side effects.
+- Arrange-Act-Assert structure.
+- One assertion/concept per test.
+- Descriptive test names that read like a specification.
+
+## Anti-patterns
+
+Testing implementation details, flaky timing/order-dependent tests,
+testing framework/library code instead of your own, snapshot abuse, no
+test isolation, mocking everything (passes while production breaks).
+
+## Verification after implementation
+
+Every new behavior has a corresponding test; the full suite passes via the
+repo's own command; bug fixes include a reproduction test that failed
+before the fix; no tests skipped/disabled; coverage hasn't decreased.
+Don't re-run an unchanged test command just for reassurance.

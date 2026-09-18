@@ -1,0 +1,60 @@
+---
+description: Create/sync/promote feature branches in a repo that uses a paired feature-branch (-main/-dev) + long-lived releases/sandbox + releases/main deploy-branch git model, where staging is reached via cherry-pick rather than direct merge. Trigger on "buat branch buat PB ini", "sync ke sandbox/staging", "cherry-pick ke staging", "mau deploy ke sandbox".
+globs:
+alwaysApply: false
+---
+
+# branching (Cursor)
+
+Manage feature branches in the paired-branch + cherry-pick-to-staging git
+model. Not generic git-flow — verify first (below) before applying any of
+this.
+
+## Detect first
+
+Check `git branch -a` for `releases/(sandbox|staging|main)` branches and
+`-main`/`-dev` suffixed feature branches, and check CI config for deploy
+jobs triggered on push to `releases/*`. If none of this is present, this
+model doesn't apply — don't invent it.
+
+## New feature branch
+
+Branch from the trunk (`main`), never from staging or another feature
+branch. Name per this repo's convention (`<type>/<slug>-main`). Check
+recent commit history on a similar branch for a required commit-message
+convention before assuming one — some repos require every commit to be
+prefixed with a feature-name tag because commits get cherry-picked later.
+
+## Sync to staging
+
+The staging branch is shared across many features — the two failure modes
+to avoid are duplicate cherry-picks and missed commits (the second is what
+causes "staging ketinggalan banyak fitur").
+
+1. `git log <slug>-dev..<slug>-main --oneline` — only these commits are new
+   since the last sync; never re-pick anything already on `-dev`.
+2. If `-dev` doesn't exist, create it from `-main`'s current head, not from
+   staging's current state.
+3. Cherry-pick the new commits onto `-dev` with `git cherry-pick -x` so the
+   origin SHA is recorded — this is what makes the next sync's diff
+   reliable.
+4. Resolve conflicts commit-by-commit; a conflict usually means another
+   feature already touched the same code on staging — understand both
+   changes rather than blindly taking one side.
+5. Before merging into the shared staging branch, check
+   `git log releases/sandbox..<slug>-dev --oneline` to confirm exactly
+   what's about to land.
+6. Merge or PR into staging per this repo's convention. Never force-push a
+   shared release branch.
+
+## Promote to production
+
+Confirm testing sign-off per this repo's process first. Open a PR from
+`<slug>-main` (not `-dev`) into the trunk. Check whether merging to `main`
+alone triggers deploy, or whether a separate push/merge to a
+`releases/main`-style branch is required — don't assume.
+
+## Not this skill's job
+
+- Not for repos using plain GitHub Flow or trunk-based development.
+- Not a way to skip required review/testing sign-off.

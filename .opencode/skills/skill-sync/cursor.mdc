@@ -1,0 +1,104 @@
+---
+description: Check installed skills/agents/commands (project and/or global) against this agent-skills catalog (URL or local clone) and update whichever changed upstream, without clobbering a project's own project-scoped overrides. Asks which scope when both exist, and shows a checklist to pick which tracked skills to sync. Trigger on "update my skills", "cek update skill", "sync ke versi terbaru", or after a known upstream change to a skill already installed. Requires the `.agent-skills-lock.json` lockfile written at install time; without one, falls back to an ad-hoc whole-file compare that always asks before overwriting.
+globs:
+alwaysApply: false
+---
+
+# skill-sync (Cursor)
+
+Keeps skills/agents/commands installed in a project in sync with this
+catalog's source, without silently overwriting a repo's own
+customizations. This is the *update* half of the lifecycle —
+`INSTALL.md` is the initial copy, `agent-doctor` verifies an installed
+agent actually runs on its platform, this skill checks whether an
+already-installed file is stale relative to where it came from.
+
+## Why a lockfile, not a blind re-copy
+
+Re-copying every file from the catalog would silently destroy any
+project-scoped override. Telling "the user changed this on purpose" apart
+from "this just hasn't been updated since install" requires knowing what
+the file looked like **at install time** — hence the lockfile, not just
+current-project-file vs current-catalog-file.
+
+## Step 0 — Locate the lockfile(s) and confirm scope
+
+Installs can be project-level or global — check both, don't assume one:
+
+- Project: `.agent-skills-lock.json` at the project root.
+- Global: `~/.agent-skills-lock.json` (one shared file regardless of which
+  platform(s) were chosen at install time).
+
+Only one exists → use it. Both exist → ask the user which scope they mean
+(project, global, or both) before going further; don't silently pick one.
+Neither exists → don't guess a baseline. Tell the user no tracked installs
+were found and offer: (a) rebuild a lockfile now (ask which scope) from
+current file content as the new baseline, or (b) run ad-hoc mode — diff
+each named file's current content against the catalog's current content,
+asking before every overwrite.
+
+Once resolved, read the lockfile(s) — each entry has the skill/agent name,
+installed file paths, `source_url`, `source_commit` at install time, and a
+content hash per file as it stood right after copying.
+
+## Step 1 — Ask which tracked skills/agents to sync
+
+Unless a specific name was already given, list every entry from the
+lockfile(s) resolved in Step 0 as an interactive multi-select checklist
+(group by scope if both project and global apply) and let the user pick
+which ones to actually sync — don't process every tracked entry unasked.
+If a specific name was given, sync just that one (validate it's actually
+tracked first).
+
+## Step 2 — Resolve the source
+
+- **GitHub source (preferred, no clone needed):** use the GitHub API to
+  read each tracked file's blob SHA / latest commit SHA directly, compare
+  against the lockfile baseline, and only fetch raw content for files
+  whose SHA actually changed.
+- **Non-GitHub source, or API unreachable:** fall back to a local clone —
+  `git pull` an existing cached clone, or clone fresh and record the path
+  in the lockfile.
+- Never diff with no commit/SHA reference at all — Step 3 needs a real
+  "changed since baseline" signal.
+
+## Step 3 — Classify each selected file
+
+Compare baseline hash vs current project file vs current source file, for
+files belonging to a skill/agent selected in Step 1:
+
+| Project vs baseline | Source vs baseline | Meaning | Action |
+|---|---|---|---|
+| unchanged | unchanged | nothing moved | skip |
+| unchanged | changed | upstream updated, project never touched | auto-update |
+| changed | unchanged | project-scoped override | skip, report as intentional |
+| changed | changed | both diverged | conflict — show diff, ask user, never auto-resolve |
+| any | removed/renamed upstream | deleted/split/renamed in catalog | never silently delete — ask |
+
+Also track any **OpenCode command wrapper** the lockfile lists for a
+skill (`.opencode/commands/<name>.md`) — its frontmatter `description` is
+copied from `CATALOG.md` at install time, so it can go stale even when
+the skill's own file didn't move. Diff it against a freshly-generated
+wrapper for the current `CATALOG.md` description and classify with the
+same rules. Don't invent a wrapper that was never installed.
+
+## Step 4 — Apply and re-baseline
+
+For every file actually updated: write the new content, then update its
+lockfile hash and `source_commit`. Skipped files (unchanged, or kept
+override) keep their entry untouched. Delete a removed-upstream file only
+after the user confirms.
+
+## Step 5 — Report
+
+One summary: which scope(s) were synced, up to date, auto-updated (list),
+skipped as intentional overrides (list), removed/renamed upstream (list,
+with the user's choice), and conflicts still pending (list, with what was
+asked).
+
+## Not this skill's job
+
+- Not the initial install — that's `INSTALL.md`'s job.
+- Not a way to force-overwrite a project's customizations.
+- Not `agent-doctor` — that verifies an installed agent runs on its
+  platform; this only checks staleness vs source.

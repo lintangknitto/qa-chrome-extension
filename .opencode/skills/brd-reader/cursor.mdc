@@ -1,0 +1,46 @@
+---
+description: Read and understand a Business Requirements Document (BRD) already written by a business/system analyst — pasted text or an attached file — extracting process/UI/data-dictionary impact and gaps, then hand off to the prd-grill skill for the implementation checklist. Trigger on "baca BRD ini", "pahami BRD ini", "ini BRD dari analyst".
+globs:
+alwaysApply: false
+---
+
+# brd-reader (Cursor)
+
+Read an already-written BRD (text or file) and extract understanding — do
+NOT author a new BRD. Writing a BRD is a business/system-analyst
+responsibility, not this rule's job. Once understanding is confirmed, hand
+off to `prd-grill` for the implementation checklist.
+
+## Get the BRD
+
+Use whatever text/file the user already gave. If nothing was given, ask for
+it (pasted text or a file path) — don't proceed on a bare backlog
+description with no actual BRD; if none exists, point to `prd-grill`
+directly instead.
+
+## Extract understanding
+
+From the BRD, extract: the core business need (in the analyst's own terms),
+process/flow impact (before → after, or explicit no-change), UI impact
+(which screens/forms, new vs. existing), data-dictionary impact (new/changed
+fields), explicit out-of-scope, and any gaps/ambiguities/contradictions the
+BRD leaves unresolved.
+
+## Confirm before handing off
+
+Summarize the above, flag every gap/ambiguity, and get the user to confirm
+or fill in the gaps. Carry unresolved gaps forward as open questions rather
+than guessing.
+
+## Hand off
+
+Invoke the `prd-grill` skill/rule, passing the BRD (path or text) plus the
+confirmed understanding, so its own grill loop only asks genuinely new
+implementation-level questions instead of re-deriving what the BRD already
+settles.
+
+## On refine
+
+If the user says the BRD was updated, re-read it, diff against the
+previously confirmed understanding, and surface only what changed before
+re-confirming.

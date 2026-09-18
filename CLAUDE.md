@@ -1,6 +1,6 @@
 ### Monorepo Packages
 
-| Package | npm name | Purpose |
+| Package | Package name | Purpose |
 |---------|----------|---------|
 | `playwright-core` | `playwright-core` | Browser automation engine: client, server, dispatchers, protocol |
 | `playwright` | `playwright` | Test runner + browser automation (public package) |
@@ -33,11 +33,29 @@
 | `utils/` | Build scripts, code generation, linting, doc tools |
 | `browser_patches/` | Browser engine patches |
 
+## Package Manager
+
+This workspace targets **Node.js 24.21.0 LTS (Krypton)** and **pnpm 12.4.2**. Install dependencies with:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+```
+
+The extension workspace was verified with:
+
+```bash
+pnpm --filter @playwright/extension typecheck
+pnpm --filter @playwright/extension build
+```
+
+The full monorepo `pnpm flint` command requires a complete Playwright checkout. This sparse extension checkout does not include the root `utils/` and test directories.
+
 ## Build
 
 ```bash
-npm run build       # Full build
-npm run watch       # Watch mode (recommended during development)
+pnpm build       # Full build
+pnpm watch       # Watch mode (recommended during development)
 ```
 
 Assume watch is running and code is up to date. Generated files (types, channels, validators) are produced by watch automatically.
@@ -45,7 +63,7 @@ Assume watch is running and code is up to date. Generated files (types, channels
 ## Lint and type check
 
 ```bash
-npm run flint
+pnpm flint
 ```
 
 Runs all lint checks in parallel: eslint, tsc, doclint, check-deps, generate_channels, generate_types, lint-tests, test-types, lint-packages, code-snippet linting.
@@ -56,20 +74,20 @@ Runs all lint checks in parallel: eslint, tsc, doclint, check-deps, generate_cha
 
 | Command | Scope |
 |---------|-------|
-| `npm run ctest <filter>` | Chromium only library tests — **use during development** |
-| `npm run test <filter> -- --project=<chromium,firefix,webkit>` | All library / per project |
-| `npm run ttest <filter>` | Test runner (`tests/playwright-test/`) |
-| `npm run ctest-mcp <filter>` | Chromium only MCP tools (`tests/mcp/`) |
-| `npm run test-mcp <filter> -- --project=<chromium,firefox,webkit>` | MCP tools (`tests/mcp/`) |
+| `pnpm ctest <filter>` | Chromium only library tests — **use during development** |
+| `pnpm test <filter> --project=<chromium,firefix,webkit>` | All library / per project |
+| `pnpm ttest <filter>` | Test runner (`tests/playwright-test/`) |
+| `pnpm ctest-mcp <filter>` | Chromium only MCP tools (`tests/mcp/`) |
+| `pnpm test-mcp <filter> --project=<chromium,firefox,webkit>` | MCP tools (`tests/mcp/`) |
 
 
 ### Filtering
 
 ```bash
-npm run ctest tests/page/locator-click.spec.ts         # Specific file
-npm run ctest tests/page/locator-click.spec.ts:12      # Specific location
-npm run ctest -- --grep "should click"                 # By test name
-npm run ctest-mcp snapshot                             # By file name part
+pnpm ctest tests/page/locator-click.spec.ts         # Specific file
+pnpm ctest tests/page/locator-click.spec.ts:12      # Specific location
+pnpm ctest --grep "should click"                   # By test name
+pnpm ctest-mcp snapshot                             # By file name part
 ```
 
 ### Test Directories and Fixtures
@@ -85,7 +103,7 @@ npm run ctest-mcp snapshot                             # By file name part
 
 ## DEPS System
 
-Import boundaries are enforced via `DEPS.list` files (52+ across the repo), checked by `npm run flint`.
+Import boundaries are enforced via `DEPS.list` files (52+ across the repo), checked by `pnpm flint`.
 
 **Key rule**: Client code NEVER imports server code. Server code NEVER imports client code. Communication is only through the protocol.
 When creating or moving files, update the relevant `DEPS.list` to declare allowed imports. Files marked `"strict"` can only import what is explicitly listed.
@@ -101,7 +119,7 @@ Non-exported classes have no naming convention; they are internal implementation
 
 ## Commit Convention
 
-Before committing, run `npm run flint` and fix errors.
+Before committing, run `pnpm flint` and fix errors.
 
 Semantic commit messages: `label(scope): description`
 
@@ -162,3 +180,17 @@ Detailed guides for common development tasks:
 - **[Adding and Modifying APIs](.claude/skills/playwright-dev/api.md)** — 6-step process: define docs → implement client → define protocol → implement dispatcher → implement server → write tests
 - **[MCP Tools and CLI Commands](.claude/skills/playwright-dev/tools.md)** — `defineTool()`/`defineTabTool()`, tool capabilities, CLI `declareCommand()`, config options, testing with MCP fixtures
 - **[Vendoring Dependencies](.claude/skills/playwright-dev/vendor.md)** — bundle architecture, esbuild setup, typed wrappers, adding deps to existing bundles
+
+## Project Agent Skills
+
+Installed project-level skills are available for Claude Code, OpenCode, and Cursor:
+
+- Foundation: `agent-doctor`, `project-bootstrap`, `skill-sync`
+- Planning and execution: `brd-reader`, `prd-grill`, `exec-todo`, `incremental-implementation`, `test-driven-development`
+- Documentation and debugging: `codebase-explain`, `debugging`
+- Review and security: `code-review-and-quality`, `security-and-hardening`, `security-review`
+- Git and maintenance: `branching`, `dependency-update`
+- React and testing: `react-patterns`, `react-testing`, `webapp-testing`, `test-case-matrix`
+- Agents: `reviewer`, `qa-engineer`
+
+OpenCode slash command wrappers are in `.opencode/commands/`. Use the corresponding skill when planning, implementing, debugging, testing, or reviewing changes. The installed skills and agents interact and generate project documents in **Bahasa Indonesia**, unless the user explicitly requests English for a task.

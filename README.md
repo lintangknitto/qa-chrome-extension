@@ -1,6 +1,6 @@
 # 🎭 Playwright
 
-[![npm version](https://img.shields.io/npm/v/playwright.svg)](https://www.npmjs.com/package/playwright) <!-- GEN:chromium-version-badge -->[![Chromium version](https://img.shields.io/badge/chromium-154.0.8037.0-blue.svg?logo=google-chrome)](https://www.chromium.org/Home)<!-- GEN:stop --> <!-- GEN:firefox-version-badge -->[![Firefox version](https://img.shields.io/badge/firefox-156.0-blue.svg?logo=firefoxbrowser)](https://www.mozilla.org/en-US/firefox/new/)<!-- GEN:stop --> <!-- GEN:webkit-version-badge -->[![WebKit version](https://img.shields.io/badge/webkit-26.6-blue.svg?logo=safari)](https://webkit.org/)<!-- GEN:stop --> [![Join Discord](https://img.shields.io/badge/join-discord-informational)](https://aka.ms/playwright/discord)
+<!-- GEN:chromium-version-badge -->[![Chromium version](https://img.shields.io/badge/chromium-154.0.8037.0-blue.svg?logo=google-chrome)](https://www.chromium.org/Home)<!-- GEN:stop --> <!-- GEN:firefox-version-badge -->[![Firefox version](https://img.shields.io/badge/firefox-156.0-blue.svg?logo=firefoxbrowser)](https://www.mozilla.org/en-US/firefox/new/)<!-- GEN:stop --> <!-- GEN:webkit-version-badge -->[![WebKit version](https://img.shields.io/badge/webkit-26.6-blue.svg?logo=safari)](https://webkit.org/)<!-- GEN:stop --> [![Join Discord](https://img.shields.io/badge/join-discord-informational)](https://aka.ms/playwright/discord)
 
 ## [Documentation](https://playwright.dev) | [API reference](https://playwright.dev/docs/api/class-playwright)
 
@@ -12,10 +12,10 @@ Choose the path that fits your workflow:
 
 | | Best for | Install |
 |---|---|---|
-| **[Playwright Test](#playwright-test)** | End-to-end testing | `npm init playwright@latest` |
-| **[Playwright CLI](#playwright-cli)** | Coding agents (Claude Code, Copilot) | `npm i -g @playwright/cli@latest` |
+| **[Playwright Test](#playwright-test)** | End-to-end testing | `pnpm create playwright` |
+| **[Playwright CLI](#playwright-cli)** | Coding agents (Claude Code, Copilot) | See [install steps](#install-1) |
 | **[Playwright MCP](#playwright-mcp)** | AI agents and LLM-driven automation | `npx @playwright/mcp@latest` |
-| **[Playwright Library](#playwright-library)** | Browser automation scripts | `npm i playwright` |
+| **[Playwright Library](#playwright-library)** | Browser automation scripts | `pnpm add playwright` |
 | **[VS Code Extension](#vs-code-extension)** | Test authoring and debugging in VS Code | [Install from Marketplace](https://marketplace.visualstudio.com/items?itemName=ms-playwright.playwright) |
 
 ---
@@ -27,13 +27,13 @@ Playwright Test is a full-featured test runner built for end-to-end testing. It 
 ### Install
 
 ```bash
-npm init playwright@latest
+pnpm create playwright
 ```
 
 Or add manually:
 
 ```bash
-npm i -D @playwright/test
+pnpm add -D @playwright/test
 npx playwright install
 ```
 
@@ -115,7 +115,13 @@ npx playwright show-trace trace.zip
 ### Install
 
 ```bash
-npm install -g @playwright/cli@latest
+pnpm setup
+```
+
+Restart the terminal so the pnpm global bin directory is available, then run:
+
+```bash
+pnpm add -g @playwright/cli@latest
 ```
 
 Optionally install skills for richer agent integration:
@@ -216,7 +222,7 @@ Use `playwright` as a library for browser automation scripts — web scraping, P
 ### Install
 
 ```bash
-npm i playwright
+pnpm add playwright
 ```
 
 ### Examples

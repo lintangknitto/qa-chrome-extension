@@ -1,0 +1,50 @@
+---
+description: Verify subagents installed in a project can actually run — correct file location, valid frontmatter for the current platform's dialect, and a model the user actually has access to — then help fix what's broken. Trigger on "check if my agents work", "set up the model for this agent", after installing agents into a repo, or when a subagent fails to invoke or errors out.
+globs:
+alwaysApply: false
+---
+
+# agent-doctor (Cursor)
+
+A subagent file in the right folder with plausible frontmatter can still
+fail to run — a `model:` value the user's plan doesn't grant, a missing
+platform-specific field, or the file in the wrong location. Diagnose that
+gap; don't assume "file exists" means "it works".
+
+## When NOT to use
+
+Writing a brand-new agent from scratch (that's authoring, follow this
+catalog's thin-orchestration pattern instead), or verifying the underlying
+*project* runs (dependencies/build/dev server — that's `project-bootstrap`).
+
+## Steps
+
+1. Ask which platform(s) the user is running right now (Claude Code,
+   OpenCode, Antigravity, Command Code, Cursor, Codex CLI) — don't guess
+   from file presence alone.
+2. Locate every agent file for that platform (see
+   `references/platform-agent-specs.md` for file-location conventions per
+   platform). List what's found, and what's expected but missing.
+3. Validate structure per file against that platform's required
+   frontmatter: required fields present and non-placeholder, file in the
+   exact location/filename convention that platform reads, and for Codex
+   CLI specifically confirm it's actual TOML with `developer_instructions`
+   set, not a copied Markdown+YAML file.
+4. Check the model field — the most common "installed but broken" failure.
+   Show the user the exact `model:` value, ask them to confirm access to it
+   under their current plan (never assume), and if they don't have access,
+   help pick one they do (point at the platform's own model picker) —
+   confirm with the user before editing the file.
+5. Live-invoke test when possible: if this session's platform matches the
+   agent being checked, actually invoke it with a trivial harmless prompt
+   and confirm it responds without error. If the platform being checked
+   isn't the one running now, give the user the exact manual command to
+   test it themselves and ask them to report back.
+6. Report per agent, per platform: works / doesn't work / couldn't be
+   tested live, and for anything broken, what was found and fixed (or what
+   the user needs to do themselves).
+
+## Reference
+
+`references/platform-agent-specs.md` — file locations, required
+frontmatter, and model-field conventions per platform.

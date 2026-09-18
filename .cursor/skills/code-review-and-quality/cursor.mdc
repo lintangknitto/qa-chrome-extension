@@ -1,0 +1,75 @@
+---
+description: Multi-axis code review methodology. Use before merging any change, when reviewing code written by yourself/another agent/a human, or assessing code quality across multiple dimensions before it enters the main branch.
+globs:
+alwaysApply: false
+---
+
+# code-review-and-quality (Cursor)
+
+Every change gets reviewed before merge, across five axes: correctness,
+readability, architecture, security, performance. **Approval standard:**
+approve when a change definitely improves overall code health, even if
+imperfect — don't block because it isn't exactly how you'd have written it.
+
+## Five axes
+
+1. **Correctness** — matches spec, handles edge cases and error paths, no
+   off-by-one/race conditions, tests actually test the right things.
+2. **Readability** — descriptive names, straightforward control flow, no
+   dead code/backwards-compat shims, no new conditional bolted onto an
+   unrelated flow (push into its own helper/state/dispatcher instead),
+   repeated conditionals on the same shape signal a missing model.
+3. **Architecture** — fits existing patterns, no unjustified duplication,
+   dependencies flow the right direction. A refactor that relocates
+   complexity without reducing the number of concepts a reader must hold
+   isn't cleaner — prefer deleting an abstraction to polishing it. Question
+   feature-specific logic leaking into shared modules, and gratuitous
+   `any`/optional/casts papering over an unclear invariant.
+4. **Security** — input validated/sanitized at boundaries, no secrets in
+   code/logs, auth checked, parameterized queries, output encoded, external
+   data treated as untrusted.
+5. **Performance** — no N+1, no unbounded loops/fetches, no missing sync-
+   should-be-async, no missing pagination.
+
+## When flagging a structural problem, propose the move
+
+Named restructurings: replace a conditional chain with a typed
+model/dispatcher, collapse duplicate branches, separate orchestration from
+business logic, move feature-specific logic to its owning module, reuse the
+canonical helper, make a type boundary explicit, delete a pass-through
+wrapper, extract a helper/split a large file.
+
+## Change sizing
+
+~100 lines: fine. ~300: acceptable if one logical change. ~1000: too large,
+split it. Watch total file size too — a small diff can push an
+already-large file (~1000 lines) further; decompose before piling on.
+Separate refactoring from feature work — that's two changes.
+
+## Process
+
+1. Understand what the change accomplishes and what spec it implements.
+2. Review tests first — do they exist, test behavior not implementation,
+   cover edge cases, and would they catch a regression?
+3. Walk each changed file through the five axes.
+4. Label every finding by severity: *(no prefix)* required, **Critical:**
+   blocks merge, **Nit:** optional, **Optional:**/**Consider:** suggestion,
+   **FYI** informational. Order by leverage — correctness/security first.
+5. Verify the verification: what tests ran, did the build pass, was it
+   manually tested, are there screenshots for UI changes.
+
+## Dead code and dependencies
+
+After a refactor, list anything now unreachable and ask before
+recommending deletion — never assume silently. Before adding any
+dependency: does the stack already solve this, how large/maintained is it,
+any known vulnerabilities, license compatible? Prefer stdlib/existing
+utilities. Upgrades are code changes: read the changelog, one dependency
+per change for majors/core deps, review the lockfile diff, never hand-edit
+the lockfile.
+
+## Honesty
+
+Don't rubber-stamp ("LGTM" with no evidence), don't soften real issues,
+quantify problems when possible, push back on approaches with clear
+problems, comment on code not people.

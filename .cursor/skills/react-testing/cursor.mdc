@@ -1,0 +1,77 @@
+---
+description: React component testing with React Testing Library, Vitest/Jest, MSW for network mocking, accessibility assertions with axe, and the decision boundary between component tests and Playwright/Cypress E2E. Trigger when writing or fixing tests for React components, hooks, or pages.
+globs:
+alwaysApply: false
+---
+
+# react-testing (Cursor)
+
+Test what the user sees and does, not implementation details. A test
+should render with the same providers as production, interact via
+accessible queries + `userEvent`, and assert visible output/observable
+side effects. It should NOT inspect component state/props/hooks-called, or
+mock React itself.
+
+## Runner choice
+
+Pick one: Vitest (Vite/Remix/modern), Jest (Next.js/CRA/established
+repos), or Playwright/Cypress Component Testing when JSDOM lacks a needed
+feature. Don't run RTL+Vitest and Playwright CT in the same repo without a
+clear lane separation.
+
+## Query priority
+
+Top-down: accessible queries first (`getByRole`, `getByLabelText`,
+`getByText`), then semantic (`getByAltText`), `getByTestId` as a last
+resort. `getBy*` throws on no match, `queryBy*` returns null (assert
+absence), `findBy*` is async (elements appearing after async work).
+
+## Interaction and async
+
+Always `await` `userEvent` calls; call `userEvent.setup()` once per test.
+For async UI: `findBy*`, `waitFor`, `waitForElementToBeRemoved` — never
+`setTimeout` + assertion.
+
+## Network mocking
+
+MSW (`setupServer`) with `onUnhandledRequest: 'error'` so an unmocked
+request fails loudly. Override per-test with `server.use(...)`.
+
+## Provider wrapping
+
+Centralize a `renderWithProviders` helper in `test-utils.tsx` wrapping
+QueryClient/Theme/Router providers once, imported by every test file.
+
+## Custom hooks
+
+`renderHook` + `act` for state-changing calls; test through the hook's
+public API only; instantiate a `QueryClient` once outside the wrapper
+closure (inside it resets cache every render → flaky tests).
+
+## Accessibility
+
+Run `axe` against every interactive component
+(`expect(await axe(container)).toHaveNoViolations()`). Catches missing
+labels, invalid ARIA, missing alt text, heading-order violations — but
+JSDOM has no real CSS engine, so visual contrast still needs Playwright.
+
+## Snapshots
+
+Avoid for rendered component output (breaks on every style change, gets
+rubber-stamped, tests DOM structure not behavior). Fine for pure data
+serialization functions or generated config output.
+
+## When to reach for Playwright/Cypress instead
+
+JSDOM can't do real layout, CSS transitions, drag-and-drop, iframes,
+cross-origin, or real network with DevTools. A hook/presentational
+component/logic-bearing form → RTL. A component whose layout matters or
+uses unsupported browser APIs → Playwright CT. A full multi-page user flow
+→ full E2E (`e2e-testing`).
+
+## Anti-patterns
+
+`container.querySelector` bypassing accessible queries; asserting render
+count; mocking React itself; mocking child components by default; ignoring
+`act()` warnings; shared mutable state across tests; a test that still
+passes with `it.skip()` removed.

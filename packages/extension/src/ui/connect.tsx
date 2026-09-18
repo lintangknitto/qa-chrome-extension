@@ -69,7 +69,7 @@ const ConnectApp: React.FC = () => {
 
       setStatus({
         type: 'connecting',
-        message: `"${clientInfo}" is trying to connect to the Playwright Extension.`
+        message: `"${clientInfo}" is trying to connect to the QA Knitto Extenstion.`
       });
 
       const parsedVersion = parseInt(params.get('protocolVersion') ?? '', 10);
@@ -208,7 +208,7 @@ const VersionMismatchError: React.FC<{ extensionVersion: string }> = ({ extensio
   return (
     <div>
       Playwright client trying to connect requires newer extension version (current version: {extensionVersion}).{' '}
-      Update <a href={chromeWebStoreUrl} target='_blank' rel='noopener noreferrer'>Playwright Extension</a> from the Chrome Web Store to the latest version.{' '}
+      Update <a href={chromeWebStoreUrl} target='_blank' rel='noopener noreferrer'>QA Knitto Extenstion</a> from the Chrome Web Store to the latest version.{' '}
       See <a href={readmeUrl} target='_blank' rel='noopener noreferrer'>installation instructions</a> for more details.
     </div>
   );

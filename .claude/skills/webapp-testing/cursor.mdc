@@ -1,0 +1,77 @@
+---
+description: Executable local-only E2E + TDD workflow for web apps — real Playwright config, a Python test runner, and a custom self-contained HTML report grouped by test-case-matrix category with per-step screenshots and slow-motion video. No CI wiring — runs on your own machine, on demand or via an optional local git pre-push hook. Tags and tears down application data specs create. Trigger when setting up or running E2E tests for a webapp end-to-end, not just reading patterns (for that, see e2e-testing).
+globs:
+alwaysApply: false
+---
+
+# webapp-testing (Cursor)
+
+Turns Playwright patterns into files you actually run, wired through one
+Python entrypoint. For granular Playwright patterns see `e2e-testing`; for
+the scenario list to test see `test-case-matrix` (run first, each item
+becomes one RED step); for the DB/data hygiene mechanics see `api-testing`.
+
+## When NOT to use
+
+Just need Playwright patterns/snippets by hand — use `e2e-testing`. Pure
+unit/integration TDD with no browser — use `test-driven-development`.
+
+## Steps
+
+1. **Install scaffolding**: copy the Playwright config to project root,
+   the runner + report-builder scripts into `scripts/`, add
+   `@playwright/test` as a dev dependency. In the same pass, add
+   `docs/qa/playwright-report/`, `docs/qa/test-results/`,
+   `docs/qa/playwright-results.json`, and `docs/qa/*/test-matrix.html` to
+   `.gitignore` — mandatory, not optional, or the first run stages
+   megabytes of screenshots/video into git. Only
+   `docs/qa/<slug>/test-matrix.md` should stay tracked under `docs/qa/`.
+
+2. **Write the test first (RED)**. Before implementing a new flow, write a
+   spec under `tests/e2e/` describing the desired behavior — it should
+   fail. Before writing a flow that creates or depends on data, check who
+   owns that entity: if this repo owns it, proceed; if another
+   repo/service owns it, stop and ask for its API contract or a staging
+   endpoint rather than guessing its shape. Tag whatever data the test
+   creates (a `run_id` or fixed prefix) for later cleanup.
+
+   Use a `stepShot` wrapper around each logical action (not a flat
+   `await`-chain) so the report shows a per-step breakdown matching the
+   test case's `Test Steps` in `test-case-matrix`. If the source matrix is
+   in Bahasa Indonesia, keep the test title and every `stepShot` label in
+   Bahasa Indonesia too — the report is read side-by-side with the matrix,
+   a language mismatch defeats that. Keep id prefixes and selector
+   literals untranslated.
+
+3. **Run via the runner**, not raw `npx playwright test` — it wraps the
+   configured reporters, prints a pass/fail/flaky summary, then
+   post-processes the report to add video speed controls. Runs headed by
+   default (visible browser) so you can watch it work; pass `--headless`
+   for unattended/agent-driven runs. Up to 3 parallel workers even when
+   headed; CI stays pinned to 1.
+
+4. **Implement until green**, re-running after each change, then refactor
+   with tests still green.
+
+5. **Optional local pre-push gate**: install the provided git hook to gate
+   `git push` on the suite passing — purely local, no CI/workflow files,
+   opt-in only (don't install unless asked).
+
+## Report
+
+The HTML report is Playwright's own unmodified `html` reporter output,
+post-processed to add slow-motion video controls (default 0.5×, with
+speed buttons) and a floating "Test Matrix" menu linking every
+`docs/qa/<slug>/test-matrix.md` rendered to a sibling `.html`. Open via
+`npx playwright show-report docs/qa/playwright-report` (needs serving, not
+double-clicking `index.html`, since attachments live in a sibling `data/`
+folder).
+
+## Test data hygiene (application data, not report artifacts)
+
+A browser-driven test is always the "real DB, black-box" case —
+transaction rollback never applies. Tag every record created (a `run_id`
+or fixed prefix), add a `globalTeardown` deleting everything tagged with
+that run's id through the app's own API, and keep a standalone idempotent
+cleanup script for crashed runs. Never report a suite "set up" or
+"passing" while it creates real records with neither of these in place.

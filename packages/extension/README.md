@@ -1,4 +1,4 @@
-# Playwright Chrome Extension
+# QA Knitto Extenstion
 
 ## Introduction
 
@@ -92,5 +92,4 @@ If the extension is installed in several Chrome profiles, the connection is made
 ```
 
 The `PLAYWRIGHT_MCP_PROFILE_DIR_NAME` environment variable can be used instead of the option. The authentication token is specific to the profile, so use the one displayed in that profile.
-
 

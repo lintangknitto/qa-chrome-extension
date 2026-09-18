@@ -1,6 +1,7 @@
 {
   "name": "playwright-internal",
   "private": true,
+  "packageManager": "pnpm@12.4.2",
   "version": "1.64.0-next",
   "description": "A high-level API to automate web browsers",
   "repository": {
@@ -9,7 +10,8 @@
   },
   "homepage": "https://playwright.dev",
   "engines": {
-    "node": ">=20"
+    "node": ">=24.11.0 <25",
+    "pnpm": ">=12.4.2 <13"
   },
   "author": {
     "name": "Microsoft Corporation"
@@ -35,10 +37,10 @@
     "eslint": "eslint --cache",
     "tsc": "tsc -p .",
     "doc": "node utils/doclint/cli.js",
-    "lint": "npm run eslint && npm run tsc && npm run doc && npm run check-deps && node utils/generate_channels.js && node utils/generate_types/ && npm run lint-tests && npm run test-types && npm run lint-packages",
+    "lint": "pnpm eslint && pnpm tsc && pnpm doc && pnpm check-deps && node utils/generate_channels.js && node utils/generate_types/ && pnpm lint-tests && pnpm test-types && pnpm lint-packages",
     "lint-packages": "node utils/workspace.js --ensure-consistent",
     "lint-tests": "node utils/lint_tests.js",
-    "flint": "node utils/concurrently.js \"npm run eslint\" \"npm run tsc\" \"npm run doc\" \"npm run check-deps\" \"node utils/generate_channels.js\" \"npm run lint-tests\" \"npm run test-types\" \"npm run lint-packages\" \"node utils/doclint/linting-code-snippets/cli.js --js-only\"",
+    "flint": "node utils/concurrently.js \"pnpm eslint\" \"pnpm tsc\" \"pnpm doc\" \"pnpm check-deps\" \"node utils/generate_channels.js\" \"pnpm lint-tests\" \"pnpm test-types\" \"pnpm lint-packages\" \"node utils/doclint/linting-code-snippets/cli.js --js-only\"",
     "clean": "node utils/build/clean.js",
     "build": "node utils/build/build.js",
     "watch": "node utils/build/build.js --watch --lint",

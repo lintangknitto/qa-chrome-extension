@@ -1,0 +1,50 @@
+---
+description: Execute a plan/checklist file's items (from prd-grill's output) as a tracked session task list, checking off both the session list and the markdown file as each item is verified, then run this repo's closing gates (review, verification, done-location move) before reporting complete. Trigger on "/exec-todo", "kerjakan fase X", "lanjutkan todo Y".
+globs:
+alwaysApply: false
+---
+
+# exec-todo (Cursor)
+
+Turn a plan/checklist file into actively-tracked, actually-executed work.
+Not a planning tool — never edits plan *content*, only checkboxes and file
+location.
+
+## Resolve the target file
+
+Exact path if given; otherwise fuzzy-match against this repo's plan-doc
+location, preferring an open/unfinished match over a closed one. No
+argument at all → ask which file, don't guess. Read the resolved file in
+full before doing anything else.
+
+## Build the tracked task list
+
+Extract every unchecked item from the checklist section, in order,
+including any fixed closing items this repo requires. One task per session
+todo item. If everything's already checked, check whether the file needs
+moving to a "done" location per this repo's convention instead of
+fabricating work.
+
+## Work through it
+
+Per task: mark in-progress → do the work (multi-step items follow
+incremental, small-diff discipline) → verify before marking done → check
+off both the session task and the `- [ ]` → `- [x]` in the file in the same
+turn. New work discovered mid-implementation gets added as a new item, not
+folded silently into an existing one. Surface blockers instead of skipping
+past them.
+
+## Closing gates — not optional
+
+Follow this repo's own documented "definition of done" (check
+`CLAUDE.md`/`AGENTS.md`/`CONTRIBUTING.md` first) exactly, in order. Default
+if none exists: dispatch a review step → run real verification (E2E/manual,
+not just unit tests) → write whatever report artifact this repo expects →
+clean up test state → check off closing items → move the file to its "done"
+location if this repo's convention has one, fixing relative links.
+
+## Final report
+
+What was implemented, test/review/verification results, and the file's
+final location. Say plainly if anything was left unchecked — never imply
+full completion the file itself doesn't show.

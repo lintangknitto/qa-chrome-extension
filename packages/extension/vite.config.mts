@@ -29,7 +29,7 @@ export default defineConfig({
           dest: 'icons'
         },
         {
-          src: '../../manifest.json',
+            src: '../../manifest.json',
           dest: '.'
         }
       ]

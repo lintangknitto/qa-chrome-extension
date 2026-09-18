@@ -1,0 +1,43 @@
+---
+description: Explain a repo, feature, or how something works in plain, non-technical language, grounded in the actual code, written out as a markdown file the reader can keep/share. Trigger when a non-developer (PM, stakeholder, new hire, support) needs to understand a codebase or flow, or the user asks to "explain this repo/feature in simple terms" and wants a document out of it.
+globs:
+alwaysApply: false
+---
+
+# codebase-explain (Cursor)
+
+Turn "read the code and explain it to me like I'm not a developer" into an
+actual markdown file, not a chat answer that scrolls away. Every claim must
+trace back to code actually read — a plausible-sounding but unchecked
+explanation is worse than none, because it reads as authoritative.
+
+## When NOT to use
+
+Developer/API reference docs (need precision, the opposite of this skill's
+plain-language goal); `CLAUDE.md`/`AGENTS.md` (agent-facing operational
+instructions, not human comprehension docs); ADRs or docs meant for
+engineers who already know the codebase.
+
+## Steps
+
+1. Clarify scope and audience before reading anything — a whole-repo
+   overview and a single-feature walkthrough are different documents, and
+   "explain to a PM" vs "explain to a new junior engineer" calibrate
+   jargon and depth differently. Ask if unclear.
+2. Read the actual code before writing anything — entry points, main flow,
+   key files. If something is genuinely unclear from the code alone (e.g.
+   domain logic not documented anywhere), say so rather than guessing.
+3. Write in plain language without dumbing down what's true. No unexplained
+   jargon, but when a technical term is genuinely necessary, use it and
+   define it once.
+4. Use a template skeleton: plain-language title, one-paragraph summary, a
+   walkthrough referencing real file/function names, repo layout (whole-repo
+   scope only), and a short terms list of only the terms actually used
+   above. Delete sections that don't apply to the chosen scope.
+5. Use an analogy only if it adds real clarity — skip it otherwise.
+6. Ask where to save the file before writing it (e.g.
+   `docs/explained/<topic>.md`) — confirm with the user, don't create
+   silently.
+7. Note the "as of" date in the output and tell the user this is a
+   snapshot — if the code changes meaningfully, regenerate rather than
+   hand-patch.
