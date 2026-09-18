@@ -1,0 +1,41 @@
+---
+description: Safe process for upgrading project dependencies — check changelogs for breaking changes, upgrade incrementally, verify build/test after each batch, handle lockfile conflicts. Trigger when the user asks to update/upgrade/bump dependencies, fix a vulnerability, or a dependency is badly out of date. Not for adding a brand-new dependency (a design decision) or database schema migrations.
+globs:
+alwaysApply: false
+---
+
+# dependency-update (Cursor)
+
+The risk isn't running the upgrade command, it's not knowing what changed
+underneath until something fails in a way hard to trace to the bump.
+
+## Steps
+
+1. **Check what actually changed before running the upgrade.** For every
+   major bump (and minor for core/critical libraries), read the
+   changelog/release notes for "breaking"/"deprecated"/"removed". Don't
+   assume a semver minor is always safe.
+2. **Upgrade incrementally, not all at once.** Batch low-risk
+   patch/minor bumps for non-critical deps together. Major bumps or core
+   deps (framework, ORM, test runner): one at a time, so a break is
+   traceable to a single cause.
+3. **Verify build + test suite after each batch**, not just at the end. If
+   a changelog mentions a breaking change, grep for the
+   deprecated/removed API in the codebase — don't rely on tests alone,
+   coverage may not touch the changed area.
+4. **Keep the lockfile in sync with the manifest, always.** On a conflict,
+   regenerate from the manifest — don't hand-resolve versions.
+5. **Prioritize vulnerability fixes by severity and actual exploitability**
+   in this project, not by blindly upgrading everything an audit flags —
+   check whether the vulnerable path is actually called.
+6. **For a major upgrade of a core framework, follow its official migration
+   guide** rather than improvising the sequence.
+7. **Report a summary**: what was bumped, from/to which version, breaking
+   changes found and how accommodated, build/test verification result.
+
+## Signs to stop and report instead of guessing
+
+A test fails in a way unconnected to anything in the changelog, or a
+dependency has an unclear/empty release history — stop and ask the user
+whether the upgrade still needs to happen now, rather than pinning a random
+version and hoping.

@@ -1,0 +1,83 @@
+---
+description: Hardens code against vulnerabilities — treat every external input as hostile, every secret as sacred, every authorization check as mandatory. Trigger when handling user input, authentication, data storage, or external integrations, or building any feature accepting untrusted data, managing sessions, or interacting with third-party services.
+globs:
+alwaysApply: false
+---
+
+# security-and-hardening (Cursor)
+
+## Threat model first
+
+Before hardening: map trust boundaries (HTTP requests, form fields, file
+uploads, webhooks, third-party APIs, message queues, and LLM output), name
+the assets worth stealing/breaking, run STRIDE over each boundary
+(Spoofing/Tampering/Repudiation/Information disclosure/DoS/Elevation of
+privilege), and write abuse cases next to use cases. If you can't name the
+trust boundaries for a feature, you're not ready to secure it.
+
+## Always do (no exceptions)
+
+Validate all external input at the boundary; parameterize every DB query;
+encode output for XSS (use framework auto-escaping); HTTPS everywhere;
+hash passwords with bcrypt/scrypt/argon2; set security headers (CSP, HSTS,
+X-Frame-Options); httpOnly/secure/sameSite cookies for sessions; run the
+package manager's native audit against the committed lockfile before
+release.
+
+## Ask first
+
+New auth flows, storing new categories of sensitive data, new external
+integrations, CORS changes, file upload handlers, rate-limit changes,
+granting elevated permissions.
+
+## Never do
+
+Commit secrets; log sensitive data (passwords, tokens, full card numbers);
+trust client-side validation as a security boundary; disable security
+headers for convenience; use `eval()`/`innerHTML` with user data; store
+auth tokens in localStorage; expose stack traces to users.
+
+## Key prevention patterns
+
+- **Injection**: parameterized queries/ORM, never string-concatenated SQL.
+- **Auth**: bcrypt/argon2 hashing, httpOnly+secure+sameSite session
+  cookies.
+- **XSS**: framework auto-escaping; sanitize with DOMPurify if HTML must
+  render raw.
+- **Access control**: check both authentication AND resource ownership on
+  every protected route.
+- **SSRF**: for any server-side fetch of a user-influenced URL, allowlist
+  scheme+host, resolve DNS and reject if any address is non-unicast
+  (covers loopback, link-local metadata endpoint, private ranges), forbid
+  redirects. Note the TOCTOU gap — pin the resolved IP for high-risk
+  surfaces.
+- **Input validation**: schema validation (Zod/similar) at every route
+  boundary; file uploads restricted by type/size, don't trust the
+  extension alone.
+
+## Dependency audits
+
+Native audit reachability triage: critical/high + reachable in
+runtime/build/test/deploy paths → fix immediately; unreachable → fix soon,
+not a blocker. Never run forced automated remediation
+(`audit fix --force`) — preview, read changelogs, test each upgrade.
+Verify registry signatures/provenance where supported. Find the real
+install boundary/manager (workspace root owning the lockfile) before
+trusting any audit; block install scripts by default, approve only the
+minimum required packages.
+
+## Securing AI/LLM features
+
+Treat all model output as untrusted input — never straight into
+`eval`/SQL/shell/`innerHTML`/file paths. Assume prompts can be hijacked —
+the system prompt is not a security boundary, enforce permissions in code.
+Keep secrets and other users' data out of the context window. Scope
+tool/agent permissions to the minimum, require confirmation for
+destructive actions. Cap tokens/rate/recursion depth. Partition vector
+store embeddings per tenant in RAG.
+
+## Secrets
+
+`.env`/`.env.local` gitignored, `.env.example` committed as a template. If
+a secret is ever committed, rotate it immediately — deleting the line or
+rewriting history isn't enough, assume it's compromised.

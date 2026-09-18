@@ -1,0 +1,52 @@
+---
+description: Comprehensive security checklist and patterns for authentication, user input handling, secrets, new API endpoints, and payment/sensitive features. Trigger when implementing auth/authorization, handling input or file uploads, creating API endpoints, working with secrets, implementing payments, or integrating third-party APIs.
+globs:
+alwaysApply: false
+---
+
+# security-review (Cursor)
+
+Checklist-driven review across ten areas. For each, verify the pattern is
+followed and flag violations.
+
+1. **Secrets**: never hardcoded — always from env vars, verified present at
+   startup; `.env.local` gitignored; nothing in git history; production
+   secrets live in the hosting platform.
+2. **Input validation**: schema-validate every input (Zod or equivalent)
+   before processing; file uploads checked for size, MIME type, and
+   extension (allowlist, not blacklist).
+3. **SQL injection**: parameterized queries or an ORM/query builder always
+   — never string-concatenated SQL.
+4. **Auth/authz**: tokens in httpOnly cookies, never localStorage;
+   authorization checked before every sensitive operation, not just
+   authentication; Row Level Security enabled if using Supabase; role-based
+   checks explicit.
+5. **XSS**: sanitize any user-provided HTML with DOMPurify before
+   rendering; rely on framework auto-escaping otherwise; a strict CSP with
+   a documented removal plan for any loosening, never default to
+   `unsafe-inline`/`unsafe-eval`.
+6. **CSRF**: tokens on state-changing operations; `SameSite=Strict` on
+   cookies.
+7. **Rate limiting**: on every API endpoint, stricter on expensive
+   operations (search, auth).
+8. **Sensitive data exposure**: never log passwords/tokens/full card
+   numbers; return generic error messages to users, log full detail
+   server-side only, never expose stack traces.
+9. **Blockchain (if applicable)**: verify wallet signatures; validate
+   transaction recipient/amount and balance before executing; never blind-
+   sign.
+10. **Dependencies**: audit clean or triaged, lockfiles committed, `ci`
+    installs (not `install`) for reproducible builds, Dependabot or
+    equivalent enabled.
+
+## Pre-deployment checklist
+
+Before any production deploy, confirm every item above plus: HTTPS
+enforced, security headers configured (CSP/X-Frame-Options), CORS properly
+scoped (no wildcard with credentials).
+
+## Automated security tests
+
+Add tests asserting: protected routes return 401 without auth, admin-only
+routes return 403 for non-admin, invalid input returns 400/422, rate
+limits actually trigger 429 under load.

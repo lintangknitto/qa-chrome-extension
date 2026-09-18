@@ -1,0 +1,61 @@
+---
+description: Deliver changes incrementally — implement one thin vertical slice, test it, verify it, commit, then expand. Trigger when implementing any feature or change touching more than one file, or about to write a large amount of code at once. Not for single-file, single-function changes with already-minimal scope.
+globs:
+alwaysApply: false
+---
+
+# incremental-implementation (Cursor)
+
+Build in thin vertical slices instead of implementing an entire feature in
+one pass. Each increment leaves the system in a working, testable state.
+
+## The increment cycle
+
+Implement the smallest complete piece → Test (run suite or write one) →
+Verify (tests pass, build succeeds, manual check) → Commit with a
+descriptive message → move to the next slice, carrying forward rather than
+restarting.
+
+## Slicing strategies
+
+- **Vertical (preferred)**: one complete path through the stack per slice
+  (e.g. create → list → edit → delete, each shipping working end-to-end
+  functionality).
+- **Contract-first**: define the API contract, then backend and frontend
+  implement against it in parallel, integrate last.
+- **Risk-first**: tackle the riskiest/most uncertain piece first so a
+  failure is discovered before investing in the rest.
+
+## Rules
+
+- **Simplicity first**: ask "what's the simplest thing that could work?"
+  before writing code. Three similar lines beat a premature abstraction.
+  Don't build for hypothetical future requirements.
+- **Scope discipline**: touch only what the task requires. Don't clean up
+  adjacent code, refactor unrelated imports, or add unrequested features.
+  Note anything worth improving outside scope instead of fixing it inline.
+- **One thing at a time**: each increment changes one logical thing —
+  separate commits for a new component vs. a refactor vs. a config change.
+- **Keep it compilable**: after every increment the project must build and
+  existing tests must pass.
+- **Feature flags for incomplete work**: gate anything not ready for users
+  so increments can still merge to main.
+- **Safe defaults**: new code defaults to conservative, opt-in behavior.
+- **Rollback-friendly**: additive changes are easy to revert; keep
+  modifications to existing code minimal and focused; don't delete and
+  replace something in the same commit.
+
+## After each increment, verify
+
+Does one thing completely; existing tests pass with the repo's own test
+command; build succeeds; type-check and lint pass where they exist; new
+functionality works as expected; change is committed with a descriptive
+message. Don't re-run an unchanged verification command just for
+reassurance.
+
+## Red flags
+
+More than ~100 lines written without running tests; multiple unrelated
+changes in one increment; "let me just quickly add this too" scope creep;
+skipping verify to move faster; build/tests broken between increments;
+building abstractions before the third use case demands it.

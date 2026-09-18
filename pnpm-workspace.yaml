@@ -1,0 +1,14 @@
+packages:
+  - packages/*
+  - .opencode
+
+allowBuilds:
+  esbuild: true
+  msgpackr-extract: false
+
+minimumReleaseAgeExclude:
+  - baseline-browser-mapping
+  - content-type
+  - devtools-protocol
+  - electron-to-chromium
+  - node-releases

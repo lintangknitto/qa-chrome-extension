@@ -1,0 +1,44 @@
+---
+description: Calibrate an AI coding agent to a project it hasn't worked in before — detect the stack/tooling, install dependencies, verify the project actually runs (dev server/build/test), and write or update CLAUDE.md/AGENTS.md with what was found and verified. Trigger at the start of work on a new/unfamiliar repo, or when the user asks to "onboard"/"bootstrap"/"set up this project for the agent".
+globs:
+alwaysApply: false
+---
+
+# project-bootstrap (Cursor)
+
+Turns "an agent just landed in an unfamiliar repo" into "an agent that
+knows the stack, has verified the project runs, and has documentation to
+prove it" — a one-time foundation step, not an every-session ritual.
+Unlike a plain doc generator, this actually installs dependencies and tries
+running the project, so what gets written reflects commands just verified
+to work.
+
+## When NOT to use
+
+`CLAUDE.md`/`AGENTS.md` already exists and is up to date — just read it.
+Installing *skills* from a catalog into another project is a different
+task entirely. A large monorepo with many subprojects on different stacks
+— run this per relevant subfolder instead of one combined summary.
+
+## Steps
+
+1. Detect the stack: package manager via lockfile, other stack markers
+   (Python/Go/Rust/PHP/Ruby/Java/Elixir), existing docs, CI config,
+   containers, tests, linting. No marker matching is itself a signal —
+   check subfolders manually, it might be a monorepo.
+2. Confirm the install plan with the user before executing — installing
+   dependencies has real side effects (arbitrary install scripts). Show
+   the command, get confirmation.
+3. Install dependencies with the detected command. If it fails, report the
+   error as-is — don't proceed pretending it worked.
+4. Verify the project actually runs: build command (cheapest signal), test
+   suite if one exists (record the honest result, doesn't need to be
+   all-green), dev server/start command briefly to confirm no crash on
+   startup, then stop it.
+5. Write or update `CLAUDE.md`/`AGENTS.md`: if it exists, offer to add a
+   new section rather than overwrite; if not, offer to create one with a
+   project summary, detected stack, and install/build/test/dev commands
+   that were just verified — not guessed — noting anything that failed.
+   Always confirm before writing a new file into the user's repo.
+6. Optionally suggest relevant skills from a catalog matching the detected
+   stack — offer, don't install automatically.

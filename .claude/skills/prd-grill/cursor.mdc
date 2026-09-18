@@ -1,0 +1,76 @@
+---
+description: Turn a rough idea into a written plan through iterative one-question-at-a-time Q&A, then write a PRD+ISSUES doc (or match this repo's existing plan-doc convention). Trigger on "grill me", "grill this feature", "let's plan this out", "help me spec this", or a new feature described too vaguely to implement directly.
+globs:
+alwaysApply: false
+---
+
+# prd-grill (Cursor)
+
+Turn a rough idea into a plan document by asking exactly **one adaptive
+question per turn** — never a wall of questions upfront — then write the
+plan to disk once scope is confirmed.
+
+## Before asking anything
+
+Check for an existing planning convention in this repo (`docs/prd/`,
+`doc/phases/`, or similar). If one exists, follow its folder layout and
+section shape instead of the default below. If none exists, default to a
+**todo/done split** so open vs. finished plans are obvious at a glance:
+
+```
+docs/prd/todo/<slug>/PRD.md      # unfinished — always starts here
+docs/prd/todo/<slug>/ISSUES.md
+docs/prd/done/<slug>/PRD.md      # moved here once ISSUES.md is fully checked
+docs/prd/done/<slug>/ISSUES.md
+```
+
+Only move a plan to `done/` once its checklist is fully checked (or
+remaining items are explicitly marked N/A/out of scope) — that's an
+implementation close-out step, not something to do at write time.
+
+## Scope: new plan vs. correction
+
+Decide (or ask) whether this is a brand-new plan or a correction/extension
+to an existing one. Default to extending an existing doc whenever a
+plausible existing doc covers the same topic, even if the change also
+touches a different area than the original did. Only start a new doc for
+work that opens a genuinely new surface.
+
+## Grill loop
+
+- Always ask exactly one question per turn, adapted to prior answers.
+- Cover, skipping what's already clear: problem/motivation, concrete scope
+  (files/modules touched), API/data changes, explicit out-of-scope,
+  success criteria.
+- Never batch unrelated questions into one turn.
+- If an answer contradicts an earlier one, surface it and ask which stands.
+
+## Confirm before writing
+
+Summarize understanding (problem, scope, key decisions) and get explicit
+confirmation before generating any file. Loop back to the grill for
+anything the user corrects.
+
+## Write the plan
+
+`PRD.md`: Context, Problem/Motivation, Scope, Design decisions, Out of
+scope, Success criteria.
+
+`ISSUES.md`: flat checklist, one item per implementable unit, plus this
+repo's fixed definition-of-done items appended verbatim if any exist (test
+commands, review steps, verification steps documented elsewhere in the
+repo).
+
+Write the files directly — don't ask permission, that's the point — then
+tell the user the exact paths.
+
+## Not this skill's job
+
+- Don't write or edit implementation code — planning docs only.
+- Don't skip a repo's required review/verification steps in the generated
+  checklist.
+- Don't edit a completed, already-implemented plan doc in place if this
+  repo uses a versioned/append-only convention — write the next version
+  instead.
+- Don't edit a plan already sitting in `done/` in place either — move it
+  back to `todo/<slug>/` first (new work reopens it), then edit.

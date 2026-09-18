@@ -1,0 +1,74 @@
+---
+description: React 18/19 patterns — hooks discipline, server/client component boundaries, Suspense + error boundaries, form actions, data fetching, state-management decision trees, and accessibility-first composition. Trigger when writing or reviewing React components, hooks, or component trees.
+globs:
+alwaysApply: false
+---
+
+# react-patterns (Cursor)
+
+## Core principles
+
+Render is a pure function of props/state — derive values during render,
+don't stash derived data in `useState`+`useEffect`. Side effects
+(mutations, network calls, subscriptions) live in event handlers or
+`useEffect`, never in the render body. Compose via `children`/render
+props/component props — React has no inheritance model.
+
+## Hooks discipline
+
+Top-level only, never conditional. Clean up every subscription/interval/
+listener. Use the functional updater form when new state depends on old.
+Default to not memoizing — add `useMemo`/`useCallback` only when a
+profiler or dependency chain proves it matters. Extract a custom hook only
+once the same hook sequence appears in 2+ components.
+
+## State location
+
+One component only → local `useState`. Parent + a few descendants → lift
+to nearest common ancestor. Distant branches, low-frequency reads (theme,
+auth, locale) → Context. High-frequency shared updates → external store
+(Zustand/Jotai/Redux Toolkit). Derived from a server → a server-state
+library (TanStack Query/SWR/RSC fetch). Most pages need neither context nor
+a global store — resist abstracting until duplicated lifting hurts.
+
+## Server/Client components (RSC)
+
+Server Components are the default, async, ship no JS for themselves.
+Client Components opt in with `"use client"`. Server→Client: pass
+serializable props/children. Client→Server: invoke Server Actions via
+`<form action>` or event handlers. Never import a Server Component from a
+Client Component file — compose via `children` instead.
+
+## Suspense + error boundaries
+
+Place Suspense boundaries close to the data, not at the route root, for
+progressive reveal. Error boundaries catch render/lifecycle/constructor
+errors in children — not event handlers or async code.
+
+## Forms
+
+Prefer React 19 form actions (`useActionState` + `<form action>`) for new
+code. Use controlled inputs when the value drives other UI or needs
+real-time validation. For multi-step/dynamic/cross-field forms, use a
+library (React Hook Form, TanStack Form) rather than rolling your own.
+
+## Data fetching
+
+RSC `await fetch()` for per-request Next.js App Router data; TanStack
+Query for client cache+mutations+invalidation; SWR for lightweight
+client cache; SSE/WebSockets for real-time. Avoid `useEffect`+`fetch` for
+application data — no cache, no retry, race conditions.
+
+## Performance
+
+`React.memo` only helps when a component re-renders often, with usually-
+identical props, and an expensive render — otherwise it's pure overhead.
+Split context by concern so an unrelated change doesn't re-render
+consumers. Stable `key` props (database id, never array index). Virtualize
+lists past ~50 non-trivial rows.
+
+## Accessibility
+
+Semantic HTML before `role` attributes. Every interactive element keyboard
+reachable. Labels on every form input. Manage focus on route/modal
+changes. Run `axe` in component tests.

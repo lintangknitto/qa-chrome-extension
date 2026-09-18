@@ -1,0 +1,1434 @@
+{
+  "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+  "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+  "installed_at": "2026-09-18",
+  "scope": "project",
+  "platforms": [
+    "opencode",
+    "claude-code",
+    "cursor"
+  ],
+  "language": "id",
+  "entries": [
+    {
+      "name": "agent-doctor",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/agent-doctor/cursor.mdc": {
+              "path": ".claude/skills/agent-doctor/cursor.mdc",
+              "sha256": "e5e004da48142dd102b453e9591068f72497f6a2a340fc6f8b624650eeff210a"
+            },
+            ".claude/skills/agent-doctor/README.md": {
+              "path": ".claude/skills/agent-doctor/README.md",
+              "sha256": "c95e00a57aa48342f86fb3dc1db9f1ccebbe41247a9f178fe7d2efacdaa2b0ee"
+            },
+            ".claude/skills/agent-doctor/references/platform-agent-specs.md": {
+              "path": ".claude/skills/agent-doctor/references/platform-agent-specs.md",
+              "sha256": "da1da0e2d4b01708684253bd7cee128e6891d08b67c670f1b2696a6318877eac"
+            },
+            ".claude/skills/agent-doctor/SKILL.md": {
+              "path": ".claude/skills/agent-doctor/SKILL.md",
+              "sha256": "e3a6ff2bf72d2c6fd1178011e10281f883d17dccbbf7b6ea541d7fbaae018ee2"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/agent-doctor/cursor.mdc": {
+              "path": ".opencode/skills/agent-doctor/cursor.mdc",
+              "sha256": "e5e004da48142dd102b453e9591068f72497f6a2a340fc6f8b624650eeff210a"
+            },
+            ".opencode/skills/agent-doctor/README.md": {
+              "path": ".opencode/skills/agent-doctor/README.md",
+              "sha256": "c95e00a57aa48342f86fb3dc1db9f1ccebbe41247a9f178fe7d2efacdaa2b0ee"
+            },
+            ".opencode/skills/agent-doctor/references/platform-agent-specs.md": {
+              "path": ".opencode/skills/agent-doctor/references/platform-agent-specs.md",
+              "sha256": "da1da0e2d4b01708684253bd7cee128e6891d08b67c670f1b2696a6318877eac"
+            },
+            ".opencode/skills/agent-doctor/SKILL.md": {
+              "path": ".opencode/skills/agent-doctor/SKILL.md",
+              "sha256": "e3a6ff2bf72d2c6fd1178011e10281f883d17dccbbf7b6ea541d7fbaae018ee2"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/agent-doctor.md",
+              "sha256": "49b8a8d534936220dfbbec9f7bc0e6634e20b609c3fe2b4e9db6b39557261060"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/agent-doctor/cursor.mdc": {
+              "path": ".cursor/skills/agent-doctor/cursor.mdc",
+              "sha256": "e5e004da48142dd102b453e9591068f72497f6a2a340fc6f8b624650eeff210a"
+            },
+            ".cursor/skills/agent-doctor/README.md": {
+              "path": ".cursor/skills/agent-doctor/README.md",
+              "sha256": "c95e00a57aa48342f86fb3dc1db9f1ccebbe41247a9f178fe7d2efacdaa2b0ee"
+            },
+            ".cursor/skills/agent-doctor/references/platform-agent-specs.md": {
+              "path": ".cursor/skills/agent-doctor/references/platform-agent-specs.md",
+              "sha256": "da1da0e2d4b01708684253bd7cee128e6891d08b67c670f1b2696a6318877eac"
+            },
+            ".cursor/skills/agent-doctor/SKILL.md": {
+              "path": ".cursor/skills/agent-doctor/SKILL.md",
+              "sha256": "e3a6ff2bf72d2c6fd1178011e10281f883d17dccbbf7b6ea541d7fbaae018ee2"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "project-bootstrap",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/project-bootstrap/cursor.mdc": {
+              "path": ".claude/skills/project-bootstrap/cursor.mdc",
+              "sha256": "f7eab5614d59db1f5a0e66f3f3376f68e2aa76a4c107c790c3c82d1ae2906905"
+            },
+            ".claude/skills/project-bootstrap/README.md": {
+              "path": ".claude/skills/project-bootstrap/README.md",
+              "sha256": "c7b2a0610570dce5034db36cc169d531a88f1c76531e7300196b5e2994d7575a"
+            },
+            ".claude/skills/project-bootstrap/scripts/detect_stack.py": {
+              "path": ".claude/skills/project-bootstrap/scripts/detect_stack.py",
+              "sha256": "c9e5ad4f6815bd507d56266164f7294daa529493634f76c9f9f2756e82b1e13f"
+            },
+            ".claude/skills/project-bootstrap/SKILL.md": {
+              "path": ".claude/skills/project-bootstrap/SKILL.md",
+              "sha256": "5f5c139d11b2b2fe0b2b1b1cc95d7de3654e9a974f4989fe8796be44c039815e"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/project-bootstrap/cursor.mdc": {
+              "path": ".opencode/skills/project-bootstrap/cursor.mdc",
+              "sha256": "f7eab5614d59db1f5a0e66f3f3376f68e2aa76a4c107c790c3c82d1ae2906905"
+            },
+            ".opencode/skills/project-bootstrap/README.md": {
+              "path": ".opencode/skills/project-bootstrap/README.md",
+              "sha256": "c7b2a0610570dce5034db36cc169d531a88f1c76531e7300196b5e2994d7575a"
+            },
+            ".opencode/skills/project-bootstrap/scripts/detect_stack.py": {
+              "path": ".opencode/skills/project-bootstrap/scripts/detect_stack.py",
+              "sha256": "c9e5ad4f6815bd507d56266164f7294daa529493634f76c9f9f2756e82b1e13f"
+            },
+            ".opencode/skills/project-bootstrap/SKILL.md": {
+              "path": ".opencode/skills/project-bootstrap/SKILL.md",
+              "sha256": "5f5c139d11b2b2fe0b2b1b1cc95d7de3654e9a974f4989fe8796be44c039815e"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/project-bootstrap.md",
+              "sha256": "0d94b9cb101c02b5e5d501ecf9a007837462ef4b43768601e7d12fdd86906b51"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/project-bootstrap/cursor.mdc": {
+              "path": ".cursor/skills/project-bootstrap/cursor.mdc",
+              "sha256": "f7eab5614d59db1f5a0e66f3f3376f68e2aa76a4c107c790c3c82d1ae2906905"
+            },
+            ".cursor/skills/project-bootstrap/README.md": {
+              "path": ".cursor/skills/project-bootstrap/README.md",
+              "sha256": "c7b2a0610570dce5034db36cc169d531a88f1c76531e7300196b5e2994d7575a"
+            },
+            ".cursor/skills/project-bootstrap/scripts/detect_stack.py": {
+              "path": ".cursor/skills/project-bootstrap/scripts/detect_stack.py",
+              "sha256": "c9e5ad4f6815bd507d56266164f7294daa529493634f76c9f9f2756e82b1e13f"
+            },
+            ".cursor/skills/project-bootstrap/SKILL.md": {
+              "path": ".cursor/skills/project-bootstrap/SKILL.md",
+              "sha256": "5f5c139d11b2b2fe0b2b1b1cc95d7de3654e9a974f4989fe8796be44c039815e"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "skill-sync",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/skill-sync/cursor.mdc": {
+              "path": ".claude/skills/skill-sync/cursor.mdc",
+              "sha256": "c95cf6a18328b872366dfeece7f1df6b00b61bbdaabb6e04f1fe8d39a5d25973"
+            },
+            ".claude/skills/skill-sync/README.md": {
+              "path": ".claude/skills/skill-sync/README.md",
+              "sha256": "e682bb059d3a17fc97ed54d848086830f066c71b602fcc71fc9ccd249e1dcbe0"
+            },
+            ".claude/skills/skill-sync/SKILL.md": {
+              "path": ".claude/skills/skill-sync/SKILL.md",
+              "sha256": "ea72e19ce71377a201a0d4e2883f43820fb363fae46b0da417d8c3530f96b35c"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/skill-sync/cursor.mdc": {
+              "path": ".opencode/skills/skill-sync/cursor.mdc",
+              "sha256": "c95cf6a18328b872366dfeece7f1df6b00b61bbdaabb6e04f1fe8d39a5d25973"
+            },
+            ".opencode/skills/skill-sync/README.md": {
+              "path": ".opencode/skills/skill-sync/README.md",
+              "sha256": "e682bb059d3a17fc97ed54d848086830f066c71b602fcc71fc9ccd249e1dcbe0"
+            },
+            ".opencode/skills/skill-sync/SKILL.md": {
+              "path": ".opencode/skills/skill-sync/SKILL.md",
+              "sha256": "ea72e19ce71377a201a0d4e2883f43820fb363fae46b0da417d8c3530f96b35c"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/skill-sync.md",
+              "sha256": "4b0cc77a647c714d0252fe73c0c9678a906a221dd4f44899df3a929a0d198ff9"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/skill-sync/cursor.mdc": {
+              "path": ".cursor/skills/skill-sync/cursor.mdc",
+              "sha256": "c95cf6a18328b872366dfeece7f1df6b00b61bbdaabb6e04f1fe8d39a5d25973"
+            },
+            ".cursor/skills/skill-sync/README.md": {
+              "path": ".cursor/skills/skill-sync/README.md",
+              "sha256": "e682bb059d3a17fc97ed54d848086830f066c71b602fcc71fc9ccd249e1dcbe0"
+            },
+            ".cursor/skills/skill-sync/SKILL.md": {
+              "path": ".cursor/skills/skill-sync/SKILL.md",
+              "sha256": "ea72e19ce71377a201a0d4e2883f43820fb363fae46b0da417d8c3530f96b35c"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "brd-reader",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/brd-reader/cursor.mdc": {
+              "path": ".claude/skills/brd-reader/cursor.mdc",
+              "sha256": "def900522c46f3d47a7079e4128382ee607e154797d55d752cd8cbc033514521"
+            },
+            ".claude/skills/brd-reader/README.md": {
+              "path": ".claude/skills/brd-reader/README.md",
+              "sha256": "33cbe285cef3a27a297a8b96c162d23afd60f2250212e099dfbfe14aa52cbb17"
+            },
+            ".claude/skills/brd-reader/SKILL.md": {
+              "path": ".claude/skills/brd-reader/SKILL.md",
+              "sha256": "86ea205e6a98402ced997f4b1c2d552d2f7f75aec1b7c354ab4a9eeac500f432"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/brd-reader/cursor.mdc": {
+              "path": ".opencode/skills/brd-reader/cursor.mdc",
+              "sha256": "def900522c46f3d47a7079e4128382ee607e154797d55d752cd8cbc033514521"
+            },
+            ".opencode/skills/brd-reader/README.md": {
+              "path": ".opencode/skills/brd-reader/README.md",
+              "sha256": "33cbe285cef3a27a297a8b96c162d23afd60f2250212e099dfbfe14aa52cbb17"
+            },
+            ".opencode/skills/brd-reader/SKILL.md": {
+              "path": ".opencode/skills/brd-reader/SKILL.md",
+              "sha256": "86ea205e6a98402ced997f4b1c2d552d2f7f75aec1b7c354ab4a9eeac500f432"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/brd-reader.md",
+              "sha256": "0494f10e4c0ca4ab52e8466ec34f3d883e846f16bee5f3112a734d9bf63f6d88"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/brd-reader/cursor.mdc": {
+              "path": ".cursor/skills/brd-reader/cursor.mdc",
+              "sha256": "def900522c46f3d47a7079e4128382ee607e154797d55d752cd8cbc033514521"
+            },
+            ".cursor/skills/brd-reader/README.md": {
+              "path": ".cursor/skills/brd-reader/README.md",
+              "sha256": "33cbe285cef3a27a297a8b96c162d23afd60f2250212e099dfbfe14aa52cbb17"
+            },
+            ".cursor/skills/brd-reader/SKILL.md": {
+              "path": ".cursor/skills/brd-reader/SKILL.md",
+              "sha256": "86ea205e6a98402ced997f4b1c2d552d2f7f75aec1b7c354ab4a9eeac500f432"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "prd-grill",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/prd-grill/cursor.mdc": {
+              "path": ".claude/skills/prd-grill/cursor.mdc",
+              "sha256": "c3dc910ac3f6f65c630993b2f9d8a73aaacff91e9010e1032e04a6d2a31057eb"
+            },
+            ".claude/skills/prd-grill/README.md": {
+              "path": ".claude/skills/prd-grill/README.md",
+              "sha256": "822ad27a248eb53a1c91dea2b9e8d7b657bd01b6ec6a5742afcabee5b0e39ff3"
+            },
+            ".claude/skills/prd-grill/references/output-conventions.md": {
+              "path": ".claude/skills/prd-grill/references/output-conventions.md",
+              "sha256": "8e53f53f4eba08bea03ea9dc706a18f4584d4a8b61d8a13aa60b37bdb36c17f0"
+            },
+            ".claude/skills/prd-grill/references/project-override-example.md": {
+              "path": ".claude/skills/prd-grill/references/project-override-example.md",
+              "sha256": "ef9026bd8b4f48152eddbb0118021256fc60c87042b93a6f244ab8d4f67a7f60"
+            },
+            ".claude/skills/prd-grill/references/task-breakdown-technique.md": {
+              "path": ".claude/skills/prd-grill/references/task-breakdown-technique.md",
+              "sha256": "97959f9179289ca1620bbf1c56fb12776a6bbaf40f83aa7c6c1dd3101493d745"
+            },
+            ".claude/skills/prd-grill/SKILL.md": {
+              "path": ".claude/skills/prd-grill/SKILL.md",
+              "sha256": "9005a6af5073001cf8abcd6ce2d96be8553c1dee730706572ce776bf6e97b1bd"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/prd-grill/cursor.mdc": {
+              "path": ".opencode/skills/prd-grill/cursor.mdc",
+              "sha256": "c3dc910ac3f6f65c630993b2f9d8a73aaacff91e9010e1032e04a6d2a31057eb"
+            },
+            ".opencode/skills/prd-grill/README.md": {
+              "path": ".opencode/skills/prd-grill/README.md",
+              "sha256": "822ad27a248eb53a1c91dea2b9e8d7b657bd01b6ec6a5742afcabee5b0e39ff3"
+            },
+            ".opencode/skills/prd-grill/references/output-conventions.md": {
+              "path": ".opencode/skills/prd-grill/references/output-conventions.md",
+              "sha256": "8e53f53f4eba08bea03ea9dc706a18f4584d4a8b61d8a13aa60b37bdb36c17f0"
+            },
+            ".opencode/skills/prd-grill/references/project-override-example.md": {
+              "path": ".opencode/skills/prd-grill/references/project-override-example.md",
+              "sha256": "ef9026bd8b4f48152eddbb0118021256fc60c87042b93a6f244ab8d4f67a7f60"
+            },
+            ".opencode/skills/prd-grill/references/task-breakdown-technique.md": {
+              "path": ".opencode/skills/prd-grill/references/task-breakdown-technique.md",
+              "sha256": "97959f9179289ca1620bbf1c56fb12776a6bbaf40f83aa7c6c1dd3101493d745"
+            },
+            ".opencode/skills/prd-grill/SKILL.md": {
+              "path": ".opencode/skills/prd-grill/SKILL.md",
+              "sha256": "9005a6af5073001cf8abcd6ce2d96be8553c1dee730706572ce776bf6e97b1bd"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/prd-grill.md",
+              "sha256": "dcbe959b164a5d9ef5a3cf64ea4aebf6d5f16dc3bc3864acf18ef7d438104c9c"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/prd-grill/cursor.mdc": {
+              "path": ".cursor/skills/prd-grill/cursor.mdc",
+              "sha256": "c3dc910ac3f6f65c630993b2f9d8a73aaacff91e9010e1032e04a6d2a31057eb"
+            },
+            ".cursor/skills/prd-grill/README.md": {
+              "path": ".cursor/skills/prd-grill/README.md",
+              "sha256": "822ad27a248eb53a1c91dea2b9e8d7b657bd01b6ec6a5742afcabee5b0e39ff3"
+            },
+            ".cursor/skills/prd-grill/references/output-conventions.md": {
+              "path": ".cursor/skills/prd-grill/references/output-conventions.md",
+              "sha256": "8e53f53f4eba08bea03ea9dc706a18f4584d4a8b61d8a13aa60b37bdb36c17f0"
+            },
+            ".cursor/skills/prd-grill/references/project-override-example.md": {
+              "path": ".cursor/skills/prd-grill/references/project-override-example.md",
+              "sha256": "ef9026bd8b4f48152eddbb0118021256fc60c87042b93a6f244ab8d4f67a7f60"
+            },
+            ".cursor/skills/prd-grill/references/task-breakdown-technique.md": {
+              "path": ".cursor/skills/prd-grill/references/task-breakdown-technique.md",
+              "sha256": "97959f9179289ca1620bbf1c56fb12776a6bbaf40f83aa7c6c1dd3101493d745"
+            },
+            ".cursor/skills/prd-grill/SKILL.md": {
+              "path": ".cursor/skills/prd-grill/SKILL.md",
+              "sha256": "9005a6af5073001cf8abcd6ce2d96be8553c1dee730706572ce776bf6e97b1bd"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "exec-todo",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/exec-todo/cursor.mdc": {
+              "path": ".claude/skills/exec-todo/cursor.mdc",
+              "sha256": "5d1f74dd5c9204d7cf2133a55c1263be3c2df3dce4ec164bc2c7c05c80708276"
+            },
+            ".claude/skills/exec-todo/README.md": {
+              "path": ".claude/skills/exec-todo/README.md",
+              "sha256": "3a9fb68a15ecf4c9c7976dcacc1bc2f470da8535b6026137a38e36d9858a42f4"
+            },
+            ".claude/skills/exec-todo/references/project-example.md": {
+              "path": ".claude/skills/exec-todo/references/project-example.md",
+              "sha256": "295ecacb2fac2ac99189844eb86aeb722b60b3226eb92c7b92b08d3d5bb76493"
+            },
+            ".claude/skills/exec-todo/SKILL.md": {
+              "path": ".claude/skills/exec-todo/SKILL.md",
+              "sha256": "af17565b93a4ab71a961b522ccc1d3d5f25c5cb0786b38e5af79c3cbf39d3129"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/exec-todo/cursor.mdc": {
+              "path": ".opencode/skills/exec-todo/cursor.mdc",
+              "sha256": "5d1f74dd5c9204d7cf2133a55c1263be3c2df3dce4ec164bc2c7c05c80708276"
+            },
+            ".opencode/skills/exec-todo/README.md": {
+              "path": ".opencode/skills/exec-todo/README.md",
+              "sha256": "3a9fb68a15ecf4c9c7976dcacc1bc2f470da8535b6026137a38e36d9858a42f4"
+            },
+            ".opencode/skills/exec-todo/references/project-example.md": {
+              "path": ".opencode/skills/exec-todo/references/project-example.md",
+              "sha256": "295ecacb2fac2ac99189844eb86aeb722b60b3226eb92c7b92b08d3d5bb76493"
+            },
+            ".opencode/skills/exec-todo/SKILL.md": {
+              "path": ".opencode/skills/exec-todo/SKILL.md",
+              "sha256": "af17565b93a4ab71a961b522ccc1d3d5f25c5cb0786b38e5af79c3cbf39d3129"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/exec-todo.md",
+              "sha256": "4b3bc5cb5c844d42ca925c4617f8b9463b2fed388f77550843bd44e1b28e227a"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/exec-todo/cursor.mdc": {
+              "path": ".cursor/skills/exec-todo/cursor.mdc",
+              "sha256": "5d1f74dd5c9204d7cf2133a55c1263be3c2df3dce4ec164bc2c7c05c80708276"
+            },
+            ".cursor/skills/exec-todo/README.md": {
+              "path": ".cursor/skills/exec-todo/README.md",
+              "sha256": "3a9fb68a15ecf4c9c7976dcacc1bc2f470da8535b6026137a38e36d9858a42f4"
+            },
+            ".cursor/skills/exec-todo/references/project-example.md": {
+              "path": ".cursor/skills/exec-todo/references/project-example.md",
+              "sha256": "295ecacb2fac2ac99189844eb86aeb722b60b3226eb92c7b92b08d3d5bb76493"
+            },
+            ".cursor/skills/exec-todo/SKILL.md": {
+              "path": ".cursor/skills/exec-todo/SKILL.md",
+              "sha256": "af17565b93a4ab71a961b522ccc1d3d5f25c5cb0786b38e5af79c3cbf39d3129"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "incremental-implementation",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/incremental-implementation/cursor.mdc": {
+              "path": ".claude/skills/incremental-implementation/cursor.mdc",
+              "sha256": "e1dc437fece3058a6ac3eb5b8db1065cefea8e2c3ca3f46fe61a423893afaec1"
+            },
+            ".claude/skills/incremental-implementation/README.md": {
+              "path": ".claude/skills/incremental-implementation/README.md",
+              "sha256": "399e73187280458ea14a04fc7c3975a72151418284113ff53b3200f781787add"
+            },
+            ".claude/skills/incremental-implementation/SKILL.md": {
+              "path": ".claude/skills/incremental-implementation/SKILL.md",
+              "sha256": "7d38e334343198c3495e67ddce2552d68137e5347868e25c25c0f75e869bf6aa"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/incremental-implementation/cursor.mdc": {
+              "path": ".opencode/skills/incremental-implementation/cursor.mdc",
+              "sha256": "e1dc437fece3058a6ac3eb5b8db1065cefea8e2c3ca3f46fe61a423893afaec1"
+            },
+            ".opencode/skills/incremental-implementation/README.md": {
+              "path": ".opencode/skills/incremental-implementation/README.md",
+              "sha256": "399e73187280458ea14a04fc7c3975a72151418284113ff53b3200f781787add"
+            },
+            ".opencode/skills/incremental-implementation/SKILL.md": {
+              "path": ".opencode/skills/incremental-implementation/SKILL.md",
+              "sha256": "7d38e334343198c3495e67ddce2552d68137e5347868e25c25c0f75e869bf6aa"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/incremental-implementation.md",
+              "sha256": "a340702a096b895c10593f01f1825b312d6d5024e97b931225002a676bbfcfb1"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/incremental-implementation/cursor.mdc": {
+              "path": ".cursor/skills/incremental-implementation/cursor.mdc",
+              "sha256": "e1dc437fece3058a6ac3eb5b8db1065cefea8e2c3ca3f46fe61a423893afaec1"
+            },
+            ".cursor/skills/incremental-implementation/README.md": {
+              "path": ".cursor/skills/incremental-implementation/README.md",
+              "sha256": "399e73187280458ea14a04fc7c3975a72151418284113ff53b3200f781787add"
+            },
+            ".cursor/skills/incremental-implementation/SKILL.md": {
+              "path": ".cursor/skills/incremental-implementation/SKILL.md",
+              "sha256": "7d38e334343198c3495e67ddce2552d68137e5347868e25c25c0f75e869bf6aa"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "test-driven-development",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/test-driven-development/cursor.mdc": {
+              "path": ".claude/skills/test-driven-development/cursor.mdc",
+              "sha256": "7d71d31ef6030999b20ea0c20407a57915332a8bc4269766fe092c310ee274c4"
+            },
+            ".claude/skills/test-driven-development/README.md": {
+              "path": ".claude/skills/test-driven-development/README.md",
+              "sha256": "dcf1ebe819052237533b414293a259ffd1578d5bc2a5699e258705b36f8bd28b"
+            },
+            ".claude/skills/test-driven-development/SKILL.md": {
+              "path": ".claude/skills/test-driven-development/SKILL.md",
+              "sha256": "2fb849eb4c375538c924d4e1585c58b48376669c9b9be0208a09b515a1968088"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/test-driven-development/cursor.mdc": {
+              "path": ".opencode/skills/test-driven-development/cursor.mdc",
+              "sha256": "7d71d31ef6030999b20ea0c20407a57915332a8bc4269766fe092c310ee274c4"
+            },
+            ".opencode/skills/test-driven-development/README.md": {
+              "path": ".opencode/skills/test-driven-development/README.md",
+              "sha256": "dcf1ebe819052237533b414293a259ffd1578d5bc2a5699e258705b36f8bd28b"
+            },
+            ".opencode/skills/test-driven-development/SKILL.md": {
+              "path": ".opencode/skills/test-driven-development/SKILL.md",
+              "sha256": "2fb849eb4c375538c924d4e1585c58b48376669c9b9be0208a09b515a1968088"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/test-driven-development.md",
+              "sha256": "67766f6e3e73847e142afe7a70ee6fd0ce73de49ed014760a2ceba22e5eb89e4"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/test-driven-development/cursor.mdc": {
+              "path": ".cursor/skills/test-driven-development/cursor.mdc",
+              "sha256": "7d71d31ef6030999b20ea0c20407a57915332a8bc4269766fe092c310ee274c4"
+            },
+            ".cursor/skills/test-driven-development/README.md": {
+              "path": ".cursor/skills/test-driven-development/README.md",
+              "sha256": "dcf1ebe819052237533b414293a259ffd1578d5bc2a5699e258705b36f8bd28b"
+            },
+            ".cursor/skills/test-driven-development/SKILL.md": {
+              "path": ".cursor/skills/test-driven-development/SKILL.md",
+              "sha256": "2fb849eb4c375538c924d4e1585c58b48376669c9b9be0208a09b515a1968088"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "codebase-explain",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/codebase-explain/assets/explain-template.md": {
+              "path": ".claude/skills/codebase-explain/assets/explain-template.md",
+              "sha256": "e6e4e801323a28134c5e0132f87c2c6db48602a28fa4005826a34d3375c54b0b"
+            },
+            ".claude/skills/codebase-explain/cursor.mdc": {
+              "path": ".claude/skills/codebase-explain/cursor.mdc",
+              "sha256": "abea4c6685ab1d9a96416fe366c476ec7c7a33e122590e78ef69eb2f15f7bc84"
+            },
+            ".claude/skills/codebase-explain/README.md": {
+              "path": ".claude/skills/codebase-explain/README.md",
+              "sha256": "90d9e1a05c03b9fd16a9d445364e835f4abc11c003d20fc117737b5f9fe0b8d7"
+            },
+            ".claude/skills/codebase-explain/SKILL.md": {
+              "path": ".claude/skills/codebase-explain/SKILL.md",
+              "sha256": "af49bc5b640c9c023582660b7317c91a3b755d0ea0418b7dc7e6d76e24fc079a"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/codebase-explain/assets/explain-template.md": {
+              "path": ".opencode/skills/codebase-explain/assets/explain-template.md",
+              "sha256": "e6e4e801323a28134c5e0132f87c2c6db48602a28fa4005826a34d3375c54b0b"
+            },
+            ".opencode/skills/codebase-explain/cursor.mdc": {
+              "path": ".opencode/skills/codebase-explain/cursor.mdc",
+              "sha256": "abea4c6685ab1d9a96416fe366c476ec7c7a33e122590e78ef69eb2f15f7bc84"
+            },
+            ".opencode/skills/codebase-explain/README.md": {
+              "path": ".opencode/skills/codebase-explain/README.md",
+              "sha256": "90d9e1a05c03b9fd16a9d445364e835f4abc11c003d20fc117737b5f9fe0b8d7"
+            },
+            ".opencode/skills/codebase-explain/SKILL.md": {
+              "path": ".opencode/skills/codebase-explain/SKILL.md",
+              "sha256": "af49bc5b640c9c023582660b7317c91a3b755d0ea0418b7dc7e6d76e24fc079a"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/codebase-explain.md",
+              "sha256": "a8eaa1ec1888dff75026522b358e344a5fecc16444dbcfe3eefc5b7890cfca27"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/codebase-explain/assets/explain-template.md": {
+              "path": ".cursor/skills/codebase-explain/assets/explain-template.md",
+              "sha256": "e6e4e801323a28134c5e0132f87c2c6db48602a28fa4005826a34d3375c54b0b"
+            },
+            ".cursor/skills/codebase-explain/cursor.mdc": {
+              "path": ".cursor/skills/codebase-explain/cursor.mdc",
+              "sha256": "abea4c6685ab1d9a96416fe366c476ec7c7a33e122590e78ef69eb2f15f7bc84"
+            },
+            ".cursor/skills/codebase-explain/README.md": {
+              "path": ".cursor/skills/codebase-explain/README.md",
+              "sha256": "90d9e1a05c03b9fd16a9d445364e835f4abc11c003d20fc117737b5f9fe0b8d7"
+            },
+            ".cursor/skills/codebase-explain/SKILL.md": {
+              "path": ".cursor/skills/codebase-explain/SKILL.md",
+              "sha256": "af49bc5b640c9c023582660b7317c91a3b755d0ea0418b7dc7e6d76e24fc079a"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "debugging",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/debugging/cursor.mdc": {
+              "path": ".claude/skills/debugging/cursor.mdc",
+              "sha256": "24097e029a3f46238bc38d0cd5d62bc74649bfda193528bfaec156a7f9ad3892"
+            },
+            ".claude/skills/debugging/README.md": {
+              "path": ".claude/skills/debugging/README.md",
+              "sha256": "15f0c6665015bb8d93c9aa2fb1f7522c0ac2542a9528b2d7d382304821e4a683"
+            },
+            ".claude/skills/debugging/SKILL.md": {
+              "path": ".claude/skills/debugging/SKILL.md",
+              "sha256": "d0efff7e822e9a6612f3053a62eb1bfa96baebc769b9a0234be77607cf0bb28d"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/debugging/cursor.mdc": {
+              "path": ".opencode/skills/debugging/cursor.mdc",
+              "sha256": "24097e029a3f46238bc38d0cd5d62bc74649bfda193528bfaec156a7f9ad3892"
+            },
+            ".opencode/skills/debugging/README.md": {
+              "path": ".opencode/skills/debugging/README.md",
+              "sha256": "15f0c6665015bb8d93c9aa2fb1f7522c0ac2542a9528b2d7d382304821e4a683"
+            },
+            ".opencode/skills/debugging/SKILL.md": {
+              "path": ".opencode/skills/debugging/SKILL.md",
+              "sha256": "d0efff7e822e9a6612f3053a62eb1bfa96baebc769b9a0234be77607cf0bb28d"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/debugging.md",
+              "sha256": "dee52b76580356aed816165f135ceea2240ad30a7e6e29bc8092f74d204f7cf9"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/debugging/cursor.mdc": {
+              "path": ".cursor/skills/debugging/cursor.mdc",
+              "sha256": "24097e029a3f46238bc38d0cd5d62bc74649bfda193528bfaec156a7f9ad3892"
+            },
+            ".cursor/skills/debugging/README.md": {
+              "path": ".cursor/skills/debugging/README.md",
+              "sha256": "15f0c6665015bb8d93c9aa2fb1f7522c0ac2542a9528b2d7d382304821e4a683"
+            },
+            ".cursor/skills/debugging/SKILL.md": {
+              "path": ".cursor/skills/debugging/SKILL.md",
+              "sha256": "d0efff7e822e9a6612f3053a62eb1bfa96baebc769b9a0234be77607cf0bb28d"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "code-review-and-quality",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/code-review-and-quality/cursor.mdc": {
+              "path": ".claude/skills/code-review-and-quality/cursor.mdc",
+              "sha256": "d4758fe053917abfb447615e3f9256fe006893ed81d781c1d274a9b4e6eb6c0f"
+            },
+            ".claude/skills/code-review-and-quality/README.md": {
+              "path": ".claude/skills/code-review-and-quality/README.md",
+              "sha256": "b6e91939ee3cf68ac4ffcf4ad60b3251fcfb152ec1faff566033eeb54a709f03"
+            },
+            ".claude/skills/code-review-and-quality/references/performance-checklist.md": {
+              "path": ".claude/skills/code-review-and-quality/references/performance-checklist.md",
+              "sha256": "f587c54a85c8e8e56af05c62160e914ade8d551f24066a31eab96c61e2d21b67"
+            },
+            ".claude/skills/code-review-and-quality/references/security-checklist.md": {
+              "path": ".claude/skills/code-review-and-quality/references/security-checklist.md",
+              "sha256": "658d227808e887d3f38e1239ce1eedb40f7ebf7921c281415c669b67c6535783"
+            },
+            ".claude/skills/code-review-and-quality/SKILL.md": {
+              "path": ".claude/skills/code-review-and-quality/SKILL.md",
+              "sha256": "5dbd486b470e9545c0c3072c1ac0bca5ae6bed412a931a09e656631936928193"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/code-review-and-quality/cursor.mdc": {
+              "path": ".opencode/skills/code-review-and-quality/cursor.mdc",
+              "sha256": "d4758fe053917abfb447615e3f9256fe006893ed81d781c1d274a9b4e6eb6c0f"
+            },
+            ".opencode/skills/code-review-and-quality/README.md": {
+              "path": ".opencode/skills/code-review-and-quality/README.md",
+              "sha256": "b6e91939ee3cf68ac4ffcf4ad60b3251fcfb152ec1faff566033eeb54a709f03"
+            },
+            ".opencode/skills/code-review-and-quality/references/performance-checklist.md": {
+              "path": ".opencode/skills/code-review-and-quality/references/performance-checklist.md",
+              "sha256": "f587c54a85c8e8e56af05c62160e914ade8d551f24066a31eab96c61e2d21b67"
+            },
+            ".opencode/skills/code-review-and-quality/references/security-checklist.md": {
+              "path": ".opencode/skills/code-review-and-quality/references/security-checklist.md",
+              "sha256": "658d227808e887d3f38e1239ce1eedb40f7ebf7921c281415c669b67c6535783"
+            },
+            ".opencode/skills/code-review-and-quality/SKILL.md": {
+              "path": ".opencode/skills/code-review-and-quality/SKILL.md",
+              "sha256": "5dbd486b470e9545c0c3072c1ac0bca5ae6bed412a931a09e656631936928193"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/code-review-and-quality.md",
+              "sha256": "3fabd8d58b41b282031e619bdac82b48c916a2c1778abccf3b848f6d86e2cfe7"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/code-review-and-quality/cursor.mdc": {
+              "path": ".cursor/skills/code-review-and-quality/cursor.mdc",
+              "sha256": "d4758fe053917abfb447615e3f9256fe006893ed81d781c1d274a9b4e6eb6c0f"
+            },
+            ".cursor/skills/code-review-and-quality/README.md": {
+              "path": ".cursor/skills/code-review-and-quality/README.md",
+              "sha256": "b6e91939ee3cf68ac4ffcf4ad60b3251fcfb152ec1faff566033eeb54a709f03"
+            },
+            ".cursor/skills/code-review-and-quality/references/performance-checklist.md": {
+              "path": ".cursor/skills/code-review-and-quality/references/performance-checklist.md",
+              "sha256": "f587c54a85c8e8e56af05c62160e914ade8d551f24066a31eab96c61e2d21b67"
+            },
+            ".cursor/skills/code-review-and-quality/references/security-checklist.md": {
+              "path": ".cursor/skills/code-review-and-quality/references/security-checklist.md",
+              "sha256": "658d227808e887d3f38e1239ce1eedb40f7ebf7921c281415c669b67c6535783"
+            },
+            ".cursor/skills/code-review-and-quality/SKILL.md": {
+              "path": ".cursor/skills/code-review-and-quality/SKILL.md",
+              "sha256": "5dbd486b470e9545c0c3072c1ac0bca5ae6bed412a931a09e656631936928193"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "security-and-hardening",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/security-and-hardening/cursor.mdc": {
+              "path": ".claude/skills/security-and-hardening/cursor.mdc",
+              "sha256": "7a0b8d31d0290d9d150218222781c337767c937ae59b0d22aaab2305fdbdb238"
+            },
+            ".claude/skills/security-and-hardening/README.md": {
+              "path": ".claude/skills/security-and-hardening/README.md",
+              "sha256": "21c3b9c4afcc6fb26337f68fc93e22a1c515ecb6c7a80ba55005f2d724acf304"
+            },
+            ".claude/skills/security-and-hardening/SKILL.md": {
+              "path": ".claude/skills/security-and-hardening/SKILL.md",
+              "sha256": "2f74a09226570dc61e355e7babce5fee6b8fa7f995b403ab9f3fd4e8393b5aa0"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/security-and-hardening/cursor.mdc": {
+              "path": ".opencode/skills/security-and-hardening/cursor.mdc",
+              "sha256": "7a0b8d31d0290d9d150218222781c337767c937ae59b0d22aaab2305fdbdb238"
+            },
+            ".opencode/skills/security-and-hardening/README.md": {
+              "path": ".opencode/skills/security-and-hardening/README.md",
+              "sha256": "21c3b9c4afcc6fb26337f68fc93e22a1c515ecb6c7a80ba55005f2d724acf304"
+            },
+            ".opencode/skills/security-and-hardening/SKILL.md": {
+              "path": ".opencode/skills/security-and-hardening/SKILL.md",
+              "sha256": "2f74a09226570dc61e355e7babce5fee6b8fa7f995b403ab9f3fd4e8393b5aa0"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/security-and-hardening.md",
+              "sha256": "805d0240e2ac036c35e1c2c2e32ebe4e436a2eaf9b8601822016cceff6b837f7"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/security-and-hardening/cursor.mdc": {
+              "path": ".cursor/skills/security-and-hardening/cursor.mdc",
+              "sha256": "7a0b8d31d0290d9d150218222781c337767c937ae59b0d22aaab2305fdbdb238"
+            },
+            ".cursor/skills/security-and-hardening/README.md": {
+              "path": ".cursor/skills/security-and-hardening/README.md",
+              "sha256": "21c3b9c4afcc6fb26337f68fc93e22a1c515ecb6c7a80ba55005f2d724acf304"
+            },
+            ".cursor/skills/security-and-hardening/SKILL.md": {
+              "path": ".cursor/skills/security-and-hardening/SKILL.md",
+              "sha256": "2f74a09226570dc61e355e7babce5fee6b8fa7f995b403ab9f3fd4e8393b5aa0"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "security-review",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/security-review/cloud-infrastructure-security.md": {
+              "path": ".claude/skills/security-review/cloud-infrastructure-security.md",
+              "sha256": "34ae20e318141a1badab0ed5182f4de877431fa0abfd20ec16394141dfb730b2"
+            },
+            ".claude/skills/security-review/cursor.mdc": {
+              "path": ".claude/skills/security-review/cursor.mdc",
+              "sha256": "3fa574668e3933a74b209e3bf8c1a63863d5d8be4f13757b6c8d1f96a3b4695a"
+            },
+            ".claude/skills/security-review/README.md": {
+              "path": ".claude/skills/security-review/README.md",
+              "sha256": "d596da5ae3838e37feb185bec4071326468695c13ea57aefbbb46006d11701ee"
+            },
+            ".claude/skills/security-review/SKILL.md": {
+              "path": ".claude/skills/security-review/SKILL.md",
+              "sha256": "8219cbb385dfaeffb3a499c723f8dc6fc04ec7d774bb42f84de8706ce1785256"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/security-review/cloud-infrastructure-security.md": {
+              "path": ".opencode/skills/security-review/cloud-infrastructure-security.md",
+              "sha256": "34ae20e318141a1badab0ed5182f4de877431fa0abfd20ec16394141dfb730b2"
+            },
+            ".opencode/skills/security-review/cursor.mdc": {
+              "path": ".opencode/skills/security-review/cursor.mdc",
+              "sha256": "3fa574668e3933a74b209e3bf8c1a63863d5d8be4f13757b6c8d1f96a3b4695a"
+            },
+            ".opencode/skills/security-review/README.md": {
+              "path": ".opencode/skills/security-review/README.md",
+              "sha256": "d596da5ae3838e37feb185bec4071326468695c13ea57aefbbb46006d11701ee"
+            },
+            ".opencode/skills/security-review/SKILL.md": {
+              "path": ".opencode/skills/security-review/SKILL.md",
+              "sha256": "8219cbb385dfaeffb3a499c723f8dc6fc04ec7d774bb42f84de8706ce1785256"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/security-review.md",
+              "sha256": "e5867b5511f0b9815250e9bd1135d729d874695b09c7786b789de9545a2dafcb"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/security-review/cloud-infrastructure-security.md": {
+              "path": ".cursor/skills/security-review/cloud-infrastructure-security.md",
+              "sha256": "34ae20e318141a1badab0ed5182f4de877431fa0abfd20ec16394141dfb730b2"
+            },
+            ".cursor/skills/security-review/cursor.mdc": {
+              "path": ".cursor/skills/security-review/cursor.mdc",
+              "sha256": "3fa574668e3933a74b209e3bf8c1a63863d5d8be4f13757b6c8d1f96a3b4695a"
+            },
+            ".cursor/skills/security-review/README.md": {
+              "path": ".cursor/skills/security-review/README.md",
+              "sha256": "d596da5ae3838e37feb185bec4071326468695c13ea57aefbbb46006d11701ee"
+            },
+            ".cursor/skills/security-review/SKILL.md": {
+              "path": ".cursor/skills/security-review/SKILL.md",
+              "sha256": "8219cbb385dfaeffb3a499c723f8dc6fc04ec7d774bb42f84de8706ce1785256"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "branching",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/branching/cursor.mdc": {
+              "path": ".claude/skills/branching/cursor.mdc",
+              "sha256": "1f77c4d7795d4aa59c93f6044903b337025f4ec4e2b1f44ca7f3aea14c7622a8"
+            },
+            ".claude/skills/branching/README.md": {
+              "path": ".claude/skills/branching/README.md",
+              "sha256": "f470b3d63bb107423f20b95dcc09c78ff2b8f9e72879f1b03e07781affe7659e"
+            },
+            ".claude/skills/branching/references/knitto-api-example.md": {
+              "path": ".claude/skills/branching/references/knitto-api-example.md",
+              "sha256": "e5e3bebc7adb4e12e7a0ec41dc150e7c32bb61097c7a6013afd6a6b25800e309"
+            },
+            ".claude/skills/branching/SKILL.md": {
+              "path": ".claude/skills/branching/SKILL.md",
+              "sha256": "f9f668844891f61cef0bd95129c3f37e9c3161978d6e27709f97d9a8fd5410d7"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/branching/cursor.mdc": {
+              "path": ".opencode/skills/branching/cursor.mdc",
+              "sha256": "1f77c4d7795d4aa59c93f6044903b337025f4ec4e2b1f44ca7f3aea14c7622a8"
+            },
+            ".opencode/skills/branching/README.md": {
+              "path": ".opencode/skills/branching/README.md",
+              "sha256": "f470b3d63bb107423f20b95dcc09c78ff2b8f9e72879f1b03e07781affe7659e"
+            },
+            ".opencode/skills/branching/references/knitto-api-example.md": {
+              "path": ".opencode/skills/branching/references/knitto-api-example.md",
+              "sha256": "e5e3bebc7adb4e12e7a0ec41dc150e7c32bb61097c7a6013afd6a6b25800e309"
+            },
+            ".opencode/skills/branching/SKILL.md": {
+              "path": ".opencode/skills/branching/SKILL.md",
+              "sha256": "f9f668844891f61cef0bd95129c3f37e9c3161978d6e27709f97d9a8fd5410d7"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/branching.md",
+              "sha256": "a183df042f9dd616276907f3d56309c14e49581143d265c573925f41ec3ebf4b"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/branching/cursor.mdc": {
+              "path": ".cursor/skills/branching/cursor.mdc",
+              "sha256": "1f77c4d7795d4aa59c93f6044903b337025f4ec4e2b1f44ca7f3aea14c7622a8"
+            },
+            ".cursor/skills/branching/README.md": {
+              "path": ".cursor/skills/branching/README.md",
+              "sha256": "f470b3d63bb107423f20b95dcc09c78ff2b8f9e72879f1b03e07781affe7659e"
+            },
+            ".cursor/skills/branching/references/knitto-api-example.md": {
+              "path": ".cursor/skills/branching/references/knitto-api-example.md",
+              "sha256": "e5e3bebc7adb4e12e7a0ec41dc150e7c32bb61097c7a6013afd6a6b25800e309"
+            },
+            ".cursor/skills/branching/SKILL.md": {
+              "path": ".cursor/skills/branching/SKILL.md",
+              "sha256": "f9f668844891f61cef0bd95129c3f37e9c3161978d6e27709f97d9a8fd5410d7"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "dependency-update",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/dependency-update/cursor.mdc": {
+              "path": ".claude/skills/dependency-update/cursor.mdc",
+              "sha256": "b0ff1be6ef40478c973069171ec1d974b3dd9abcf1043c2a7798c61501276705"
+            },
+            ".claude/skills/dependency-update/README.md": {
+              "path": ".claude/skills/dependency-update/README.md",
+              "sha256": "70a7117680226f54d26759d5932b1353aabe4062589d1741d8b1da94e4582a8c"
+            },
+            ".claude/skills/dependency-update/SKILL.md": {
+              "path": ".claude/skills/dependency-update/SKILL.md",
+              "sha256": "2db168bfad1fed4ebe8f1f8cff203e020eb0c331cb41e610d5f3bb75d59f358d"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/dependency-update/cursor.mdc": {
+              "path": ".opencode/skills/dependency-update/cursor.mdc",
+              "sha256": "b0ff1be6ef40478c973069171ec1d974b3dd9abcf1043c2a7798c61501276705"
+            },
+            ".opencode/skills/dependency-update/README.md": {
+              "path": ".opencode/skills/dependency-update/README.md",
+              "sha256": "70a7117680226f54d26759d5932b1353aabe4062589d1741d8b1da94e4582a8c"
+            },
+            ".opencode/skills/dependency-update/SKILL.md": {
+              "path": ".opencode/skills/dependency-update/SKILL.md",
+              "sha256": "2db168bfad1fed4ebe8f1f8cff203e020eb0c331cb41e610d5f3bb75d59f358d"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/dependency-update.md",
+              "sha256": "040a1448c967fd0bbf3e1bd384c3b86f56df943d97fe48b72d8cb23718508796"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/dependency-update/cursor.mdc": {
+              "path": ".cursor/skills/dependency-update/cursor.mdc",
+              "sha256": "b0ff1be6ef40478c973069171ec1d974b3dd9abcf1043c2a7798c61501276705"
+            },
+            ".cursor/skills/dependency-update/README.md": {
+              "path": ".cursor/skills/dependency-update/README.md",
+              "sha256": "70a7117680226f54d26759d5932b1353aabe4062589d1741d8b1da94e4582a8c"
+            },
+            ".cursor/skills/dependency-update/SKILL.md": {
+              "path": ".cursor/skills/dependency-update/SKILL.md",
+              "sha256": "2db168bfad1fed4ebe8f1f8cff203e020eb0c331cb41e610d5f3bb75d59f358d"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "react-patterns",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/react-patterns/cursor.mdc": {
+              "path": ".claude/skills/react-patterns/cursor.mdc",
+              "sha256": "e7b0dd42f180abdbfa9ce73795e0bf8d7f74183dbe8409f4d8564d33a157257f"
+            },
+            ".claude/skills/react-patterns/README.md": {
+              "path": ".claude/skills/react-patterns/README.md",
+              "sha256": "fb05df5722ac8159804100807acb72f2039c9790fcdc9896a56db46ecb7d7529"
+            },
+            ".claude/skills/react-patterns/SKILL.md": {
+              "path": ".claude/skills/react-patterns/SKILL.md",
+              "sha256": "2cd3acf35341753b1b33665dab2043bf87a844dfdb9870beaa25d75b9292652f"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/react-patterns/cursor.mdc": {
+              "path": ".opencode/skills/react-patterns/cursor.mdc",
+              "sha256": "e7b0dd42f180abdbfa9ce73795e0bf8d7f74183dbe8409f4d8564d33a157257f"
+            },
+            ".opencode/skills/react-patterns/README.md": {
+              "path": ".opencode/skills/react-patterns/README.md",
+              "sha256": "fb05df5722ac8159804100807acb72f2039c9790fcdc9896a56db46ecb7d7529"
+            },
+            ".opencode/skills/react-patterns/SKILL.md": {
+              "path": ".opencode/skills/react-patterns/SKILL.md",
+              "sha256": "2cd3acf35341753b1b33665dab2043bf87a844dfdb9870beaa25d75b9292652f"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/react-patterns.md",
+              "sha256": "48fcbd5abec547dffdb4e650c06f9633cb3a8b04fca3892e5ce6f54c5807ef6f"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/react-patterns/cursor.mdc": {
+              "path": ".cursor/skills/react-patterns/cursor.mdc",
+              "sha256": "e7b0dd42f180abdbfa9ce73795e0bf8d7f74183dbe8409f4d8564d33a157257f"
+            },
+            ".cursor/skills/react-patterns/README.md": {
+              "path": ".cursor/skills/react-patterns/README.md",
+              "sha256": "fb05df5722ac8159804100807acb72f2039c9790fcdc9896a56db46ecb7d7529"
+            },
+            ".cursor/skills/react-patterns/SKILL.md": {
+              "path": ".cursor/skills/react-patterns/SKILL.md",
+              "sha256": "2cd3acf35341753b1b33665dab2043bf87a844dfdb9870beaa25d75b9292652f"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "react-testing",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/react-testing/cursor.mdc": {
+              "path": ".claude/skills/react-testing/cursor.mdc",
+              "sha256": "de72e0705c3cdb5a8a5def4780ed5ab0344cc8d04cc95e986aed128cd735707a"
+            },
+            ".claude/skills/react-testing/README.md": {
+              "path": ".claude/skills/react-testing/README.md",
+              "sha256": "528d32cbfb21e9b0b83fbdb734348ad82e3eac73342c04dee5ad39fce60dd92c"
+            },
+            ".claude/skills/react-testing/SKILL.md": {
+              "path": ".claude/skills/react-testing/SKILL.md",
+              "sha256": "45971750b798ec23fe3c6412c6aa1c704f699265c5e737545b5feae022cdfd2d"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/react-testing/cursor.mdc": {
+              "path": ".opencode/skills/react-testing/cursor.mdc",
+              "sha256": "de72e0705c3cdb5a8a5def4780ed5ab0344cc8d04cc95e986aed128cd735707a"
+            },
+            ".opencode/skills/react-testing/README.md": {
+              "path": ".opencode/skills/react-testing/README.md",
+              "sha256": "528d32cbfb21e9b0b83fbdb734348ad82e3eac73342c04dee5ad39fce60dd92c"
+            },
+            ".opencode/skills/react-testing/SKILL.md": {
+              "path": ".opencode/skills/react-testing/SKILL.md",
+              "sha256": "45971750b798ec23fe3c6412c6aa1c704f699265c5e737545b5feae022cdfd2d"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/react-testing.md",
+              "sha256": "e740ad80907539ddf2086d037dea78e0f68bdc2bfd61bcbff9aa796e1ed8a95c"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/react-testing/cursor.mdc": {
+              "path": ".cursor/skills/react-testing/cursor.mdc",
+              "sha256": "de72e0705c3cdb5a8a5def4780ed5ab0344cc8d04cc95e986aed128cd735707a"
+            },
+            ".cursor/skills/react-testing/README.md": {
+              "path": ".cursor/skills/react-testing/README.md",
+              "sha256": "528d32cbfb21e9b0b83fbdb734348ad82e3eac73342c04dee5ad39fce60dd92c"
+            },
+            ".cursor/skills/react-testing/SKILL.md": {
+              "path": ".cursor/skills/react-testing/SKILL.md",
+              "sha256": "45971750b798ec23fe3c6412c6aa1c704f699265c5e737545b5feae022cdfd2d"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "webapp-testing",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/webapp-testing/assets/playwright.config.ts": {
+              "path": ".claude/skills/webapp-testing/assets/playwright.config.ts",
+              "sha256": "8183dd24686d0f65a525f231e0d53ca022944564af7226c2d48819ead464fb5f"
+            },
+            ".claude/skills/webapp-testing/assets/pre-push-hook.sh": {
+              "path": ".claude/skills/webapp-testing/assets/pre-push-hook.sh",
+              "sha256": "95efd3134233900b7197f82adf77763aa516f0a98ec54ee7081b5e200bc1addf"
+            },
+            ".claude/skills/webapp-testing/assets/step-shot-helper.ts": {
+              "path": ".claude/skills/webapp-testing/assets/step-shot-helper.ts",
+              "sha256": "6fc7e745ad023b706b0ba4157d13f9e32705e9709bec1f1454dba07db712e1e6"
+            },
+            ".claude/skills/webapp-testing/cursor.mdc": {
+              "path": ".claude/skills/webapp-testing/cursor.mdc",
+              "sha256": "9e25e682ca21d32aca9109d80e0d7fd4738305e90c20c86e9443234f1cb50853"
+            },
+            ".claude/skills/webapp-testing/README.md": {
+              "path": ".claude/skills/webapp-testing/README.md",
+              "sha256": "d35daab91885819edb033b03ff4eb801fa703117c0b11323e1ccd6fdcc942a52"
+            },
+            ".claude/skills/webapp-testing/references/tdd-e2e-workflow.md": {
+              "path": ".claude/skills/webapp-testing/references/tdd-e2e-workflow.md",
+              "sha256": "fdab35fb574d24903a1c84447361cb90b0cb22ad78500bc88a3f833c3f325da5"
+            },
+            ".claude/skills/webapp-testing/scripts/build_report.py": {
+              "path": ".claude/skills/webapp-testing/scripts/build_report.py",
+              "sha256": "04b2360f299f863e885f25c78b9521fa4dc725dca99e2c93bdf83588f65ad8b2"
+            },
+            ".claude/skills/webapp-testing/scripts/run_e2e.py": {
+              "path": ".claude/skills/webapp-testing/scripts/run_e2e.py",
+              "sha256": "9d9cfe05d02ca534dda3154dbac409cc316860d2374d46aa2b1f1a119446484e"
+            },
+            ".claude/skills/webapp-testing/SKILL.md": {
+              "path": ".claude/skills/webapp-testing/SKILL.md",
+              "sha256": "0a38e82a64c7b7f3ac5e101b2b82ec69686b0d6fd1b4b5263d980d77f62445a9"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/webapp-testing/assets/playwright.config.ts": {
+              "path": ".opencode/skills/webapp-testing/assets/playwright.config.ts",
+              "sha256": "8183dd24686d0f65a525f231e0d53ca022944564af7226c2d48819ead464fb5f"
+            },
+            ".opencode/skills/webapp-testing/assets/pre-push-hook.sh": {
+              "path": ".opencode/skills/webapp-testing/assets/pre-push-hook.sh",
+              "sha256": "95efd3134233900b7197f82adf77763aa516f0a98ec54ee7081b5e200bc1addf"
+            },
+            ".opencode/skills/webapp-testing/assets/step-shot-helper.ts": {
+              "path": ".opencode/skills/webapp-testing/assets/step-shot-helper.ts",
+              "sha256": "6fc7e745ad023b706b0ba4157d13f9e32705e9709bec1f1454dba07db712e1e6"
+            },
+            ".opencode/skills/webapp-testing/cursor.mdc": {
+              "path": ".opencode/skills/webapp-testing/cursor.mdc",
+              "sha256": "9e25e682ca21d32aca9109d80e0d7fd4738305e90c20c86e9443234f1cb50853"
+            },
+            ".opencode/skills/webapp-testing/README.md": {
+              "path": ".opencode/skills/webapp-testing/README.md",
+              "sha256": "d35daab91885819edb033b03ff4eb801fa703117c0b11323e1ccd6fdcc942a52"
+            },
+            ".opencode/skills/webapp-testing/references/tdd-e2e-workflow.md": {
+              "path": ".opencode/skills/webapp-testing/references/tdd-e2e-workflow.md",
+              "sha256": "fdab35fb574d24903a1c84447361cb90b0cb22ad78500bc88a3f833c3f325da5"
+            },
+            ".opencode/skills/webapp-testing/scripts/build_report.py": {
+              "path": ".opencode/skills/webapp-testing/scripts/build_report.py",
+              "sha256": "04b2360f299f863e885f25c78b9521fa4dc725dca99e2c93bdf83588f65ad8b2"
+            },
+            ".opencode/skills/webapp-testing/scripts/run_e2e.py": {
+              "path": ".opencode/skills/webapp-testing/scripts/run_e2e.py",
+              "sha256": "9d9cfe05d02ca534dda3154dbac409cc316860d2374d46aa2b1f1a119446484e"
+            },
+            ".opencode/skills/webapp-testing/SKILL.md": {
+              "path": ".opencode/skills/webapp-testing/SKILL.md",
+              "sha256": "0a38e82a64c7b7f3ac5e101b2b82ec69686b0d6fd1b4b5263d980d77f62445a9"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/webapp-testing.md",
+              "sha256": "4d537a0b12859dc13425bf2528b56fee18c8fc2cab9d7711685b8b1f112f04f6"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/webapp-testing/assets/playwright.config.ts": {
+              "path": ".cursor/skills/webapp-testing/assets/playwright.config.ts",
+              "sha256": "8183dd24686d0f65a525f231e0d53ca022944564af7226c2d48819ead464fb5f"
+            },
+            ".cursor/skills/webapp-testing/assets/pre-push-hook.sh": {
+              "path": ".cursor/skills/webapp-testing/assets/pre-push-hook.sh",
+              "sha256": "95efd3134233900b7197f82adf77763aa516f0a98ec54ee7081b5e200bc1addf"
+            },
+            ".cursor/skills/webapp-testing/assets/step-shot-helper.ts": {
+              "path": ".cursor/skills/webapp-testing/assets/step-shot-helper.ts",
+              "sha256": "6fc7e745ad023b706b0ba4157d13f9e32705e9709bec1f1454dba07db712e1e6"
+            },
+            ".cursor/skills/webapp-testing/cursor.mdc": {
+              "path": ".cursor/skills/webapp-testing/cursor.mdc",
+              "sha256": "9e25e682ca21d32aca9109d80e0d7fd4738305e90c20c86e9443234f1cb50853"
+            },
+            ".cursor/skills/webapp-testing/README.md": {
+              "path": ".cursor/skills/webapp-testing/README.md",
+              "sha256": "d35daab91885819edb033b03ff4eb801fa703117c0b11323e1ccd6fdcc942a52"
+            },
+            ".cursor/skills/webapp-testing/references/tdd-e2e-workflow.md": {
+              "path": ".cursor/skills/webapp-testing/references/tdd-e2e-workflow.md",
+              "sha256": "fdab35fb574d24903a1c84447361cb90b0cb22ad78500bc88a3f833c3f325da5"
+            },
+            ".cursor/skills/webapp-testing/scripts/build_report.py": {
+              "path": ".cursor/skills/webapp-testing/scripts/build_report.py",
+              "sha256": "04b2360f299f863e885f25c78b9521fa4dc725dca99e2c93bdf83588f65ad8b2"
+            },
+            ".cursor/skills/webapp-testing/scripts/run_e2e.py": {
+              "path": ".cursor/skills/webapp-testing/scripts/run_e2e.py",
+              "sha256": "9d9cfe05d02ca534dda3154dbac409cc316860d2374d46aa2b1f1a119446484e"
+            },
+            ".cursor/skills/webapp-testing/SKILL.md": {
+              "path": ".cursor/skills/webapp-testing/SKILL.md",
+              "sha256": "0a38e82a64c7b7f3ac5e101b2b82ec69686b0d6fd1b4b5263d980d77f62445a9"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "test-case-matrix",
+      "type": "skill",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            ".claude/skills/test-case-matrix/assets/test-matrix-template.md": {
+              "path": ".claude/skills/test-case-matrix/assets/test-matrix-template.md",
+              "sha256": "70d93140bfb2c553ffc4334fa64526ada6ce11b1da516de6da6a4c19bd8175bb"
+            },
+            ".claude/skills/test-case-matrix/cursor.mdc": {
+              "path": ".claude/skills/test-case-matrix/cursor.mdc",
+              "sha256": "cfda2bb655e0b1719068ce037f573e20e509ec40735c71bdbb45e1a54a3b2fbf"
+            },
+            ".claude/skills/test-case-matrix/README.md": {
+              "path": ".claude/skills/test-case-matrix/README.md",
+              "sha256": "777627ff723914d25bbacc23a70d96332b695217760703bff8f1518160a60442"
+            },
+            ".claude/skills/test-case-matrix/SKILL.md": {
+              "path": ".claude/skills/test-case-matrix/SKILL.md",
+              "sha256": "e34bf4331b34569b427eb7cf756b10fb72463a854e2b23efe1e3bbaf1beef1ff"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            ".opencode/skills/test-case-matrix/assets/test-matrix-template.md": {
+              "path": ".opencode/skills/test-case-matrix/assets/test-matrix-template.md",
+              "sha256": "70d93140bfb2c553ffc4334fa64526ada6ce11b1da516de6da6a4c19bd8175bb"
+            },
+            ".opencode/skills/test-case-matrix/cursor.mdc": {
+              "path": ".opencode/skills/test-case-matrix/cursor.mdc",
+              "sha256": "cfda2bb655e0b1719068ce037f573e20e509ec40735c71bdbb45e1a54a3b2fbf"
+            },
+            ".opencode/skills/test-case-matrix/README.md": {
+              "path": ".opencode/skills/test-case-matrix/README.md",
+              "sha256": "777627ff723914d25bbacc23a70d96332b695217760703bff8f1518160a60442"
+            },
+            ".opencode/skills/test-case-matrix/SKILL.md": {
+              "path": ".opencode/skills/test-case-matrix/SKILL.md",
+              "sha256": "e34bf4331b34569b427eb7cf756b10fb72463a854e2b23efe1e3bbaf1beef1ff"
+            },
+            "command_wrapper": {
+              "path": ".opencode/commands/test-case-matrix.md",
+              "sha256": "a86abbf6830651a6868258314dd19280fc52b12e69de42e181358e12a0b62008"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            ".cursor/skills/test-case-matrix/assets/test-matrix-template.md": {
+              "path": ".cursor/skills/test-case-matrix/assets/test-matrix-template.md",
+              "sha256": "70d93140bfb2c553ffc4334fa64526ada6ce11b1da516de6da6a4c19bd8175bb"
+            },
+            ".cursor/skills/test-case-matrix/cursor.mdc": {
+              "path": ".cursor/skills/test-case-matrix/cursor.mdc",
+              "sha256": "cfda2bb655e0b1719068ce037f573e20e509ec40735c71bdbb45e1a54a3b2fbf"
+            },
+            ".cursor/skills/test-case-matrix/README.md": {
+              "path": ".cursor/skills/test-case-matrix/README.md",
+              "sha256": "777627ff723914d25bbacc23a70d96332b695217760703bff8f1518160a60442"
+            },
+            ".cursor/skills/test-case-matrix/SKILL.md": {
+              "path": ".cursor/skills/test-case-matrix/SKILL.md",
+              "sha256": "e34bf4331b34569b427eb7cf756b10fb72463a854e2b23efe1e3bbaf1beef1ff"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "reviewer",
+      "type": "agent",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            "agent": {
+              "path": ".claude/agents/reviewer.md",
+              "sha256": "bbc80f94e6a537a08958be24db139e6783df6f86ae8fa760a3c04b94060a8e7b"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            "agent": {
+              "path": ".opencode/agents/reviewer.md",
+              "sha256": "851c179bf6e0c7c3c5fec1cae379deeffdee3669892f59fc6190350ba2953c89"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            "agent": {
+              "path": ".cursor/agents/reviewer.md",
+              "sha256": "591308c22c7e79e4b9b338c33860266f0630faf4b2f4867e85c8c9e180ef2620"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "qa-engineer",
+      "type": "agent",
+      "source_url": "https://github.com/knittotextile/knitto-agent-skills",
+      "source_commit": "40f3a5602dc1fd4cae3462eb4867d3b82f4c670a",
+      "platforms": {
+        "claude-code": {
+          "files": {
+            "agent": {
+              "path": ".claude/agents/qa-engineer.md",
+              "sha256": "8219418fcd620566f990868cb735f7b711179229153d14fa7b7d8cf87f66797d"
+            }
+          }
+        },
+        "opencode": {
+          "files": {
+            "agent": {
+              "path": ".opencode/agents/qa-engineer.md",
+              "sha256": "903fe6d0289840b91e03b8a6525a661cbad27858cf809cb6acfd85f40729b040"
+            }
+          }
+        },
+        "cursor": {
+          "files": {
+            "agent": {
+              "path": ".cursor/agents/qa-engineer.md",
+              "sha256": "f056f11775ef08e71748d9b4b4ac3c632e2b3768df6ca380fd28eb2c0cc4fbf2"
+            }
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,36 @@
+{
+  "name": "@playwright/extension",
+  "version": "0.4.0",
+  "description": "QA Knitto browser extension",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/microsoft/playwright.git"
+  },
+  "homepage": "https://playwright.dev",
+  "engines": {
+    "node": ">=24.11.0 <25",
+    "pnpm": ">=12.4.2 <13"
+  },
+  "author": {
+    "name": "Microsoft Corporation"
+  },
+  "license": "Apache-2.0",
+  "scripts": {
+    "build": "vite build --config vite.config.mts",
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json"
+  },
+  "dependencies": {
+    "react": "^19.1.1",
+    "react-dom": "^19.1.1"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.1.4",
+    "@types/react": "^19.1.12",
+    "@types/react-dom": "^19.1.9",
+    "@vitejs/plugin-react": "^5.0.2",
+    "typescript": "^5.9.2",
+    "vite": "^7.1.5",
+    "vite-plugin-static-copy": "^3.1.2"
+  }
+}
