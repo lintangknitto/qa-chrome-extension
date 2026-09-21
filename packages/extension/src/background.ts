@@ -216,8 +216,19 @@ class PlaywrightExtension {
 
   private async _openFabPanel(tabId: number | undefined, intent: string): Promise<void> {
     await setFabOpenIntent(intent);
-    if (tabId) await chrome.sidePanel.open({ tabId });
-    else throw new Error('Tidak ada tab aktif.');
+    // Side panel dulu; bila `sidePanel.open` ditolak (user-gesture/CSP/lingkungan
+    // tanpa side panel), fallback: buka sidepanel.html sebagai TAB agar selalu
+    // ada hasil, bukan hanya pesan error.
+    const targetTab = tabId ?? (await chrome.tabs.query({ active: true, currentWindow: true }))[0]?.id;
+    if (targetTab) {
+      try {
+        await chrome.sidePanel.open({ tabId: targetTab });
+        return;
+      } catch (error) {
+        debugLog('sidePanel.open gagal, fallback ke tab sidepanel:', error);
+      }
+    }
+    await chrome.tabs.create({ url: chrome.runtime.getURL('sidepanel.html') });
   }
 
   private _broadcastFabState(): void {
