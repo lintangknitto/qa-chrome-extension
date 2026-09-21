@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React from 'react';
+import React, { act } from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FabApp } from '../fab';
@@ -95,16 +95,31 @@ describe('FabApp — Knitto QA Extension (root menu)', () => {
 		expect(screen.getByRole('button', { name: 'Recorder' })).toBeTruthy();
 	});
 
-	it('sub-menu recorder adaptif saat fab:stateChanged recording', () => {
+	it('saat recording aktif, buka sidebar langsung ke sub-menu Recorder (bukan root)', () => {
 		render(<FabApp settings={{ enabled: true, side: 'left' }} />);
 		runtimeListeners.forEach((listener) =>
 			listener({ type: 'fab:stateChanged', state: { recording: true, pendingEvents: 1 } })
 		);
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		// Langsung ke Recorder: tanpa harus klik root menu.
+		expect(screen.queryByRole('button', { name: 'Recorder' })).toBeNull();
 		expect(screen.getByRole('button', { name: 'Tambah Checkpoint' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'End Recording' })).toBeTruthy();
-		expect(screen.queryByRole('button', { name: 'Mulai Recording' })).toBeNull();
+		expect(screen.getByRole('button', { name: 'Buka Panel' })).toBeTruthy();
+	});
+
+	it('menampilkan badge status recording pada tombol FAB saat recording', () => {
+		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
+		expect(document.querySelector('.fab-rec-dot')).toBeNull();
+
+		act(() => {
+			runtimeListeners.forEach((listener) =>
+				listener({ type: 'fab:stateChanged', state: { recording: true, pendingEvents: 3 } })
+			);
+		});
+		const dot = document.querySelector('.fab-rec-dot');
+		expect(dot).toBeTruthy();
+		expect(dot?.textContent?.trim()).toBe('3');
 	});
 
 	it('backdrop dan Esc menutup sidebar', () => {

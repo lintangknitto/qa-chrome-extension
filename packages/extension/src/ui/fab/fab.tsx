@@ -20,6 +20,8 @@ const rootIcons: Record<'recorder' | 'setting', React.ReactElement> = {
 
 export const FabApp = (props: FabAppProps): React.ReactElement => {
 	const [state, setState] = useState<'idle' | 'recording'>('idle');
+	const stateRef = useRef<'idle' | 'recording'>('idle');
+	const [pending, setPending] = useState(0);
 	const [settings, setSettings] = useState<FabSettings>(props.settings);
 	const [open, setOpen] = useState(false);
 	const [view, setView] = useState<FabView>('root');
@@ -28,14 +30,21 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	useEffect(() => {
 		let cancelled = false;
 		void requestFabState().then((fabState) => {
-			if (!cancelled) setState(fabState.recording ? 'recording' : 'idle');
+			if (cancelled) return;
+			const next = fabState.recording ? 'recording' : 'idle';
+			setState(next);
+			stateRef.current = next;
+			setPending(fabState.pendingEvents);
 		});
 		const onMessage = (message: unknown): void => {
-			if (isFabStateChanged(message)) {
-				setState(message.state.recording ? 'recording' : 'idle');
-				setOpen(false);
-				setView('root');
-			}
+			if (!isFabStateChanged(message)) return;
+			const next: 'idle' | 'recording' = message.state.recording ? 'recording' : 'idle';
+			stateRef.current = next;
+			setState(next);
+			setPending(message.state.pendingEvents);
+			// Interaktif: saat mulai rekaman langsung tampilkan sub-menu Recorder;
+			// saat selesai kembali ke root. Sidebar tidak dipaksa menutup.
+			setView(next === 'recording' ? 'recorder' : 'root');
 		};
 		chrome.runtime.onMessage.addListener(onMessage);
 		return () => {
@@ -190,10 +199,20 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				aria-expanded={open}
 				onClick={() => {
 					setOpen((value) => !value);
-					setView('root');
+					// Buka langsung ke konten yang relevan: Recorder saat recording,
+					// root saat idle — jangan minta user naik turun menu.
+					setView(stateRef.current === 'recording' ? 'recorder' : 'root');
 				}}
 			>
 				<FabLogo />
+				{state === 'recording' ? (
+					<span
+						className="fab-rec-dot"
+						aria-label={pending > 0 ? `${pending} event menunggu dikirim` : 'Recording aktif'}
+					>
+						{pending > 0 ? String(pending) : ''}
+					</span>
+				) : null}
 			</button>
 		</div>
 	);

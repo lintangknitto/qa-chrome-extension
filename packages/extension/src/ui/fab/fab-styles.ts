@@ -66,6 +66,27 @@ export const FAB_CSS = `
   letter-spacing: 0.2px;
   padding: 0 1px;
 }
+.fab-rec-dot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  min-width: 17px;
+  height: 17px;
+  border-radius: 9px;
+  background: #e53935;
+  color: #fff;
+  border: 2px solid #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+  padding: 0 3px;
+  animation: fab-pulse 1.6s ease-in-out infinite;
+}
+@keyframes fab-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
 .fab-backdrop {
   position: fixed;
   top: 0;

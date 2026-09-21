@@ -1,5 +1,11 @@
 # Floating Button Extension — Knitto QA Extension (refine)
 
+> **Changelog 3.1 (2026-09-21, interaktif):**
+> - Saat **recording aktif**, membuka menu langsung ke **sub-menu Recorder** (Checkpoint/
+>   End/Buka Panel) — tidak ke root; transisi state tidak memaksa sidebar menutup.
+> - **Badge status recording** di tombol FAB: titik merah berdenyut + counter pending events
+>   (dari `fab:getState`/broadcast `fab:stateChanged`).
+>
 > **Changelog 3.0 (refine 2026-09-21):**
 > - **Rebrand:** sidebar diidentifikasi sebagai **Knitto QA Extension** (bukan "QA Knitto Recorder");
 >   FAB tetap logo Knitto + badge QA.

@@ -40,9 +40,17 @@ Desain: FAB logo Knitto+badge QA membuka **sidebar 500px geser**; sidebar punya 
 
 - [x] `SETUP.md` (recorder) bagian FAB ditulis ulang (rebrand + root menu 2 level); `TEST-CASE-MATRIX.md` (done/) tidak diubah.
 
+## Interaktif (refine 3.1)
+
+- [x] **Buka langsung ke Recorder saat recording:** saat recording aktif, membuka menu langsung menuju sub-menu Recorder (Checkpoint/End/Buka Panel), bukan root; saat mulai recording view otomatis pindah ke Recorder dan sidebar tidak dipaksa menutup; saat selesai kembali ke root. (pakai `stateRef` supaya status terbaru saat klik)
+
+- [x] **Badge status recording di tombol FAB:** titik merah berdenyut (`.fab-rec-dot`, `#e53935`) menampilkan counter pending events saat recording; sumber data `fab:getState`/broadcast `fab:stateChanged{pendingEvents}`.
+
+- [x] **Test diperbarui:** `fab.spec.tsx` — kasus "recording aktif → buka langsung ke sub-menu Recorder" dan "badge status + counter" (dibungkus `act`); **12 file / 55 test lulus**; `typecheck`/`build` EXIT 0.
+
 ## Closing Gates
 
-- [x] Jalankan cheap checks extension: `pnpm --filter @playwright/extension typecheck` (EXIT 0), `pnpm --filter @playwright/extension test` (12 file / 54 test lulus), `pnpm --filter @playwright/extension build` (EXIT 0; `dist/lib/content.js` iife). (backend tidak tersentuh)
-- [x] Jalankan `/qa` untuk full E2E/manual verification dan evidence. (`QA-REPORT.md` refine 3.0: extension E2E **29/29** — TC13 root-menu Recorder/Setting + nav kembali + Setting toggle/sisi + rebrand "Knitto QA Extension"; API 21/21 & Socket.IO 16/16 sebagai prasyarat)
-- [x] Jalankan `/gate` untuk code review lima-axis dan security review. (tidak ada blocker; catatan non-blocking: label trigger/dialog berbeda urutan kata; `FabIntent 'setting'` tak terproduksi lagi di menu — bisa dibersihkan; perf observer subtree di halaman sibuk; shadow DOM `open`; a11y sidebar fokus saat tertutup; validasi intent `fab:openPanel`)
-- [x] Jalankan `/promote` setelah `/qa` dan `/gate` dinyatakan lolos. (PR chrome **dilewati** — sesuai keputusan user (konsisten dengan refine 2.0): topologi `qa-chrome-extension` divergen (`origin/main`=`6eed5f291`, lineage `knitto-main`) vs `main` lokal dengan banyak komit Knitto + upstream roll; FAB juga bergantung pada komit recorder/init. Rebase tersendiri diperlukan bila mau di-PR. Backend tidak berubah — tidak ada PR API.)
+- [x] Jalankan cheap checks extension: `pnpm --filter @playwright/extension typecheck` (EXIT 0), `pnpm --filter @playwright/extension test` (12 file / 55 test lulus), `pnpm --filter @playwright/extension build` (EXIT 0; `dist/lib/content.js` iife). (backend tidak tersentuh)
+- [ ] Jalankan `/qa` untuk full E2E/manual verification dan evidence.
+- [ ] Jalankan `/gate` untuk code review lima-axis dan security review.
+- [ ] Jalankan `/promote` setelah `/qa` dan `/gate` dinyatakan lolos.
