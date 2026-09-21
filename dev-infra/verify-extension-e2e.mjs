@@ -433,7 +433,7 @@ const main = async () => {
 		return 'root menu (Recorder/Setting) + nav Recorder + kembali + Esc';
 	});
 
-	await step('TC13-2 Setting dari root: toggle off/on + ganti sisi', async () => {
+	await step('TC13-2 Setting dari root: ganti sisi sidebar', async () => {
 		const page = state.fabPage;
 		const trigger = page.getByRole('button', { name: 'QA Knitto Extension' });
 		await trigger.click();
@@ -441,24 +441,17 @@ const main = async () => {
 		await page.getByRole('button', { name: 'Setting' }).first().waitFor({ state: 'visible', timeout: 5000 });
 		await page.getByRole('button', { name: 'Setting' }).first().click();
 		await page.locator('.fab-setting-group').first().waitFor({ state: 'visible', timeout: 3000 });
-		await page.getByRole('button', { name: 'Tampilkan FAB' }).first().waitFor({ state: 'attached', timeout: 3000 });
+		await page.getByRole('button', { name: 'Kiri' }).first().waitFor({ state: 'visible', timeout: 3000 });
 
-		// invisible → unmount (storage onChanged di content script)
-		await state.panel.evaluate(() =>
-			chrome.storage.local.set({ qa_fab_settings: { enabled: false, side: 'right' } })
-		);
-		await page.locator(`#${'qa-knitto-fab-host'}`).waitFor({ state: 'detached', timeout: 5000 });
-
-		// tampil kembali + sisi kiri
+		// Ganti sisi via storage (FAB selalu tampil — tidak ada toggle hide).
 		await state.panel.evaluate(() =>
 			chrome.storage.local.set({ qa_fab_settings: { enabled: true, side: 'left' } })
 		);
-		await page.locator(`#${'qa-knitto-fab-host'}`).first().waitFor({ state: 'attached', timeout: 5000 });
 		await page
 			.locator('.fab-root[data-side="left"] [aria-label="QA Knitto Extension"]')
 			.first()
 			.waitFor({ state: 'attached', timeout: 5000 });
-		return 'setting dari root: toggle off/on + ganti sisi (storage onChanged)';
+		return 'setting dari root: ganti sisi kanan→kiri';
 	});
 
 	// -------------------------------------------------------------------------

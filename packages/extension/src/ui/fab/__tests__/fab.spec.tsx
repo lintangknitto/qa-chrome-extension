@@ -78,15 +78,13 @@ describe('FabApp — Knitto QA Extension (root menu)', () => {
 		expect(screen.getByRole('button', { name: 'Recorder' })).toBeTruthy();
 	});
 
-	it('navigasi root → Setting: toggle tampil FAB & sisi disimpan, lalu kembali', () => {
+	it('navigasi root → Setting: pilih sisi disimpan, lalu kembali', () => {
 		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
 		openFab();
 
 		fireEvent.click(screen.getByRole('button', { name: 'Setting' }));
-		expect(screen.getByRole('button', { name: 'Tampilkan FAB' })).toBeTruthy();
-
-		fireEvent.click(screen.getByRole('button', { name: 'Tampilkan FAB' }));
-		expect((storageStore.get(FAB_SETTINGS_KEY) as { enabled: boolean }).enabled).toBe(false);
+		expect(screen.getByText('Sisi sidebar')).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Tampilkan FAB' })).toBeNull();
 
 		fireEvent.click(screen.getByRole('button', { name: 'Kiri' }));
 		expect((storageStore.get(FAB_SETTINGS_KEY) as { side: string }).side).toBe('left');

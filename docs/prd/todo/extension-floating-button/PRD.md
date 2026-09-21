@@ -1,5 +1,10 @@
 # Floating Button Extension — Knitto QA Extension (refine)
 
+> **Changelog 3.2 (2026-09-21):**
+> - **Hapus toggle "Tampilkan FAB".** FAB **selalu tampil** (menghindari jebakan: sekali
+>   disembunyikan tidak ada cara menampilkan lagi). Setting kini hanya **sisi Kanan/Kiri**;
+>   `fab-content` selalu mount, tanpa listener unmount-hide.
+>
 > **Changelog 3.1 (2026-09-21, interaktif):**
 > - Saat **recording aktif**, membuka menu langsung ke **sub-menu Recorder** (Checkpoint/
 >   End/Buka Panel) — tidak ke root; transisi state tidak memaksa sidebar menutup.

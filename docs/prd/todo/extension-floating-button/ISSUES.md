@@ -48,9 +48,15 @@ Desain: FAB logo Knitto+badge QA membuka **sidebar 500px geser**; sidebar punya 
 
 - [x] **Test diperbarui:** `fab.spec.tsx` — kasus "recording aktif → buka langsung ke sub-menu Recorder" dan "badge status + counter" (dibungkus `act`); **12 file / 55 test lulus**; `typecheck`/`build` EXIT 0.
 
+## FAB selalu tampil (refine 3.2)
+
+- [x] **Hapus toggle "Tampilkan FAB"** dari panel Setting — FAB **selalu tampil**; `fab-content` selalu mount (hapus gate `enabled` + listener storage hide); Setting hanya **sisi Kanan/Kiri**. **Acceptance:** unit test (Setting tanpa toggle, hanya sisi) + build (`content.js`).
+
+- [x] **Test & harness disesuaikan:** `fab.spec.tsx` (Setting tanpa "Tampilkan FAB", pilih sisi → storage); TC13-2 harness hanya menguji ganti sisi (tanpa unmount); **12 file / 55 test lulus**; `typecheck`/`build` EXIT 0.
+
 ## Closing Gates
 
 - [x] Jalankan cheap checks extension: `pnpm --filter @playwright/extension typecheck` (EXIT 0), `pnpm --filter @playwright/extension test` (12 file / 55 test lulus), `pnpm --filter @playwright/extension build` (EXIT 0; `dist/lib/content.js` iife). (backend tidak tersentuh)
-- [x] Jalankan `/qa` untuk full E2E/manual verification dan evidence. (`QA-REPORT.md` refine 3.1: extension E2E **30/30** — TC13-3 membuktikan saat recording FAB buka langsung ke Recorder + badge; plus TC13-1/TC13-2; API 21/21 & Socket.IO 16/16 sebagai prasyarat)
-- [x] Jalankan `/gate` untuk code review lima-axis dan security review. (refine 3.1 tidak ada blocker; catatan non-blocking tambahan: counter badge hanya tampil saat recording; urutan kata label trigger/dialog tetap bisa diselaraskan; dan catatan sebelumnya (perf observer, shadow `open`, a11y, validasi intent) tetap)
-- [x] Jalankan `/promote` setelah `/qa` dan `/gate` dinyatakan lolos. (refine 3.1 — PR chrome **dilewati** lagi sesuai keputusan user (topologi `qa-chrome-extension` divergen); extension di-rebuild fresh untuk reload Chrome. Backend tidak berubah → tanpa PR API.)
+- [ ] Jalankan `/qa` untuk full E2E/manual verification dan evidence.
+- [ ] Jalankan `/gate` untuk code review lima-axis dan security review.
+- [ ] Jalankan `/promote` setelah `/qa` dan `/gate` dinyatakan lolos.

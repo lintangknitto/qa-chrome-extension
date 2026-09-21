@@ -80,12 +80,6 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		[]
 	);
 
-	const toggleEnabled = useCallback(() => {
-		const next = { ...settings, enabled: !settings.enabled };
-		setSettings(next);
-		void saveFabSettings(next);
-	}, [settings]);
-
 	const setSide = useCallback((side: 'left' | 'right') => {
 		const next = { ...settings, side };
 		setSettings(next);
@@ -138,14 +132,6 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					{view === 'setting' ? (
 						<div className="fab-setting-group">
 							<span className="fab-setting-label">Pengaturan</span>
-							<button
-								className="fab-setting-toggler"
-								aria-pressed={settings.enabled}
-								onClick={toggleEnabled}
-							>
-								Tampilkan FAB
-								<span className={`fab-setting-check ${settings.enabled ? 'fab-on' : ''}`} aria-hidden="true" />
-							</button>
 							<span className="fab-setting-label">Sisi sidebar</span>
 							<div className="fab-setting-radios">
 								<button

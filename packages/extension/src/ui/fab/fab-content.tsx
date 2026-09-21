@@ -1,7 +1,7 @@
 import React from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { FabApp } from './fab';
-import { FAB_SETTINGS_KEY, loadFabSettings } from './fab-settings';
+import { loadFabSettings } from './fab-settings';
 import { isRestrictedFabUrl } from './fab-state';
 import { FAB_CSS } from './fab-styles';
 
@@ -54,7 +54,6 @@ export const mountFab = async (): Promise<void> => {
 	}
 
 	const settings = await loadFabSettings();
-	if (!settings.enabled) return;
 
 	const host = document.createElement('div');
 	host.id = FAB_HOST_ID;
@@ -82,13 +81,5 @@ export const unmountFab = (): void => {
 };
 
 window.addEventListener('pagehide', unmountFab);
-
-chrome.storage.onChanged.addListener((changes, area) => {
-	if (area !== 'local' || !changes[FAB_SETTINGS_KEY]) return;
-	const next = changes[FAB_SETTINGS_KEY].newValue as { enabled?: boolean } | undefined;
-	const enabled = next?.enabled;
-	if (enabled === false) unmountFab();
-	else if (enabled === true) void mountFab();
-});
 
 void mountFab();

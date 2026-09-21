@@ -106,8 +106,9 @@ halaman (`~top 40%`) yang membuka **sidebar 500px geser** (pola ala `knitto-admi
    **Setting** — klik untuk menampilkan isinya:
    - **Recorder** (adaptif): idle → Mulai Recording · Generate Hasil · Buka Panel;
      recording → Tambah Checkpoint · End Recording · Buka Panel (+ **← Kembali** ke root).
-   - **Setting**: toggle **Tampilkan FAB** (`enabled`) + pilih **sisi sidebar Kanan/Kiri**
-     (`side`) di blok `qa_fab_settings` (`chrome.storage.local`) (+ **← Kembali**).
+   - **Setting**: pilih **sisi sidebar Kanan/Kiri** (`side`) di blok `qa_fab_settings`
+     (`chrome.storage.local`) (+ **← Kembali**). **FAB selalu tampil** (tidak ada toggle
+     sembunyikan — supaya tidak kehilangan akses).
 4. Tidak muncul di halaman terlarang (`chrome://`, `about:`, PDF, dll.) — guard:
    `isRestrictedFabUrl` di `packages/extension/src/ui/fab/fab-state.ts`.
 5. UI memakai React di dalam **Shadow DOM** (`adoptedStyleSheets`) — style halaman tidak
