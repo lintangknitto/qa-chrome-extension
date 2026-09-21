@@ -1,6 +1,6 @@
 # QA Report — Floating Button Extension (FAB + Sidebar)
 
-Tanggal: 2026-09-21 · Plan: `docs/prd/todo/extension-floating-button/` (refine 2)
+Tanggal: 2026-09-21 · Plan: `docs/prd/done/extension-floating-button/` (refine 2)
 Status: **PASS — flow FAB/sidebar di extension browser nyata lulus; backend lulus penuh**
 
 ## Environment verifikasi
