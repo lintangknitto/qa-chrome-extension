@@ -41,3 +41,5 @@ playwright.env
 /firefox/
 .playwright/
 .npmrc
+# QA harness runtime logs (test recording, backend, mock provider)
+/dev-infra/logs/

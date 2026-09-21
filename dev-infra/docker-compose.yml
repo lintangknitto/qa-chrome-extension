@@ -1,0 +1,64 @@
+# Infra lokal untuk QA test-session-recorder.
+#
+# MinIO di sini adalah service STANDALONE di luar repo backend — hanya untuk
+# kebutuhan development/QA di mesin lokal. Tidak ada service ini di
+# qa-extension-api/docker-compose.yml.
+#
+# Pemakaian:
+#   docker compose -f dev-infra/docker-compose.yml up -d
+#   docker compose -f dev-infra/docker-compose.yml down       # hentikan
+#   docker compose -f dev-infra/docker-compose.yml down -v    # hapus data
+
+name: qa-recorder-infra
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: qa_root_password
+      MYSQL_DATABASE: qa_recorder
+    ports:
+      - '3307:3306'
+    volumes:
+      - qa_mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ['CMD', 'mysqladmin', 'ping', '-h', '127.0.0.1', '-uroot', '-pqa_root_password']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ':9001'
+    environment:
+      MINIO_ROOT_USER: qa_minio
+      MINIO_ROOT_PASSWORD: qa_minio_secret
+    ports:
+      - '9000:9000'
+      - '9001:9001'
+    volumes:
+      - qa_minio_data:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  minio-create-bucket:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mc alias set local http://minio:9000 qa_minio qa_minio_secret &&
+        mc mb --ignore-existing local/qa-recording-artifacts &&
+        echo "bucket siap"
+
+volumes:
+  qa_mysql_data:
+  qa_minio_data:

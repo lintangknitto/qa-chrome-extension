@@ -13,6 +13,7 @@
     "jsxImportSource": "react",
     "noEmit": true,
     "noUncheckedSideEffectImports": false,
+    "skipLibCheck": true,
   },
   "include": [
     "src/ui",

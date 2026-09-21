@@ -12,6 +12,7 @@
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "noEmit": true,
+    "skipLibCheck": true,
   },
   "include": [
     "src",

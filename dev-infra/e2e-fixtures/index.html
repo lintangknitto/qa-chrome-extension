@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="id">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>QA E2E Fixture</title>
+</head>
+<body>
+	<h1 id="title">QA E2E Fixture</h1>
+	<form id="form" onsubmit="return false">
+		<label class="field">Nama
+			<input id="fullname" name="fullname" type="text" autocomplete="off" />
+		</label>
+		<label class="field">Password
+			<input id="password" name="password" type="password" autocomplete="current-password" />
+		</label>
+		<button id="submit-btn" type="button">Submit</button>
+	</form>
+	<p><a id="navigate-link" href="/second.html">Ke halaman kedua</a></p>
+	<script>
+		// Helper yang dipanggil harness lewat page.evaluate agar tiap skenario
+		// CDP (console, exception, network) bisa dipicu secara terkontrol.
+		window.__e2e = {
+			log: () => console.log('E2E log'),
+			warn: () => console.warn('E2E warn'),
+			error: () => console.error('E2E error 9f3a'),
+			boom: () => setTimeout(() => { throw new Error('E2E uncaught 7b2c'); }, 0),
+			echo: () => fetch('/api/echo', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({ note: 'E2E network' })
+			}).then((response) => response.json()),
+			image: () => fetch('/api/image').then((response) => response.blob()).then((blob) => blob.size),
+			consoleText: (text) => console.log(text)
+		};
+	</script>
+</body>
+</html>

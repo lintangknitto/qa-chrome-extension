@@ -1,0 +1,9 @@
+{
+  "name": "qa-recorder-dev-infra",
+  "private": true,
+  "description": "Tooling QA lokal untuk Test Session Recorder (harness E2E browser). Bukan paket yang dipublikasikan.",
+  "type": "module",
+  "dependencies": {
+    "playwright-core": "1.63.0"
+  }
+}
