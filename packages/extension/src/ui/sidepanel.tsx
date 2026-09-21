@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { RecordingApiClient, type RecordingProject, type RecordingSession } from '../recording/apiClient';
+import { readAndClearFabIntent } from './fab/fab-settings';
 import {
 	clearActiveSession,
 	clearAuth,
@@ -93,6 +94,40 @@ export const SidePanelApp: React.FC = () => {
 		void loadProjects();
 		void loadSessions();
 	}, [token, loadProjects, loadSessions]);
+
+	// Intent dari floating button (FAB): fokuskan bagian panel yang diminta.
+	useEffect(() => {
+		void (async () => {
+			try {
+				const intent = await readAndClearFabIntent();
+				if (!intent) return;
+				setNotice(`Diakses dari tombol QA Recorder: ${intent}.`);
+				const focus = () => {
+					if (intent === 'start') window.scrollTo({ top: 0, behavior: 'smooth' });
+					else if (intent === 'checkpoint') {
+						const label = Array.from(document.querySelectorAll('label.sp-field')).find((el) =>
+							el.textContent?.includes('Catatan / checkpoint')
+						);
+						label?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+					} else if (intent === 'end') {
+						const button = Array.from(document.querySelectorAll('button')).find((el) =>
+							el.textContent?.includes('End Recording')
+						);
+						button?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+					} else if (intent === 'generate') {
+						const button = Array.from(document.querySelectorAll('button')).find((el) =>
+							el.textContent?.includes('generate')
+						);
+						button?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+					}
+				};
+				focus();
+				setTimeout(focus, 600);
+			} catch {
+				// chrome.storage tidak tersedia (mis. di lingkungan test) → abaikan.
+			}
+		})();
+	}, []);
 
 	useEffect(() => {
 		if (!activeSession) return;

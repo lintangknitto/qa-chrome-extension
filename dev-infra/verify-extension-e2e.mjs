@@ -400,6 +400,61 @@ const main = async () => {
 	});
 
 	// -------------------------------------------------------------------------
+	// TC13 — Floating button & sidebar (state idle; halaman uji terpisah)
+	// -------------------------------------------------------------------------
+	await step('TC13-1 FAB + sidebar geser (idle): klik → sidebar terbuka + menu grid', async () => {
+		const fabPage = await context.newPage();
+		state.fabPage = fabPage;
+		await fabPage.goto(`${INDEX_URL}?page=fab`);
+		await fabPage.locator(`#${'qa-knitto-fab-host'}`).first().waitFor({ state: 'attached', timeout: 10000 });
+
+		const trigger = fabPage.getByRole('button', { name: 'QA Knitto Recorder' });
+		await trigger.waitFor({ state: 'attached', timeout: 5000 });
+		await fabPage.locator('.fab-sidebar[data-open="false"]').first().waitFor({ state: 'attached', timeout: 5000 });
+
+		await trigger.click();
+		// Tunggu transisi slider selesai supaya elemen "stabil" untuk aksi.
+		await fabPage.waitForTimeout(800);
+		await fabPage.locator('.fab-sidebar[data-open="true"]').first().waitFor({ state: 'visible', timeout: 5000 });
+		await fabPage.locator('.fab-backdrop').first().waitFor({ state: 'visible', timeout: 3000 });
+		await fabPage.getByRole('button', { name: 'Mulai Recording' }).first().waitFor({ state: 'visible', timeout: 5000 });
+		await fabPage.getByRole('button', { name: 'Generate Hasil' }).first().waitFor({ state: 'visible', timeout: 3000 });
+		await fabPage.getByRole('button', { name: 'Buka Panel' }).first().waitFor({ state: 'visible', timeout: 3000 });
+
+		await fabPage.keyboard.press('Escape');
+		await fabPage.locator('.fab-sidebar[data-open="false"]').first().waitFor({ state: 'attached', timeout: 5000 });
+		return 'FAB host + sidebar slide-in + backdrop + menu grid idle';
+	});
+
+	await step('TC13-2 Setting FAB (idle): toggle tampil/sembunyi + ganti sisi', async () => {
+		const page = state.fabPage;
+		const trigger = page.getByRole('button', { name: 'QA Knitto Recorder' });
+		await trigger.click();
+		await page.waitForTimeout(800);
+		await page.getByRole('button', { name: 'Setting' }).first().waitFor({ state: 'visible', timeout: 5000 });
+		await page.getByRole('button', { name: 'Setting' }).first().click();
+		await page.locator('.fab-setting-group').first().waitFor({ state: 'visible', timeout: 3000 });
+		await page.getByRole('button', { name: 'Tampilkan FAB' }).first().waitFor({ state: 'attached', timeout: 3000 });
+
+		// invisible → unmount (storage onChanged di content script)
+		await state.panel.evaluate(() =>
+			chrome.storage.local.set({ qa_fab_settings: { enabled: false, side: 'right' } })
+		);
+		await page.locator(`#${'qa-knitto-fab-host'}`).waitFor({ state: 'detached', timeout: 5000 });
+
+		// tampil kembali + pindah sisi kiri
+		await state.panel.evaluate(() =>
+			chrome.storage.local.set({ qa_fab_settings: { enabled: true, side: 'left' } })
+		);
+		await page.locator(`#${'qa-knitto-fab-host'}`).first().waitFor({ state: 'attached', timeout: 5000 });
+		await page
+			.locator('.fab-root[data-side="left"] [aria-label="QA Knitto Recorder"]')
+			.first()
+			.waitFor({ state: 'attached', timeout: 5000 });
+		return 'setting toggle off/on + ganti sisi (storage onChanged)';
+	});
+
+	// -------------------------------------------------------------------------
 	// TC2-1 / TC9-1 — start via UI + tab group
 	// -------------------------------------------------------------------------
 	await step('TC2-1 Start Recording via UI + group QA Recording dibuat', async () => {
@@ -447,6 +502,11 @@ const main = async () => {
 		state.testTabId = tabs[0].id;
 		return `tabs=${tabs.map((tab) => tab.id).join(',')} url=${tabs[0].url}`;
 	});
+
+	// -------------------------------------------------------------------------
+	// (TC13 FAB/sidebar dipindahkan ke sebelum Start agar dapat diuji pada
+	// state idle — lihat blok "TC13" di atas TC2-1)
+	// -------------------------------------------------------------------------
 
 	// -------------------------------------------------------------------------
 	// TC5-1 / TC6 / TC7 — interaksi + CDP capture

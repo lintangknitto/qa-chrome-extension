@@ -19,6 +19,7 @@ import { PendingConnections } from './pendingConnection';
 import { ConnectedTabGroup, cleanupStalePlaywrightGroups, isNonDebuggableUrl, ungroupTabs, uniqueGroupStyle } from './connectedTabGroup';
 import { RecordingController } from './recording/recorder';
 import { getToken } from './recording/tokenStore';
+import { setFabOpenIntent } from './ui/fab/fab-settings';
 
 type PageMessage = {
   type: 'connectionRequested';
@@ -47,6 +48,11 @@ type PageMessage = {
   type: 'recordingStop';
 } | {
   type: 'recordingStatus';
+} | {
+  type: 'fab:getState';
+} | {
+  type: 'fab:openPanel';
+  intent: 'start' | 'checkpoint' | 'end' | 'generate' | 'panel';
 };
 
 class PlaywrightExtension {
@@ -115,7 +121,7 @@ class PlaywrightExtension {
         return true;
       case 'recordingStop':
         this._recorder.stop().then(
-            () => sendResponse({ success: true }),
+            () => { this._broadcastFabState(); sendResponse({ success: true }); },
             (error: any) => sendResponse({ success: false, error: error.message }));
         return true;
       case 'recordingStatus':
@@ -124,6 +130,17 @@ class PlaywrightExtension {
           pendingEvents: this._recorder.pendingEventCount,
         });
         return false;
+      case 'fab:getState':
+        sendResponse({
+          recording: this._recorder.isRecording,
+          pendingEvents: this._recorder.pendingEventCount,
+        });
+        return false;
+      case 'fab:openPanel':
+        this._openFabPanel(sender.tab?.id, message.intent).then(
+            () => sendResponse({ success: true }),
+            (error: any) => sendResponse({ success: false, error: error.message }));
+        return true;
     }
   }
 
@@ -142,6 +159,7 @@ class PlaywrightExtension {
       recordingGroupId: groupId,
     });
 
+    this._broadcastFabState();
     return groupId;
   }
 
@@ -194,6 +212,25 @@ class PlaywrightExtension {
 
   private _connectedTabIds(): Set<number> {
     return new Set([...this._connections.values()].flatMap(group => group.connectedTabIds()));
+  }
+
+  private async _openFabPanel(tabId: number | undefined, intent: string): Promise<void> {
+    await setFabOpenIntent(intent);
+    if (tabId) await chrome.sidePanel.open({ tabId });
+    else throw new Error('Tidak ada tab aktif.');
+  }
+
+  private _broadcastFabState(): void {
+    const state = {
+      recording: this._recorder.isRecording,
+      pendingEvents: this._recorder.pendingEventCount,
+    };
+    void chrome.tabs.query({}).then((tabs) => {
+      for (const tab of tabs) {
+        if (typeof tab.id !== 'number') continue;
+        chrome.tabs.sendMessage(tab.id, { type: 'fab:stateChanged', state }).catch(() => {});
+      }
+    });
   }
 
   private async _onActionClicked(): Promise<void> {

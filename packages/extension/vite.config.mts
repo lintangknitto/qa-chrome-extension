@@ -54,6 +54,24 @@ export default defineConfig({
         }
       }
     },
+    fab: {
+      consumer: 'client',
+      builder: {},
+      build: {
+        outDir: resolve(__dirname, 'dist/'),
+        emptyOutDir: false,
+        minify: false,
+        rollupOptions: {
+          input: resolve(__dirname, 'src/ui/fab/fab-content.tsx'),
+          output: {
+            // Bukan mode lib: React ikut ter-bundle ke dalam single iife content script.
+            format: 'iife',
+            entryFileNames: 'lib/content.js',
+            inlineDynamicImports: true
+          }
+        }
+      }
+    },
     sw: {
       consumer: 'client',
       build: {

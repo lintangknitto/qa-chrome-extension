@@ -94,6 +94,24 @@ Load unpacked di Chrome:
 10. Uji redaksi: isi form password, lalu pastikan nilainya `[REDACTED]` pada
     `qa_recording_event` dan tidak muncul di output AI.
 
+## 5. Floating button (FAB) & sidebar
+
+Content script `lib/content.js` menampilkan **tombol logo Knitto + badge QA** di tepi kanan
+halaman (`~top 40%`) yang membuka **sidebar 500px geser** (pola ala `knitto-admin-extension`):
+
+1. **Muncul otomatis** setelah extension ter-load — tidak perlu interaksi.
+2. **Klik logo** → sidebar menggeser masuk dari kanan (transisi 0.5s) + backdrop; **klik
+   backdrop / Esc** menutup kembali.
+3. **Menu grid di dalam sidebar** (adaptif):
+   - idle → **Mulai Recording** (buka panel siap Start), **Generate Hasil**, **Buka Panel**, **Setting**
+   - recording aktif → **Tambah Checkpoint**, **End Recording**, **Buka Panel**, **Setting**
+4. **Setting**: toggle **Tampilkan FAB** (`enabled`) + pilih **sisi sidebar Kanan/Kiri**
+   (`side`) di blok `qa_fab_settings` (`chrome.storage.local`) — berubah langsung tanpa reload.
+5. Tidak muncul di halaman terlarang (`chrome://`, `about:`, PDF, dll.) — guard:
+   `isRestrictedFabUrl` di `packages/extension/src/ui/fab/fab-state.ts`.
+6. UI memakai React di dalam **Shadow DOM** (`adoptedStyleSheets`) — style halaman tidak
+   bocor ke FAB/sidebar dan sebaliknya.
+
 ## Catatan penting
 
 - `chrome.debugger` hanya boleh satu klien per tab. Tab yang sedang di-attach

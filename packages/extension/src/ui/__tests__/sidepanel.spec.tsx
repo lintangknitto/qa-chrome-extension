@@ -102,6 +102,10 @@ describe('SidePanelApp', () => {
 		const startButton = (await screen.findByText('Start Recording')) as HTMLButtonElement;
 		expect(startButton.disabled).toBe(true);
 
+		// Tunggu daftar project termuat (opsi <option> sudah ada) sebelum
+		// mengubah select — mencegah race nilai select saat options masih kosong.
+		await screen.findByText('Proyek Alpha');
+
 		fireEvent.change(screen.getByLabelText('Project'), { target: { value: '1' } });
 		fireEvent.change(screen.getByLabelText('Nomor test case'), { target: { value: 'TC-1' } });
 		fireEvent.change(screen.getByLabelText('Judul'), { target: { value: 'Login berhasil' } });
