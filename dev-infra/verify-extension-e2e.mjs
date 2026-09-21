@@ -516,6 +516,29 @@ const main = async () => {
 	// -------------------------------------------------------------------------
 
 	// -------------------------------------------------------------------------
+	// TC13-3 — saat recording aktif: buka FAB langsung ke sub-menu Recorder + badge
+	// -------------------------------------------------------------------------
+	await step('TC13-3 saat recording, FAB buka langsung ke Recorder + badge status', async () => {
+		const page = state.fabPage;
+		const trigger = page.getByRole('button', { name: 'QA Knitto Extension' });
+		await trigger.click();
+		await page.waitForTimeout(800);
+
+		// Langsung sub-menu Recorder (root tidak tampil).
+		await page.getByRole('button', { name: 'Tambah Checkpoint' }).first().waitFor({ state: 'visible', timeout: 5000 });
+		await page.getByRole('button', { name: 'End Recording' }).first().waitFor({ state: 'visible', timeout: 3000 });
+		const rootCount = await page.getByRole('button', { name: 'Recorder' }).count();
+		assert(rootCount === 0, `root menu masih tampil saat recording (count=${rootCount})`);
+
+		// Badge status recording + counter pending events.
+		await page.locator('.fab-rec-dot').first().waitFor({ state: 'attached', timeout: 3000 });
+
+		await page.keyboard.press('Escape');
+		await page.locator('.fab-sidebar[data-open="false"]').first().waitFor({ state: 'attached', timeout: 5000 });
+		return 'buka langsung Recorder saat recording + badge';
+	});
+
+	// -------------------------------------------------------------------------
 	// TC5-1 / TC6 / TC7 — interaksi + CDP capture
 	// -------------------------------------------------------------------------
 	await step('TC5-1 aksi click/fill/password + kandidat locator tersimpan', async () => {
