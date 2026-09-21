@@ -118,4 +118,4 @@ Blocking findings dari review. Semua sudah diverifikasi langsung ke kode/DB (buk
 - [x] Jalankan cheap checks extension: `pnpm --filter @playwright/extension typecheck` dan `pnpm --filter @playwright/extension build`. (typecheck EXIT 0, build EXIT 0, 7 file / 34 test lulus)
 - [x] Jalankan `/qa` untuk full E2E/manual verification dan evidence. (`QA-REPORT.md` run ke-5: API 21/21, Socket.IO 16/16, Extension browser 27/27 lulus. E2E diulang pada tree terkini setelah G8–G9 — tetap 27/27, termasuk jalur End→stop→end baru)
 - [x] Jalankan `/gate` untuk code review lima-axis dan security review. (run ke-3 pada tree G1–G9: tidak ada blocker baru; fix dinilai sound, hanya catatan non-blocking — G1 fallback body JSON terpotong dan G4 fallback content-type dari metadata MinIO)
-- [ ] Jalankan `/promote` setelah `/qa` dan `/gate` dinyatakan lolos.
+- [x] Jalankan `/promote` setelah `/qa` dan `/gate` dinyatakan lolos. (PR #1 `feat/test-session-recorder-main` → `main` di `lintangknitto/qa-extension-api` dibuka; PR chrome-extension dilewati sesuai keputusan user karena `origin/main` repo itu divergen dari lineage `main` lokal — mengikuti pilihan "Api saja")
