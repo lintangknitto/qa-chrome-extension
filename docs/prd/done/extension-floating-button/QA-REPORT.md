@@ -1,6 +1,6 @@
 # QA Report — Floating Button Extension (refine 3.1 interaktif)
 
-Tanggal: 2026-09-21 · Plan: `docs/prd/todo/extension-floating-button/` (refine 3.1)
+Tanggal: 2026-09-21 · Plan: `docs/prd/done/extension-floating-button/` (refine 3.1)
 Status: **PASS — perilaku interaktif FAB saat recording diverifikasi di browser nyata**
 
 ## Environment
