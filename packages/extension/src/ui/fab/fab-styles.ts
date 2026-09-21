@@ -68,20 +68,15 @@ export const FAB_CSS = `
 }
 .fab-rec-dot {
   position: absolute;
-  top: -3px;
-  right: -3px;
-  min-width: 17px;
-  height: 17px;
-  border-radius: 9px;
+  top: -2px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
   background: #e53935;
-  color: #fff;
   border: 2px solid #fff;
-  font-size: 10px;
-  font-weight: 700;
-  line-height: 12px;
-  text-align: center;
-  padding: 0 3px;
-  animation: fab-pulse 1.6s ease-in-out infinite;
+  box-shadow: 0 0 0 1px rgba(229, 57, 53, 0.35);
+  animation: fab-pulse 1.8s ease-in-out infinite;
 }
 @keyframes fab-pulse {
   0%, 100% { opacity: 1; }

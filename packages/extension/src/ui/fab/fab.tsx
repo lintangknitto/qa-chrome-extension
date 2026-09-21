@@ -195,9 +195,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					<span
 						className="fab-rec-dot"
 						aria-label={pending > 0 ? `${pending} event menunggu dikirim` : 'Recording aktif'}
-					>
-						{pending > 0 ? String(pending) : ''}
-					</span>
+					/>
 				) : null}
 			</button>
 		</div>

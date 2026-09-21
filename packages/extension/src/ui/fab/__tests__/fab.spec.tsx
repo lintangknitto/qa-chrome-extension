@@ -106,7 +106,7 @@ describe('FabApp — Knitto QA Extension (root menu)', () => {
 		expect(screen.getByRole('button', { name: 'Buka Panel' })).toBeTruthy();
 	});
 
-	it('menampilkan badge status recording pada tombol FAB saat recording', () => {
+	it('menampilkan indicator recording kecil pada tombol FAB saat recording', () => {
 		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
 		expect(document.querySelector('.fab-rec-dot')).toBeNull();
 
@@ -117,7 +117,9 @@ describe('FabApp — Knitto QA Extension (root menu)', () => {
 		});
 		const dot = document.querySelector('.fab-rec-dot');
 		expect(dot).toBeTruthy();
-		expect(dot?.textContent?.trim()).toBe('3');
+		// Indikator kecil tanpa teks angka.
+		expect(dot?.textContent ?? '').toBe('');
+		expect(dot?.getAttribute('aria-label')).toContain('3');
 	});
 
 	it('backdrop dan Esc menutup sidebar', () => {
