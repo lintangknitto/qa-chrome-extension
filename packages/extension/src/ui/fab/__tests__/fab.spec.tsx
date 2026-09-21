@@ -44,61 +44,79 @@ afterEach(() => {
 });
 
 const sidebar = (): HTMLElement | null =>
-	screen.queryByRole('dialog', { name: 'Sidebar QA Knitto Recorder' });
+	screen.queryByRole('dialog', { name: 'Knitto QA Extension' });
 
-describe('FabApp (sidebar geser)', () => {
-	it('tombol FAB (logo + badge QA) ada; klik membuka sidebar', () => {
+const openFab = (): void => {
+	fireEvent.click(screen.getByRole('button', { name: 'QA Knitto Extension' }));
+};
+
+describe('FabApp — Knitto QA Extension (root menu)', () => {
+	it('menampilkan header QA Extension dan root menu Recorder/Setting saat sidebar dibuka', () => {
 		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
 
-		expect(screen.getByRole('button', { name: 'QA Knitto Recorder' })).toBeTruthy();
-		expect(sidebar()).toBeTruthy(); // selalu ter-mount, tersembunyi via offset
+		expect(screen.getByRole('button', { name: 'QA Knitto Extension' })).toBeTruthy();
+		expect(sidebar()).toBeTruthy();
 		expect(sidebar()?.dataset.open).toBe('false');
 
-		fireEvent.click(screen.getByRole('button', { name: 'QA Knitto Recorder' }));
+		openFab();
 		expect(sidebar()?.dataset.open).toBe('true');
+		expect(screen.getByText('Knitto QA Extension')).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Recorder' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Setting' })).toBeTruthy();
+	});
+
+	it('navigasi root → Recorder → kembali', () => {
+		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
+		openFab();
+
+		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
 		expect(screen.getByRole('button', { name: 'Mulai Recording' })).toBeTruthy();
 		expect(screen.getByRole('button', { name: 'Generate Hasil' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Setting' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Recorder' })).toBeNull();
+
+		fireEvent.click(screen.getByRole('button', { name: 'Kembali ke menu utama' }));
+		expect(screen.getByRole('button', { name: 'Recorder' })).toBeTruthy();
 	});
 
-	it('buka tutup via backdrop', () => {
+	it('navigasi root → Setting: toggle tampil FAB & sisi disimpan, lalu kembali', () => {
 		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
-		fireEvent.click(screen.getByRole('button', { name: 'QA Knitto Recorder' }));
-		expect(sidebar()?.dataset.open).toBe('true');
+		openFab();
 
-		fireEvent.click(screen.getByRole('button', { name: 'Tutup sidebar' }));
-		expect(sidebar()?.dataset.open).toBe('false');
-	});
-
-	it('menu berubah saat state recording via fab:stateChanged', () => {
-		render(<FabApp settings={{ enabled: true, side: 'left' }} />);
-		runtimeListeners.forEach((listener) =>
-			listener({ type: 'fab:stateChanged', state: { recording: true, pendingEvents: 1 } })
-		);
-		fireEvent.click(screen.getByRole('button', { name: 'QA Knitto Recorder' }));
-		expect(screen.getByRole('button', { name: 'Tambah Checkpoint' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'End Recording' })).toBeTruthy();
-		expect(screen.getByRole('button', { name: 'Setting' })).toBeTruthy();
-	});
-
-	it('Setting: toggle tampil FAB & ganti sisi disimpan ke storage', () => {
-		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
-		fireEvent.click(screen.getByRole('button', { name: 'QA Knitto Recorder' }));
 		fireEvent.click(screen.getByRole('button', { name: 'Setting' }));
-
 		expect(screen.getByRole('button', { name: 'Tampilkan FAB' })).toBeTruthy();
+
 		fireEvent.click(screen.getByRole('button', { name: 'Tampilkan FAB' }));
 		expect((storageStore.get(FAB_SETTINGS_KEY) as { enabled: boolean }).enabled).toBe(false);
 
 		fireEvent.click(screen.getByRole('button', { name: 'Kiri' }));
 		expect((storageStore.get(FAB_SETTINGS_KEY) as { side: string }).side).toBe('left');
+
+		fireEvent.click(screen.getByRole('button', { name: 'Kembali ke menu utama' }));
+		expect(screen.getByRole('button', { name: 'Recorder' })).toBeTruthy();
 	});
 
-	it('Esc menutup sidebar', () => {
+	it('sub-menu recorder adaptif saat fab:stateChanged recording', () => {
+		render(<FabApp settings={{ enabled: true, side: 'left' }} />);
+		runtimeListeners.forEach((listener) =>
+			listener({ type: 'fab:stateChanged', state: { recording: true, pendingEvents: 1 } })
+		);
+		openFab();
+		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		expect(screen.getByRole('button', { name: 'Tambah Checkpoint' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'End Recording' })).toBeTruthy();
+		expect(screen.queryByRole('button', { name: 'Mulai Recording' })).toBeNull();
+	});
+
+	it('backdrop dan Esc menutup sidebar', () => {
 		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
-		fireEvent.click(screen.getByRole('button', { name: 'QA Knitto Recorder' }));
+		openFab();
 		expect(sidebar()?.dataset.open).toBe('true');
+
 		fireEvent.keyDown(document, { key: 'Escape' });
+		expect(sidebar()?.dataset.open).toBe('false');
+
+		openFab();
+		fireEvent.click(screen.getByRole('button', { name: 'Tutup sidebar' }));
 		expect(sidebar()?.dataset.open).toBe('false');
 	});
 });

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "QA Knitto Extenstion",
+  "name": "Knitto QA Extension",
   "version": "0.4.0",
-  "description": "Connect your browser to AI agents through Playwright MCP server and CLI. Enables AI-driven web testing, debugging, and automation.",
+  "description": "Knitto QA Extension — koneksi browser ke recorder QA, AI agents via Playwright MCP, dan asistensi pengujian.",
   "permissions": [
     "debugger",
     "activeTab",
@@ -22,7 +22,7 @@
     "default_path": "sidepanel.html"
   },
   "action": {
-    "default_title": "QA Knitto Extenstion",
+    "default_title": "Knitto QA Extension",
     "default_icon": {
       "16": "icons/icon-16.png",
       "32": "icons/icon-32.png",

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
 	FAB_SETTINGS_DEFAULTS,
 	fabMenuForState,
+	fabRootMenu,
 	isRestrictedFabUrl,
 	parseFabSettings
 } from '../fab-state';
@@ -25,12 +26,16 @@ describe('fab-state', () => {
 	});
 
 	describe('fabMenuForState', () => {
-		it('menu idle berisi Mulai/Generate/Panel/Setting', () => {
-			expect(fabMenuForState('idle').map((item) => item.id)).toEqual(['start', 'generate', 'panel', 'setting']);
+		it('sub-menu recorder idle berisi Mulai/Generate/Panel', () => {
+			expect(fabMenuForState('idle').map((item) => item.id)).toEqual(['start', 'generate', 'panel']);
 		});
 
-		it('menu recording berisi Checkpoint/End/Panel/Setting', () => {
-			expect(fabMenuForState('recording').map((item) => item.id)).toEqual(['checkpoint', 'end', 'panel', 'setting']);
+		it('sub-menu recorder saat recording berisi Checkpoint/End/Panel', () => {
+			expect(fabMenuForState('recording').map((item) => item.id)).toEqual(['checkpoint', 'end', 'panel']);
+		});
+
+		it('root menu berisi Recorder dan Setting', () => {
+			expect(fabRootMenu.map((item) => item.id)).toEqual(['recorder', 'setting']);
 		});
 	});
 

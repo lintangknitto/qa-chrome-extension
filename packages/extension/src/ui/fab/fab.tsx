@@ -1,21 +1,28 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { fabMenuForState, type FabIntent, type FabSettings } from './fab-state';
+import { fabMenuForState, fabRootMenu, type FabIntent, type FabSettings } from './fab-state';
 import { isFabStateChanged, openPanelWithIntent, requestFabState } from './fab-messaging';
 import { saveFabSettings } from './fab-settings';
 import { FabLogo } from './FabLogo';
-import { fabIcons } from './fab-icons';
+import { fabIcons, recorderIcon } from './fab-icons';
 
 const SIDEBAR_WIDTH = 500;
+
+type FabView = 'root' | 'recorder' | 'setting';
 
 interface FabAppProps {
 	settings: FabSettings;
 }
 
+const rootIcons: Record<'recorder' | 'setting', React.ReactElement> = {
+	recorder: recorderIcon,
+	setting: fabIcons.setting
+};
+
 export const FabApp = (props: FabAppProps): React.ReactElement => {
 	const [state, setState] = useState<'idle' | 'recording'>('idle');
 	const [settings, setSettings] = useState<FabSettings>(props.settings);
 	const [open, setOpen] = useState(false);
-	const [settingOpen, setSettingOpen] = useState(false);
+	const [view, setView] = useState<FabView>('root');
 	const rootRef = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -27,7 +34,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 			if (isFabStateChanged(message)) {
 				setState(message.state.recording ? 'recording' : 'idle');
 				setOpen(false);
-				setSettingOpen(false);
+				setView('root');
 			}
 		};
 		chrome.runtime.onMessage.addListener(onMessage);
@@ -43,7 +50,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		const onKeyDown = (event: KeyboardEvent): void => {
 			if (event.key === 'Escape') {
 				setOpen(false);
-				setSettingOpen(false);
+				setView('root');
 			}
 		};
 		document.addEventListener('keydown', onKeyDown);
@@ -52,17 +59,13 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 
 	const closeAll = useCallback(() => {
 		setOpen(false);
-		setSettingOpen(false);
+		setView('root');
 	}, []);
 
 	const activate = useCallback(
 		async (intent: FabIntent) => {
-			if (intent === 'setting') {
-				setSettingOpen(true);
-				return;
-			}
 			setOpen(false);
-			setSettingOpen(false);
+			setView('root');
 			await openPanelWithIntent(intent);
 		},
 		[]
@@ -79,6 +82,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		setSettings(next);
 		void saveFabSettings(next);
 	}, [settings]);
+
+	const backToRoot = useCallback(() => setView('root'), []);
 
 	const side = settings.side;
 	const triggerStyle: React.CSSProperties = {
@@ -101,18 +106,27 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				className="fab-sidebar"
 				role="dialog"
 				aria-modal="true"
-				aria-label="Sidebar QA Knitto Recorder"
+				aria-label="Knitto QA Extension"
 				style={sidebarStyle}
 				data-open={open}
 			>
 				<div className="fab-sidebar-header">
-					<span>QA Knitto Recorder</span>
+					<span>Knitto QA Extension</span>
+					{view !== 'root' ? (
+						<button
+							className="fab-sidebar-back"
+							aria-label="Kembali ke menu utama"
+							onClick={backToRoot}
+						>
+							←
+						</button>
+					) : null}
 					<button className="fab-sidebar-close" aria-label="Tutup" onClick={closeAll}>
 						✕
 					</button>
 				</div>
 				<div className="fab-sidebar-body">
-					{settingOpen ? (
+					{view === 'setting' ? (
 						<div className="fab-setting-group">
 							<span className="fab-setting-label">Pengaturan</span>
 							<button
@@ -138,11 +152,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 									Kiri
 								</button>
 							</div>
-							<button className="fab-menu-item fab-menu-item--back" onClick={() => setSettingOpen(false)}>
-								← Menu
-							</button>
 						</div>
-					) : (
+					) : view === 'recorder' ? (
 						<div className="fab-menu-grid">
 							{menuItems.map((item) => (
 								<button
@@ -155,6 +166,19 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 								</button>
 							))}
 						</div>
+					) : (
+						<div className="fab-menu-grid fab-menu-grid--root">
+							{fabRootMenu.map((item) => (
+								<button
+									key={item.id}
+									className="fab-menu-item"
+									onClick={() => setView(item.id as FabView)}
+								>
+									<span className="fab-menu-icon">{rootIcons[item.id]}</span>
+									<span className="fab-menu-label">{item.label}</span>
+								</button>
+							))}
+						</div>
 					)}
 				</div>
 			</aside>
@@ -162,11 +186,11 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 			<button
 				className={`fab-trigger ${side === 'left' ? 'fab-side-left' : ''}`}
 				style={triggerStyle}
-				aria-label="QA Knitto Recorder"
+				aria-label="QA Knitto Extension"
 				aria-expanded={open}
 				onClick={() => {
 					setOpen((value) => !value);
-					setSettingOpen(false);
+					setView('root');
 				}}
 			>
 				<FabLogo />

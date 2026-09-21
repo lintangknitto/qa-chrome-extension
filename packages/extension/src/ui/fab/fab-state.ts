@@ -48,15 +48,24 @@ export const fabMenuForState = (state: FabUiState): FabMenuItem[] =>
 		? [
 				{ id: 'checkpoint', label: 'Tambah Checkpoint' },
 				{ id: 'end', label: 'End Recording' },
-				{ id: 'panel', label: 'Buka Panel' },
-				{ id: 'setting', label: 'Setting' }
+				{ id: 'panel', label: 'Buka Panel' }
 			]
 		: [
 				{ id: 'start', label: 'Mulai Recording' },
 				{ id: 'generate', label: 'Generate Hasil' },
-				{ id: 'panel', label: 'Buka Panel' },
-				{ id: 'setting', label: 'Setting' }
+				{ id: 'panel', label: 'Buka Panel' }
 			];
+
+export interface FabRootMenu {
+	id: 'recorder' | 'setting';
+	label: string;
+}
+
+/** Root menu sidebar Knitto QA Extension: dua kategori besar. */
+export const fabRootMenu: FabRootMenu[] = [
+	{ id: 'recorder', label: 'Recorder' },
+	{ id: 'setting', label: 'Setting' }
+];
 
 export const parseFabSettings = (raw: unknown): FabSettings => {
 	const record = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {};

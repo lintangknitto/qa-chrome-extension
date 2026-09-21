@@ -402,33 +402,40 @@ const main = async () => {
 	// -------------------------------------------------------------------------
 	// TC13 — Floating button & sidebar (state idle; halaman uji terpisah)
 	// -------------------------------------------------------------------------
-	await step('TC13-1 FAB + sidebar geser (idle): klik → sidebar terbuka + menu grid', async () => {
+	await step('TC13-1 FAB + sidebar (root menu) terbuka di halaman uji', async () => {
 		const fabPage = await context.newPage();
 		state.fabPage = fabPage;
 		await fabPage.goto(`${INDEX_URL}?page=fab`);
 		await fabPage.locator(`#${'qa-knitto-fab-host'}`).first().waitFor({ state: 'attached', timeout: 10000 });
 
-		const trigger = fabPage.getByRole('button', { name: 'QA Knitto Recorder' });
+		const trigger = fabPage.getByRole('button', { name: 'QA Knitto Extension' });
 		await trigger.waitFor({ state: 'attached', timeout: 5000 });
 		await fabPage.locator('.fab-sidebar[data-open="false"]').first().waitFor({ state: 'attached', timeout: 5000 });
 
 		await trigger.click();
-		// Tunggu transisi slider selesai supaya elemen "stabil" untuk aksi.
 		await fabPage.waitForTimeout(800);
 		await fabPage.locator('.fab-sidebar[data-open="true"]').first().waitFor({ state: 'visible', timeout: 5000 });
 		await fabPage.locator('.fab-backdrop').first().waitFor({ state: 'visible', timeout: 3000 });
+		await fabPage.getByText('Knitto QA Extension').first().waitFor({ state: 'visible', timeout: 3000 });
+
+		// Root menu: Recorder & Setting.
+		await fabPage.getByRole('button', { name: 'Recorder' }).first().waitFor({ state: 'visible', timeout: 5000 });
+		await fabPage.getByRole('button', { name: 'Setting' }).first().waitFor({ state: 'visible', timeout: 3000 });
+
+		// Root → Recorder (idle) → kembali.
+		await fabPage.getByRole('button', { name: 'Recorder' }).first().click();
 		await fabPage.getByRole('button', { name: 'Mulai Recording' }).first().waitFor({ state: 'visible', timeout: 5000 });
-		await fabPage.getByRole('button', { name: 'Generate Hasil' }).first().waitFor({ state: 'visible', timeout: 3000 });
-		await fabPage.getByRole('button', { name: 'Buka Panel' }).first().waitFor({ state: 'visible', timeout: 3000 });
+		await fabPage.getByRole('button', { name: 'Kembali ke menu utama' }).first().click();
+		await fabPage.getByRole('button', { name: 'Recorder' }).first().waitFor({ state: 'visible', timeout: 3000 });
 
 		await fabPage.keyboard.press('Escape');
 		await fabPage.locator('.fab-sidebar[data-open="false"]').first().waitFor({ state: 'attached', timeout: 5000 });
-		return 'FAB host + sidebar slide-in + backdrop + menu grid idle';
+		return 'root menu (Recorder/Setting) + nav Recorder + kembali + Esc';
 	});
 
-	await step('TC13-2 Setting FAB (idle): toggle tampil/sembunyi + ganti sisi', async () => {
+	await step('TC13-2 Setting dari root: toggle off/on + ganti sisi', async () => {
 		const page = state.fabPage;
-		const trigger = page.getByRole('button', { name: 'QA Knitto Recorder' });
+		const trigger = page.getByRole('button', { name: 'QA Knitto Extension' });
 		await trigger.click();
 		await page.waitForTimeout(800);
 		await page.getByRole('button', { name: 'Setting' }).first().waitFor({ state: 'visible', timeout: 5000 });
@@ -442,16 +449,16 @@ const main = async () => {
 		);
 		await page.locator(`#${'qa-knitto-fab-host'}`).waitFor({ state: 'detached', timeout: 5000 });
 
-		// tampil kembali + pindah sisi kiri
+		// tampil kembali + sisi kiri
 		await state.panel.evaluate(() =>
 			chrome.storage.local.set({ qa_fab_settings: { enabled: true, side: 'left' } })
 		);
 		await page.locator(`#${'qa-knitto-fab-host'}`).first().waitFor({ state: 'attached', timeout: 5000 });
 		await page
-			.locator('.fab-root[data-side="left"] [aria-label="QA Knitto Recorder"]')
+			.locator('.fab-root[data-side="left"] [aria-label="QA Knitto Extension"]')
 			.first()
 			.waitFor({ state: 'attached', timeout: 5000 });
-		return 'setting toggle off/on + ganti sisi (storage onChanged)';
+		return 'setting dari root: toggle off/on + ganti sisi (storage onChanged)';
 	});
 
 	// -------------------------------------------------------------------------

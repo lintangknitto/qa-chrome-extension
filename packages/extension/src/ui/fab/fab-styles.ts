@@ -111,6 +111,16 @@ export const FAB_CSS = `
   line-height: 1;
   padding: 4px 6px;
 }
+.fab-sidebar-back {
+  border: none;
+  background: transparent;
+  color: ${NAVY};
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 4px 8px;
+  margin-right: auto;
+}
 .fab-sidebar-close:hover { background: ${NAVY_100}; border-radius: 6px; }
 .fab-sidebar-body {
   flex: 1 1 auto;
