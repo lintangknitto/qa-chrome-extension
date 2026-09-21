@@ -1,5 +1,9 @@
 # Floating Button Extension — Knitto QA Extension (refine)
 
+> **Changelog 3.3 (2026-09-21, polish badge):**
+> - Badge recording di tombol FAB diubah jadi **indikator kecil** (titik 10px, denyut halus)
+>   tanpa angka visual; jumlah pending dipertahankan hanya di `aria-label`.
+>
 > **Changelog 3.2 (2026-09-21):**
 > - **Hapus toggle "Tampilkan FAB".** FAB **selalu tampil** (menghindari jebakan: sekali
 >   disembunyikan tidak ada cara menampilkan lagi). Setting kini hanya **sisi Kanan/Kiri**;

@@ -54,6 +54,10 @@ Desain: FAB logo Knitto+badge QA membuka **sidebar 500px geser**; sidebar punya 
 
 - [x] **Test & harness disesuaikan:** `fab.spec.tsx` (Setting tanpa "Tampilkan FAB", pilih sisi → storage); TC13-2 harness hanya menguji ganti sisi (tanpa unmount); **12 file / 55 test lulus**; `typecheck`/`build` EXIT 0.
 
+## Polish badge recording (refine 3.3)
+
+- [x] **Indikator kecil:** `.fab-rec-dot` → titik **10px** bulat (top-right tombol), denyut halus, tanpa angka visual; counter pending hanya di `aria-label`. **Acceptance:** unit test (indikator ada, textContent kosong, aria-label berisi jumlah) + build.
+
 ## Closing Gates
 
 - [x] Jalankan cheap checks extension: `pnpm --filter @playwright/extension typecheck` (EXIT 0), `pnpm --filter @playwright/extension test` (12 file / 55 test lulus), `pnpm --filter @playwright/extension build` (EXIT 0; `dist/lib/content.js` iife). (backend tidak tersentuh)
