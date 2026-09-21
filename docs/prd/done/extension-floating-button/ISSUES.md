@@ -57,6 +57,6 @@ Desain: FAB logo Knitto+badge QA membuka **sidebar 500px geser**; sidebar punya 
 ## Closing Gates
 
 - [x] Jalankan cheap checks extension: `pnpm --filter @playwright/extension typecheck` (EXIT 0), `pnpm --filter @playwright/extension test` (12 file / 55 test lulus), `pnpm --filter @playwright/extension build` (EXIT 0; `dist/lib/content.js` iife). (backend tidak tersentuh)
-- [ ] Jalankan `/qa` untuk full E2E/manual verification dan evidence.
-- [ ] Jalankan `/gate` untuk code review lima-axis dan security review.
+- [x] Jalankan `/qa` untuk full E2E/manual verification dan evidence. (`QA-REPORT.md` refine 3.2: extension E2E **30/30** — TC13-2 Setting hanya sisi (via UI), TC13-1 root menu, TC13-3 buka langsung Recorder + badge; API 21/21 & Socket.IO 16/16 sebagai prasyarat)
+- [x] Jalankan `/gate` untuk code review lima-axis dan security review. (refine 3.2 tidak ada blocker — penghapusan toggle-hide menyederhanakan; catatan non-blocking sebelumnya tetap)
 - [ ] Jalankan `/promote` setelah `/qa` dan `/gate` dinyatakan lolos.

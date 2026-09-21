@@ -433,7 +433,7 @@ const main = async () => {
 		return 'root menu (Recorder/Setting) + nav Recorder + kembali + Esc';
 	});
 
-	await step('TC13-2 Setting dari root: ganti sisi sidebar', async () => {
+	await step('TC13-2 Setting dari root: ganti sisi sidebar via UI', async () => {
 		const page = state.fabPage;
 		const trigger = page.getByRole('button', { name: 'QA Knitto Extension' });
 		await trigger.click();
@@ -441,17 +441,14 @@ const main = async () => {
 		await page.getByRole('button', { name: 'Setting' }).first().waitFor({ state: 'visible', timeout: 5000 });
 		await page.getByRole('button', { name: 'Setting' }).first().click();
 		await page.locator('.fab-setting-group').first().waitFor({ state: 'visible', timeout: 3000 });
-		await page.getByRole('button', { name: 'Kiri' }).first().waitFor({ state: 'visible', timeout: 3000 });
 
-		// Ganti sisi via storage (FAB selalu tampil — tidak ada toggle hide).
-		await state.panel.evaluate(() =>
-			chrome.storage.local.set({ qa_fab_settings: { enabled: true, side: 'left' } })
-		);
+		// Ganti sisi lewat radio UI (state lokal FabApp + simpan storage).
+		await page.getByRole('button', { name: 'Kiri' }).first().click();
 		await page
 			.locator('.fab-root[data-side="left"] [aria-label="QA Knitto Extension"]')
 			.first()
 			.waitFor({ state: 'attached', timeout: 5000 });
-		return 'setting dari root: ganti sisi kanan→kiri';
+		return 'setting dari root: ganti sisi kanan→kiri (via UI)';
 	});
 
 	// -------------------------------------------------------------------------
