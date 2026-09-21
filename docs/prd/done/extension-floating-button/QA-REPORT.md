@@ -1,6 +1,6 @@
 # QA Report — Floating Button Extension (Knitto QA Extension, refine 3.0)
 
-Tanggal: 2026-09-21 · Plan: `docs/prd/todo/extension-floating-button/` (refine 3.0)
+Tanggal: 2026-09-21 · Plan: `docs/prd/done/extension-floating-button/` (refine 3.0)
 Status: **PASS — flow FAB/sidebar root-menu di browser nyata lulus; backend lulus penuh**
 
 ## Environment verifikasi
