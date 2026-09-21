@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React, { act } from 'react';
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { FabApp } from '../fab';
 import { FAB_SETTINGS_KEY } from '../fab-settings';
@@ -10,14 +10,19 @@ const runtimeListeners: RuntimeListener[] = [];
 
 const storageStore = new Map<string, unknown>();
 
+let openPanelResult = true;
+
 beforeEach(() => {
 	runtimeListeners.length = 0;
 	storageStore.clear();
+	openPanelResult = true;
 	(globalThis as unknown as { chrome: unknown }).chrome = {
 		runtime: {
 			lastError: null as unknown,
-			sendMessage: vi.fn((_message: unknown, callback?: (response?: unknown) => void) => {
-				callback?.({ recording: false, pendingEvents: 0 });
+			sendMessage: vi.fn((message: unknown, callback?: (response?: unknown) => void) => {
+				const type = (message as { type?: string }).type;
+				if (type === 'fab:openPanel') callback?.({ success: openPanelResult });
+				else callback?.({ recording: false, pendingEvents: 0 });
 			}),
 			onMessage: {
 				addListener: vi.fn((listener: RuntimeListener) => runtimeListeners.push(listener)),
@@ -120,6 +125,29 @@ describe('FabApp — Knitto QA Extension (root menu)', () => {
 		// Indikator kecil tanpa teks angka.
 		expect(dot?.textContent ?? '').toBe('');
 		expect(dot?.getAttribute('aria-label')).toContain('3');
+	});
+
+	it('klik Mulai Recording sukses → sidebar tertutup (panel dibuka)', async () => {
+		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
+		openFab();
+		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		await waitFor(() => expect(screen.getByRole('button', { name: 'Mulai Recording' })).toBeTruthy());
+
+		fireEvent.click(screen.getByRole('button', { name: 'Mulai Recording' }));
+		await waitFor(() => expect(sidebar()?.dataset.open).toBe('false'));
+		expect(screen.queryByText(/Gagal membuka/i)).toBeNull();
+	});
+
+	it('klik Mulai Recording gagal → sidebar tetap terbuka + notice jelas', async () => {
+		openPanelResult = false;
+		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
+		openFab();
+		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		await waitFor(() => expect(screen.getByRole('button', { name: 'Mulai Recording' })).toBeTruthy());
+
+		fireEvent.click(screen.getByRole('button', { name: 'Mulai Recording' }));
+		await waitFor(() => expect(sidebar()?.dataset.open).toBe('true'));
+		expect(screen.getByText(/Gagal membuka Side Panel/i)).toBeTruthy();
 	});
 
 	it('backdrop dan Esc menutup sidebar', () => {

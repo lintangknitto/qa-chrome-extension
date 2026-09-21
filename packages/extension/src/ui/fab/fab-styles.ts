@@ -138,6 +138,17 @@ export const FAB_CSS = `
   margin-right: auto;
 }
 .fab-sidebar-close:hover { background: ${NAVY_100}; border-radius: 6px; }
+.fab-sidebar-footer {
+  padding: 8px 12px;
+  border-top: 1px solid #edf0f7;
+  color: #6b7280;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.fab-sidebar-footer.fab-notice {
+  background: #fdecea;
+  color: #c62828;
+}
 .fab-sidebar-body {
   flex: 1 1 auto;
   overflow-y: auto;

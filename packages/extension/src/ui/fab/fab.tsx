@@ -22,6 +22,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	const [state, setState] = useState<'idle' | 'recording'>('idle');
 	const stateRef = useRef<'idle' | 'recording'>('idle');
 	const [pending, setPending] = useState(0);
+	const [busy, setBusy] = useState(false);
+	const [notice, setNotice] = useState<string | null>(null);
 	const [settings, setSettings] = useState<FabSettings>(props.settings);
 	const [open, setOpen] = useState(false);
 	const [view, setView] = useState<FabView>('root');
@@ -73,9 +75,17 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 
 	const activate = useCallback(
 		async (intent: FabIntent) => {
+			setNotice(null);
+			setBusy(true);
+			const ok = await openPanelWithIntent(intent);
+			setBusy(false);
+			if (!ok) {
+				// Sidebar tetap terbuka + jelas kenapa gagal: biar user "tahu".
+				setNotice('Gagal membuka Side Panel. Pastikan tab ini aktif dan sudah login.');
+				return;
+			}
 			setOpen(false);
 			setView('root');
-			await openPanelWithIntent(intent);
 		},
 		[]
 	);
@@ -154,6 +164,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 								<button
 									key={item.id}
 									className="fab-menu-item"
+									disabled={busy}
 									onClick={() => void activate(item.id)}
 								>
 									<span className="fab-menu-icon">{fabIcons[item.id]}</span>
@@ -175,6 +186,15 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 							))}
 						</div>
 					)}
+					<div className={`fab-sidebar-footer${notice ? ' fab-notice' : ''}`}>
+						{busy
+							? 'Membuka panel…'
+							: notice
+								? notice
+								: state === 'recording'
+									? `Recording aktif${pending > 0 ? ` · ${pending} event menunggu` : ''}`
+									: 'Siap merekam — klik Mulai Recording'}
+					</div>
 				</div>
 			</aside>
 
