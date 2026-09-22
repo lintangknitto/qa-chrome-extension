@@ -201,7 +201,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 			<button
 				className={`fab-trigger ${side === 'left' ? 'fab-side-left' : ''}`}
 				style={triggerStyle}
-				aria-label="QA Knitto Extension"
+				aria-label="Knitto QA Extension"
 				aria-expanded={open}
 				onClick={() => {
 					setOpen((value) => !value);

@@ -408,7 +408,7 @@ const main = async () => {
 		await fabPage.goto(`${INDEX_URL}?page=fab`);
 		await fabPage.locator(`#${'qa-knitto-fab-host'}`).first().waitFor({ state: 'attached', timeout: 10000 });
 
-		const trigger = fabPage.getByRole('button', { name: 'QA Knitto Extension' });
+		const trigger = fabPage.getByRole('button', { name: 'Knitto QA Extension' });
 		await trigger.waitFor({ state: 'attached', timeout: 5000 });
 		await fabPage.locator('.fab-sidebar[data-open="false"]').first().waitFor({ state: 'attached', timeout: 5000 });
 
@@ -435,7 +435,7 @@ const main = async () => {
 
 	await step('TC13-2 Setting dari root: ganti sisi sidebar via UI', async () => {
 		const page = state.fabPage;
-		const trigger = page.getByRole('button', { name: 'QA Knitto Extension' });
+		const trigger = page.getByRole('button', { name: 'Knitto QA Extension' });
 		await trigger.click();
 		await page.waitForTimeout(800);
 		await page.getByRole('button', { name: 'Setting' }).first().waitFor({ state: 'visible', timeout: 5000 });
@@ -445,7 +445,7 @@ const main = async () => {
 		// Ganti sisi lewat radio UI (state lokal FabApp + simpan storage).
 		await page.getByRole('button', { name: 'Kiri' }).first().click();
 		await page
-			.locator('.fab-root[data-side="left"] [aria-label="QA Knitto Extension"]')
+			.locator('.fab-root[data-side="left"] [aria-label="Knitto QA Extension"]')
 			.first()
 			.waitFor({ state: 'attached', timeout: 5000 });
 		return 'setting dari root: ganti sisi kanan→kiri (via UI)';
@@ -510,7 +510,7 @@ const main = async () => {
 	// -------------------------------------------------------------------------
 	await step('TC13-3 saat recording, FAB buka langsung ke Recorder + badge status', async () => {
 		const page = state.fabPage;
-		const trigger = page.getByRole('button', { name: 'QA Knitto Extension' });
+		const trigger = page.getByRole('button', { name: 'Knitto QA Extension' });
 		await trigger.click();
 		await page.waitForTimeout(800);
 

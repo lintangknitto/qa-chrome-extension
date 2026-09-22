@@ -52,14 +52,14 @@ const sidebar = (): HTMLElement | null =>
 	screen.queryByRole('dialog', { name: 'Knitto QA Extension' });
 
 const openFab = (): void => {
-	fireEvent.click(screen.getByRole('button', { name: 'QA Knitto Extension' }));
+	fireEvent.click(screen.getByRole('button', { name: 'Knitto QA Extension' }));
 };
 
 describe('FabApp — Knitto QA Extension (root menu)', () => {
 	it('menampilkan header QA Extension dan root menu Recorder/Setting saat sidebar dibuka', () => {
 		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
 
-		expect(screen.getByRole('button', { name: 'QA Knitto Extension' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Knitto QA Extension' })).toBeTruthy();
 		expect(sidebar()).toBeTruthy();
 		expect(sidebar()?.dataset.open).toBe('false');
 
