@@ -1,0 +1,278 @@
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m Establish a MySQL connection to : qa_recorder (mysql version : 8.4.11)[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m (knitto-mysql) Connection pool config:
+ => connectionLimit: 20
+ => maxPreparedStatements: 200
+ => queueLimit: 0[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m http-server registering routes from C:\Users\IT16\WORK\workspaces\by-program\knitto-tester\rnd\qa-extension-api\src\app\http\auth\auth.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m http-server registering routes from C:\Users\IT16\WORK\workspaces\by-program\knitto-tester\rnd\qa-extension-api\src\app\http\home\home.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m http-server registering routes from C:\Users\IT16\WORK\workspaces\by-program\knitto-tester\rnd\qa-extension-api\src\app\http\project\project.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m http-server registering routes from C:\Users\IT16\WORK\workspaces\by-program\knitto-tester\rnd\qa-extension-api\src\app\http\recording\artifact.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m http-server registering routes from C:\Users\IT16\WORK\workspaces\by-program\knitto-tester\rnd\qa-extension-api\src\app\http\recording\generation.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m http-server registering routes from C:\Users\IT16\WORK\workspaces\by-program\knitto-tester\rnd\qa-extension-api\src\app\http\session\session.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m Loading route module: C:/Users/IT16/WORK/workspaces/by-program/knitto-tester/rnd/qa-extension-api/src/app/http/auth/auth.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m Loading route module: C:/Users/IT16/WORK/workspaces/by-program/knitto-tester/rnd/qa-extension-api/src/app/http/home/home.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m Loading route module: C:/Users/IT16/WORK/workspaces/by-program/knitto-tester/rnd/qa-extension-api/src/app/http/project/project.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m Loading route module: C:/Users/IT16/WORK/workspaces/by-program/knitto-tester/rnd/qa-extension-api/src/app/http/recording/artifact.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m Loading route module: C:/Users/IT16/WORK/workspaces/by-program/knitto-tester/rnd/qa-extension-api/src/app/http/recording/generation.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:39[0m [34m[INFO][0m Loading route module: C:/Users/IT16/WORK/workspaces/by-program/knitto-tester/rnd/qa-extension-api/src/app/http/session/session.routes.ts[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:43[0m [34m[INFO][0m Successfully loaded 6 route modules[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:43[0m [34m[INFO][0m http-server running in port 8010[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:18:44[0m [33m[WARN][0m [401] GET /projects/active 4ms[2m
+  channel: "http"
+  requestId: null
+  userData: null[0m
+[2m2026-09-21 08:19:00[0m [33m[WARN][0m [401] GET /projects/active 1ms[2m
+  channel: "http"
+  requestId: null
+  userData: null[0m
+[2m2026-09-21 08:19:00[0m [34m[INFO][0m [200] POST /auth/login 24ms[2m
+  channel: "http"
+  requestId: "3038ed2c8c81e18da5aa07ea9c8d2e2feb960abd658a6abeaf40c6896ae612f7"
+  userData: null[0m
+[2m2026-09-21 08:19:00[0m [34m[INFO][0m [201] POST /projects 31ms[2m
+  channel: "http"
+  requestId: "d5bb6707d7f6f8d2caab236c2d6ac105d72f8ed7685e84e819e2db131319aea7"
+  userData: {"id_user":1,"nama":"QA Admin","username":"qaadmin","level":"QA"}[0m
+[2m2026-09-21 08:19:00[0m [34m[INFO][0m [200] POST /auth/login 4ms[2m
+  channel: "http"
+  requestId: "3038ed2c8c81e18da5aa07ea9c8d2e2feb960abd658a6abeaf40c6896ae612f7"
+  userData: null[0m
+[2m2026-09-21 08:19:00[0m [34m[INFO][0m [200] GET /sessions?status=recording 19ms[2m
+  channel: "http"
+  requestId: "2a6644074f4f24b2e38683132a8215a140740aa12e79cf2dab22648aaa58a34e"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:01[0m [33m[WARN][0m [400] POST /auth/login 5ms[2m
+  channel: "http"
+  requestId: "3038ed2c8c81e18da5aa07ea9c8d2e2feb960abd658a6abeaf40c6896ae612f7"
+  userData: null[0m
+[2m2026-09-21 08:19:01[0m [34m[INFO][0m [200] POST /auth/login 3ms[2m
+  channel: "http"
+  requestId: "3038ed2c8c81e18da5aa07ea9c8d2e2feb960abd658a6abeaf40c6896ae612f7"
+  userData: null[0m
+[2m2026-09-21 08:19:01[0m [34m[INFO][0m [200] GET /sessions 13ms[2m
+  channel: "http"
+  requestId: "2a6644074f4f24b2e38683132a8215a140740aa12e79cf2dab22648aaa58a34e"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:01[0m [34m[INFO][0m [200] GET /projects/active 15ms[2m
+  channel: "http"
+  requestId: "1de5a683d2d153846cb7ba2058b79c62ccb932bba894396ad5bd73aa7dca013f"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:05[0m [34m[INFO][0m [201] POST /sessions 84ms[2m
+  channel: "http"
+  requestId: "53b2dfa17ffe5d79b2214c2d43192e5494fc0f5895ad75f814a0af87f13762a6"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:05[0m [34m[INFO][0m New recording connection: 3txGrPkNRoS2u-eOAAAB (user 2)[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:19:06[0m [34m[INFO][0m [201] POST /sessions/39/artifacts/presign-upload 105ms[2m
+  channel: "http"
+  requestId: "d3e2092c01b6d0fa07e87fe69d7ece26813e7c22dbc0b56f8a43e93307ae6514"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:06[0m [34m[INFO][0m [201] POST /sessions/39/artifacts/presign-upload 20ms[2m
+  channel: "http"
+  requestId: "d3e2092c01b6d0fa07e87fe69d7ece26813e7c22dbc0b56f8a43e93307ae6514"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:06[0m [34m[INFO][0m [201] POST /sessions/39/artifacts/presign-upload 21ms[2m
+  channel: "http"
+  requestId: "d3e2092c01b6d0fa07e87fe69d7ece26813e7c22dbc0b56f8a43e93307ae6514"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:06[0m [34m[INFO][0m [201] POST /sessions/39/artifacts/presign-upload 18ms[2m
+  channel: "http"
+  requestId: "d3e2092c01b6d0fa07e87fe69d7ece26813e7c22dbc0b56f8a43e93307ae6514"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:06[0m [34m[INFO][0m [201] POST /sessions/39/artifacts/presign-upload 17ms[2m
+  channel: "http"
+  requestId: "d3e2092c01b6d0fa07e87fe69d7ece26813e7c22dbc0b56f8a43e93307ae6514"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:07[0m [34m[INFO][0m [200] POST /sessions/39/artifacts/58/complete 39ms[2m
+  channel: "http"
+  requestId: "685c70789b1cb3e0afd1c5863f898daef946ae5b5b6a16d3f0a1168198b43704"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:07[0m [34m[INFO][0m [200] POST /sessions/39/artifacts/58/complete 22ms[2m
+  channel: "http"
+  requestId: "685c70789b1cb3e0afd1c5863f898daef946ae5b5b6a16d3f0a1168198b43704"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:07[0m [34m[INFO][0m [200] POST /sessions/39/artifacts/58/complete 8ms[2m
+  channel: "http"
+  requestId: "685c70789b1cb3e0afd1c5863f898daef946ae5b5b6a16d3f0a1168198b43704"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:07[0m [34m[INFO][0m [200] POST /sessions/39/artifacts/58/complete 15ms[2m
+  channel: "http"
+  requestId: "685c70789b1cb3e0afd1c5863f898daef946ae5b5b6a16d3f0a1168198b43704"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:07[0m [34m[INFO][0m [200] POST /sessions/39/artifacts/58/complete 15ms[2m
+  channel: "http"
+  requestId: "685c70789b1cb3e0afd1c5863f898daef946ae5b5b6a16d3f0a1168198b43704"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:16[0m [34m[INFO][0m [201] POST /sessions/39/checkpoints 8ms[2m
+  channel: "http"
+  requestId: "37f5c98d9232dde54ce2ac501ec28452cf22b7bb229279198391029bba95147b"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:16[0m [34m[INFO][0m [200] GET /sessions/39/artifacts/58/download-url 4ms[2m
+  channel: "http"
+  requestId: "ef38af1449ee13135cbcb1f2092ee2ebbd4921f045af9480464b85a490612adb"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:37[0m [34m[INFO][0m [200] POST /sessions/39/end 10ms[2m
+  channel: "http"
+  requestId: "63b98ff134e59e147ee00c6a2a130e644162b1883c3dbc2eb9d95dd7c1f091fd"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:37[0m [34m[INFO][0m [200] GET /sessions 4ms[2m
+  channel: "http"
+  requestId: "2a6644074f4f24b2e38683132a8215a140740aa12e79cf2dab22648aaa58a34e"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:37[0m [34m[INFO][0m [200] GET /sessions/39 5ms[2m
+  channel: "http"
+  requestId: "1a38aaed54ab98bd78063ad1ebb9e4c027ab33173d98ffce3888fac800bb4e85"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:37[0m [34m[INFO][0m [200] POST /sessions/39/generations 73ms[2m
+  channel: "http"
+  requestId: "2ccaddb9e74ec8e7c172868848816cb82921716cf24cbb405f2458dbb655a767"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:37[0m [34m[INFO][0m [200] GET /sessions/39/generations 8ms[2m
+  channel: "http"
+  requestId: "6bd275946b128d1f2bd89fac56c5ac2f88775e1ac4c1666078e982836ce39c5e"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:37[0m [34m[INFO][0m [200] GET /sessions/39/generations 5ms[2m
+  channel: "http"
+  requestId: "6bd275946b128d1f2bd89fac56c5ac2f88775e1ac4c1666078e982836ce39c5e"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [33m[WARN][0m [401] GET /projects/active 0ms[2m
+  channel: "http"
+  requestId: null
+  userData: null[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] POST /auth/login 2ms[2m
+  channel: "http"
+  requestId: "3038ed2c8c81e18da5aa07ea9c8d2e2feb960abd658a6abeaf40c6896ae612f7"
+  userData: null[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] POST /auth/login 3ms[2m
+  channel: "http"
+  requestId: "3038ed2c8c81e18da5aa07ea9c8d2e2feb960abd658a6abeaf40c6896ae612f7"
+  userData: null[0m
+[2m2026-09-21 08:19:58[0m [33m[WARN][0m [400] POST /auth/login 2ms[2m
+  channel: "http"
+  requestId: "3038ed2c8c81e18da5aa07ea9c8d2e2feb960abd658a6abeaf40c6896ae612f7"
+  userData: null[0m
+[2m2026-09-21 08:19:58[0m [33m[WARN][0m [403] POST /projects 2ms[2m
+  channel: "http"
+  requestId: "d5bb6707d7f6f8d2caab236c2d6ac105d72f8ed7685e84e819e2db131319aea7"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [201] POST /projects 10ms[2m
+  channel: "http"
+  requestId: "d5bb6707d7f6f8d2caab236c2d6ac105d72f8ed7685e84e819e2db131319aea7"
+  userData: {"id_user":1,"nama":"QA Admin","username":"qaadmin","level":"QA"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] GET /projects/active 4ms[2m
+  channel: "http"
+  requestId: "1de5a683d2d153846cb7ba2058b79c62ccb932bba894396ad5bd73aa7dca013f"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [201] POST /sessions 37ms[2m
+  channel: "http"
+  requestId: "53b2dfa17ffe5d79b2214c2d43192e5494fc0f5895ad75f814a0af87f13762a6"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [33m[WARN][0m [400] POST /sessions 6ms[2m
+  channel: "http"
+  requestId: "53b2dfa17ffe5d79b2214c2d43192e5494fc0f5895ad75f814a0af87f13762a6"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [201] POST /sessions/40/checkpoints 12ms[2m
+  channel: "http"
+  requestId: "67f414a60896c000642915f15df6e8f37c2ed8e515fe37b46a969723d3719e12"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [201] POST /sessions/40/artifacts/presign-upload 11ms[2m
+  channel: "http"
+  requestId: "40911a26b6472004c762ee0ce93834f8318d38fbb9bc9d4a925116d0673bb88d"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] POST /sessions/40/artifacts/59/complete 14ms[2m
+  channel: "http"
+  requestId: "4b6509dd718ef765517eccafd56e12c63fa3c6aa46f1dd97c08b99146afd1163"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] GET /sessions/40/artifacts/59/download-url 4ms[2m
+  channel: "http"
+  requestId: "007f2dede9107a22c33f9d5d6c5d099923121a03b35565e51af4d0162a76c876"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [33m[WARN][0m [400] POST /sessions/40/artifacts/presign-upload 3ms[2m
+  channel: "http"
+  requestId: "40911a26b6472004c762ee0ce93834f8318d38fbb9bc9d4a925116d0673bb88d"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] POST /sessions/40/generations 36ms[2m
+  channel: "http"
+  requestId: "a8cb3e6cc18069ccdf0194865e91f1a4b791f996dc4cd2c9476b2312f3721c7c"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] GET /sessions/40/generations 6ms[2m
+  channel: "http"
+  requestId: "0979ce0ac230451a7212ddd4ca4e2bdca0c5ed75977f968b0fbe32392cc91457"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] POST /sessions/40/generations 61ms[2m
+  channel: "http"
+  requestId: "a8cb3e6cc18069ccdf0194865e91f1a4b791f996dc4cd2c9476b2312f3721c7c"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] GET /sessions/40/generations 5ms[2m
+  channel: "http"
+  requestId: "0979ce0ac230451a7212ddd4ca4e2bdca0c5ed75977f968b0fbe32392cc91457"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] POST /sessions/40/end 8ms[2m
+  channel: "http"
+  requestId: "0487196a51e9720c22111794b3492ac0b6dbf070afbe80431ba207cd2a75fdb1"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [33m[WARN][0m [400] POST /sessions/40/end 3ms[2m
+  channel: "http"
+  requestId: "0487196a51e9720c22111794b3492ac0b6dbf070afbe80431ba207cd2a75fdb1"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] POST /auth/login 2ms[2m
+  channel: "http"
+  requestId: "3038ed2c8c81e18da5aa07ea9c8d2e2feb960abd658a6abeaf40c6896ae612f7"
+  userData: null[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] GET /sessions/40 4ms[2m
+  channel: "http"
+  requestId: "90b3a1abb216f8605d6b239fa3d4c32094c78eb74d63add4e34fd5acc2263482"
+  userData: {"id_user":1,"nama":"QA Admin","username":"qaadmin","level":"QA"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] GET /sessions/40 4ms[2m
+  channel: "http"
+  requestId: "90b3a1abb216f8605d6b239fa3d4c32094c78eb74d63add4e34fd5acc2263482"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] GET /sessions?result=PASS&id_project=32 3ms[2m
+  channel: "http"
+  requestId: "2a6644074f4f24b2e38683132a8215a140740aa12e79cf2dab22648aaa58a34e"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] POST /auth/login 2ms[2m
+  channel: "http"
+  requestId: "3038ed2c8c81e18da5aa07ea9c8d2e2feb960abd658a6abeaf40c6896ae612f7"
+  userData: null[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] GET /sessions?status=recording 5ms[2m
+  channel: "http"
+  requestId: "2a6644074f4f24b2e38683132a8215a140740aa12e79cf2dab22648aaa58a34e"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [200] GET /projects/active 4ms[2m
+  channel: "http"
+  requestId: "1de5a683d2d153846cb7ba2058b79c62ccb932bba894396ad5bd73aa7dca013f"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m [201] POST /sessions 10ms[2m
+  channel: "http"
+  requestId: "53b2dfa17ffe5d79b2214c2d43192e5494fc0f5895ad75f814a0af87f13762a6"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[2m2026-09-21 08:19:58[0m [34m[INFO][0m New recording connection: BX71oH_z2887gcKyAAAF (user 2)[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:19:59[0m [31m[ERROR][0m recording:events gagal: Sequence event recording harus bilangan bulat >= 1.[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:19:59[0m [31m[ERROR][0m recording:events gagal: Versi event recording tidak didukung: 99. Versi yang didukung: 1.[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:19:59[0m [34m[INFO][0m New recording connection: IhqHNzrfzpw9pfXcAAAH (user 2)[2m
+  channel: "app-log"[0m
+[2m2026-09-21 08:19:59[0m [34m[INFO][0m [200] POST /sessions/41/end 16ms[2m
+  channel: "http"
+  requestId: "6f0cde17b913334f9316d60114982014b90bd6d273349a603fc9b56e8dc514ea"
+  userData: {"id_user":2,"nama":"QA Tester","username":"qatester","level":"IMPLEMENTOR"}[0m
+[ELIFECYCLE] Command failed with exit code 4294967295.

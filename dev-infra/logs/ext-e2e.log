@@ -1,0 +1,34 @@
+PASS  Infra: fixture server + Chromium + extension ter-load  - chromium=C:\Users\IT16\AppData\Local\ms-playwright\chromium-1234\chrome-win64\chrome.exe
+PASS  Infra: siapkan project + token tester  - id_project=31
+PASS  Infra: ambil extension id dari service worker dan buka Side Panel  - extensionId=nioebhdlnfdgmpdeahlbbmkgfiiehimb
+PASS  TC1-2 login password salah ditolak (UI)  - error="Username atau password salah"
+PASS  TC1-1 login QA tester lewat UI + token tersimpan  - token=eyJhbGciOiJI...
+PASS  TC2-2 recordingStart tanpa tab ditolak  - Tidak ada tab untuk direkam.
+PASS  TC11-2 tidak ada credential MinIO di manifest/bundle/storage  - storage keys=qa_recording_base_url,qa_recording_token,qa_recording_user
+PASS  TC13-1 FAB + sidebar (root menu) terbuka di halaman uji  - root menu (Recorder/Setting) + nav Recorder + kembali + Esc
+PASS  TC13-2 Setting dari root: ganti sisi sidebar via UI  - setting dari root: ganti sisi kanan→kiri (via UI)
+PASS  TC2-1 Start Recording via UI + group QA Recording dibuat  - id_session=39 groupId=246756033 title="QA Recording"
+PASS  TC9-1 hanya tab target yang ada di group QA Recording  - tabs=1208009001 url=http://127.0.0.1:8123/index.html?page=main
+PASS  TC13-3 saat recording, FAB buka langsung ke Recorder + badge status  - buka langsung Recorder saat recording + badge
+PASS  TC5-1 aksi click/fill/password + kandidat locator tersimpan  - action click + locators tersimpan
+PASS  TC6-1 console log/warn/error semua level tersimpan  - levels=log,warning,error
+PASS  TC6-2 uncaught exception + source location tersimpan  - exception + line/column tersimpan
+PASS  TC7-1 network text/json: method, status, request body tersimpan  - network echo status=200 + request body
+PASS  TC7-2 network binary hanya metadata (body tidak disimpan)  - image/png body_stored=false
+PASS  TC3-1 Add Checkpoint dari Side Panel tersimpan ke MySQL  - checkpoint note tersimpan
+PASS  TC8-1 screenshot setelah aksi tercatat sebagai artifact uploaded  - 1 artifact, contoh key=sessions/39/screenshot/4aff528f-630e-4c6d-9665-11a4562385fd.png
+PASS  TC11-1 presigned download artifact terverifikasi dari MinIO  - bytes=16904
+PASS  TC9-2 tab di luar group TIDAK direkam  - tidak ada event dari tab private
+PASS  TC10-1 tab yang digeser MASUK group mulai direkam  - JOINED_LOG tersimpan setelah masuk group
+PASS  TC10-2 tab yang KELUAR group berhenti direkam  - LEFT_LOG tidak terekam
+PASS  TC5-2 navigasi tercatat sebagai action navigation  - action navigation + url second.html
+PASS  TC12-1 nilai password TIDAK tersimpan di MySQL  - password tidak tersimpan + value_redacted=true
+PASS  TC12-2 nilai field non-sensitif tetap tersimpan  - fullname tersimpan
+PASS  TC4-1 End Recording via UI (PASS) + session completed  - status=completed result=PASS
+PASS  TC4-1 generate Markdown + draft Playwright dari UI  - markdown=294B playwright=309B
+PASS  TC12-3 password tidak muncul di output AI  - output AI bersih dari password
+PASS  Cleanup: hapus data test di MySQL + MinIO  - sessions=39 project=31
+
+=== Hasil verifikasi E2E flow extension ===
+
+Total: 30/30 langkah lulus

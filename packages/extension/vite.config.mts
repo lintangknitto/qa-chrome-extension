@@ -36,6 +36,7 @@ export default defineConfig({
     })
   ],
   root: resolve(__dirname, 'src/ui'),
+  envDir: resolve(__dirname, '.'),
   builder: {},
   environments: {
     client: {
@@ -50,6 +51,24 @@ export default defineConfig({
             entryFileNames: 'lib/ui/[name].js',
             chunkFileNames: 'lib/ui/[name].js',
             assetFileNames: 'lib/ui/[name].[ext]'
+          }
+        }
+      }
+    },
+    fab: {
+      consumer: 'client',
+      builder: {},
+      build: {
+        outDir: resolve(__dirname, 'dist/'),
+        emptyOutDir: false,
+        minify: false,
+        rollupOptions: {
+          input: resolve(__dirname, 'src/ui/fab/fab-content.tsx'),
+          output: {
+            // Bukan mode lib: React ikut ter-bundle ke dalam single iife content script.
+            format: 'iife',
+            entryFileNames: 'lib/content.js',
+            inlineDynamicImports: true
           }
         }
       }

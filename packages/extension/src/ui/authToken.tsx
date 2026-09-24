@@ -43,7 +43,7 @@ export const AuthTokenSection: React.FC<{}> = ({}) => {
 };
 
 function authTokenCode(authToken: string) {
-  return `PLAYWRIGHT_MCP_EXTENSION_TOKEN=${authToken}`;
+  return `KNITTO_QA_TOOLS_TOKEN=${authToken}`;
 }
 
 function generateAuthToken(): string {

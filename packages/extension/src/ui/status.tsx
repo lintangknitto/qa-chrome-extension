@@ -88,7 +88,7 @@ const StatusApp: React.FC = () => {
           ))
         ) : (
           <div className='status-banner'>
-            No clients are currently connected. You can connect from the Playwright CLI or MCP server by passing the --extension flag.
+            No clients are currently connected. You can connect from the Knitto QA CLI or MCP server by passing the --extension flag.
           </div>
         )}
         <AuthTokenSection />

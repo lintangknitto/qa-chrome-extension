@@ -59,7 +59,7 @@ const ConnectApp: React.FC = () => {
       try {
         const host = new URL(relayUrl).hostname;
         if (host !== '127.0.0.1' && host !== '[::1]') {
-          setError(`Playwright extension only allows loopback connections (127.0.0.1 or [::1]). Received host: ${host}`);
+          setError(`Knitto QA Tools only allows loopback connections (127.0.0.1 or [::1]). Received host: ${host}`);
           return;
         }
       } catch (e) {
@@ -69,7 +69,7 @@ const ConnectApp: React.FC = () => {
 
       setStatus({
         type: 'connecting',
-        message: `"${clientInfo}" is trying to connect to the QA Knitto Extenstion.`
+        message: `"${clientInfo}" is trying to connect to Knitto QA Tools.`
       });
 
       const parsedVersion = parseInt(params.get('protocolVersion') ?? '', 10);
@@ -86,7 +86,7 @@ const ConnectApp: React.FC = () => {
         return;
       }
       if (requestedVersion < SUPPORTED_PROTOCOL_VERSION) {
-        setError('The client uses an unsupported protocol version. Update Playwright MCP or CLI to the latest version.');
+        setError('The client uses an unsupported protocol version. Update Knitto QA Tools MCP or CLI to the latest version.');
         return;
       }
       // The background only records the relay URL; the WS to the relay opens
@@ -179,7 +179,7 @@ const ConnectApp: React.FC = () => {
         {showTabList && (
           <div>
             <div className='tab-section-title'>
-              You can drag tabs into the Playwright group later to make them accessible to the client.
+              You can drag tabs into the Knitto QA Tools group later to make them accessible to the client.
               Optionally, select a tab to allow and immediately switch to it:
             </div>
             <div>
@@ -203,13 +203,10 @@ const ConnectApp: React.FC = () => {
 };
 
 const VersionMismatchError: React.FC<{ extensionVersion: string }> = ({ extensionVersion }) => {
-  const readmeUrl = 'https://github.com/microsoft/playwright/blob/main/packages/extension/README.md';
-  const chromeWebStoreUrl = 'https://chromewebstore.google.com/detail/playwright-extension/mmlmfjhmonkocbjadbfplnigmagldckm';
   return (
     <div>
-      Playwright client trying to connect requires newer extension version (current version: {extensionVersion}).{' '}
-      Update <a href={chromeWebStoreUrl} target='_blank' rel='noopener noreferrer'>QA Knitto Extenstion</a> from the Chrome Web Store to the latest version.{' '}
-      See <a href={readmeUrl} target='_blank' rel='noopener noreferrer'>installation instructions</a> for more details.
+      Client trying to connect requires newer extension version (current version: {extensionVersion}).{' '}
+      Please update Knitto QA Tools to the latest version.
     </div>
   );
 };

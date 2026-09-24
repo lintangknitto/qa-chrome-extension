@@ -8,11 +8,12 @@
     "rootDir": "src",
     "outDir": "./lib",
     "resolveJsonModule": true,
-    "types": ["chrome"],
+    "types": ["chrome", "vite/client"],
     "jsx": "react-jsx",
     "jsxImportSource": "react",
     "noEmit": true,
     "noUncheckedSideEffectImports": false,
+    "skipLibCheck": true,
   },
   "include": [
     "src/ui",

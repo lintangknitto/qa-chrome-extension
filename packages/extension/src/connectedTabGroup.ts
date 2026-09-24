@@ -16,12 +16,12 @@
 
 import { RelayConnection, debugLog } from './relayConnection';
 
-const PLAYWRIGHT_GROUP_TITLE = 'Playwright';
-const PLAYWRIGHT_GROUP_TITLE_PREFIX = `${PLAYWRIGHT_GROUP_TITLE} · `;
+const KNITTO_QA_GROUP_TITLE = 'Knitto QA Tools';
+const KNITTO_QA_GROUP_TITLE_PREFIX = `${KNITTO_QA_GROUP_TITLE} · `;
 // Green first, so a lone connection keeps the familiar look.
-const PLAYWRIGHT_GROUP_COLORS: GroupColor[] = ['green', 'blue', 'purple', 'orange', 'pink', 'cyan', 'yellow', 'red'];
+const KNITTO_QA_GROUP_COLORS: GroupColor[] = ['green', 'blue', 'purple', 'orange', 'pink', 'cyan', 'yellow', 'red'];
 const NON_DEBUGGABLE_SCHEMES = ['chrome:', 'edge:', 'devtools:'];
-const CONNECTED_BADGE = { text: '✓', color: '#4CAF50', title: 'Connected to Playwright client' };
+const CONNECTED_BADGE = { text: '✓', color: '#4CAF50', title: 'Connected to Knitto QA Tools client' };
 
 export function isNonDebuggableUrl(url: string | undefined): boolean {
   return !!url && NON_DEBUGGABLE_SCHEMES.some(s => url.startsWith(s));
@@ -36,22 +36,27 @@ export type GroupStyle = {
 
 export function uniqueGroupStyle(clientName: string | undefined, taken: readonly GroupStyle[]): GroupStyle {
   const titles = new Set(taken.map(style => style.title));
-  const base = PLAYWRIGHT_GROUP_TITLE_PREFIX + (clientName || 'unknown');
+  const base = KNITTO_QA_GROUP_TITLE_PREFIX + (clientName || 'unknown');
   let title = base;
   for (let i = 2; titles.has(title); i++)
     title = `${base} (${i})`;
 
   const colors = new Set(taken.map(style => style.color));
-  const color = PLAYWRIGHT_GROUP_COLORS.find(candidate => !colors.has(candidate)) ?? PLAYWRIGHT_GROUP_COLORS[0];
+  const color = KNITTO_QA_GROUP_COLORS.find(candidate => !colors.has(candidate)) ?? KNITTO_QA_GROUP_COLORS[0];
   return { title, color };
 }
 
-// Ungroups any Playwright-titled groups left behind by a prior service worker.
+// Ungroups any Knitto QA Tools or Playwright-titled groups left behind by a prior service worker.
 export async function cleanupStalePlaywrightGroups(): Promise<void> {
   try {
     const groups = await chrome.tabGroups.query({});
-    // The bare title comes from versions that predate per-client groups.
-    const stale = groups.filter(g => g.title === PLAYWRIGHT_GROUP_TITLE || g.title?.startsWith(PLAYWRIGHT_GROUP_TITLE_PREFIX));
+    // Clean up both new Knitto QA Tools groups and legacy Playwright groups.
+    const stale = groups.filter(g =>
+      g.title === KNITTO_QA_GROUP_TITLE ||
+      g.title?.startsWith(KNITTO_QA_GROUP_TITLE_PREFIX) ||
+      g.title === 'Playwright' ||
+      g.title?.startsWith('Playwright · ')
+    );
     const tabsPerGroup = await Promise.all(stale.map(g => chrome.tabs.query({ groupId: g.id })));
     const tabIds = tabsPerGroup.flat().map(t => t.id).filter((id): id is number => id !== undefined);
     if (tabIds.length)

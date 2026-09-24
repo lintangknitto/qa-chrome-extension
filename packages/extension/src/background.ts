@@ -17,6 +17,8 @@
 import { debugLog } from './relayConnection';
 import { PendingConnections } from './pendingConnection';
 import { ConnectedTabGroup, cleanupStalePlaywrightGroups, isNonDebuggableUrl, ungroupTabs, uniqueGroupStyle } from './connectedTabGroup';
+import { RecordingController } from './recording/recorder';
+import { getToken } from './recording/tokenStore';
 
 type PageMessage = {
   type: 'connectionRequested';
@@ -36,6 +38,23 @@ type PageMessage = {
   connectionId: number;
 } | {
   type: 'keepalive';
+} | {
+  type: 'recordingStart';
+  idSession: number;
+  apiBaseUrl: string;
+  tabIds: number[];
+} | {
+  type: 'recordingStop';
+} | {
+  type: 'recordingStatus';
+} | {
+  type: 'fab:getState';
+} | {
+  type: 'fab:openPanel';
+  intent: 'start' | 'checkpoint' | 'end' | 'generate' | 'panel';
+} | {
+  type: 'fetchSpreadsheetCsv';
+  url: string;
 };
 
 class PlaywrightExtension {
@@ -45,6 +64,7 @@ class PlaywrightExtension {
   // Service worker restarts lose all connection state, so any existing
   // Playwright groups are stale. Connections wait on this before reconciling.
   private _cleanupPromise: Promise<void>;
+  private _recorder = new RecordingController();
 
   constructor() {
     chrome.runtime.onMessage.addListener(this._onMessage.bind(this));
@@ -96,7 +116,84 @@ class PlaywrightExtension {
         // Connect page pings us every ~20s so receiving this message resets
         // the MV3 service worker idle timer and keeps the relay WebSocket alive.
         return false;
+      case 'recordingStart': {
+        const tabIds = (message.tabIds && message.tabIds.length > 0)
+          ? message.tabIds
+          : (sender.tab?.id ? [sender.tab.id] : []);
+        this._startRecording(message.idSession, message.apiBaseUrl, tabIds).then(
+            groupId => sendResponse({ success: true, groupId }),
+            (error: any) => sendResponse({ success: false, error: error.message }));
+        return true;
+      }
+      case 'recordingStop':
+        this._recorder.stop().then(
+            () => { this._broadcastFabState(); sendResponse({ success: true }); },
+            (error: any) => sendResponse({ success: false, error: error.message }));
+        return true;
+      case 'recordingStatus':
+        sendResponse({
+          recording: this._recorder.isRecording,
+          pendingEvents: this._recorder.pendingEventCount,
+        });
+        return false;
+      case 'fab:getState':
+        sendResponse({
+          recording: this._recorder.isRecording,
+          pendingEvents: this._recorder.pendingEventCount,
+        });
+        return false;
+      case 'fetchSpreadsheetCsv': {
+        fetch(message.url)
+          .then(async (res) => {
+            if (res.status === 401 || res.status === 403 || (res.redirected && res.url.includes('accounts.google.com'))) {
+              sendResponse({
+                success: false,
+                error: 'Spreadsheet tidak dapat diakses. Pastikan spreadsheet disetel ke "Anyone with the link can view" (Siapa saja yang memiliki link dapat melihat / Public Read-Only).'
+              });
+              return;
+            }
+            if (!res.ok) {
+              sendResponse({
+                success: false,
+                error: `Gagal mengunduh spreadsheet (HTTP ${res.status}). Pastikan URL benar.`
+              });
+              return;
+            }
+            const text = await res.text();
+            if (text.includes('<!DOCTYPE html>') || text.includes('<html')) {
+              sendResponse({
+                success: false,
+                error: 'Spreadsheet meminta login Google. Pastikan izin akses disetel ke "Anyone with the link can view" (Public Read-Only).'
+              });
+              return;
+            }
+            sendResponse({ success: true, csv: text });
+          })
+          .catch((err) => {
+            sendResponse({ success: false, error: (err as Error).message || 'Gagal mengambil data dari Google Sheets.' });
+          });
+        return true;
+      }
     }
+  }
+
+  private async _startRecording(idSession: number, apiBaseUrl: string, tabIds: number[]): Promise<number> {
+    if (this._recorder.isRecording)
+      throw new Error('Recording sudah berjalan.');
+
+    if (tabIds.length === 0) throw new Error('Tidak ada tab untuk direkam.');
+    const groupId = await chrome.tabs.group({ tabIds: tabIds as [number, ...number[]] });
+    await chrome.tabGroups.update(groupId, { title: 'QA Recording', color: 'blue' });
+
+    await this._recorder.start({
+      idSession,
+      apiBaseUrl,
+      getToken,
+      recordingGroupId: groupId,
+    });
+
+    this._broadcastFabState();
+    return groupId;
   }
 
   private async _connectTab(selectorTabId: number, tab: chrome.tabs.Tab & { id: number }, clientName: string | undefined): Promise<void> {
@@ -148,6 +245,19 @@ class PlaywrightExtension {
 
   private _connectedTabIds(): Set<number> {
     return new Set([...this._connections.values()].flatMap(group => group.connectedTabIds()));
+  }
+
+  private _broadcastFabState(): void {
+    const state = {
+      recording: this._recorder.isRecording,
+      pendingEvents: this._recorder.pendingEventCount,
+    };
+    void chrome.tabs.query({}).then((tabs) => {
+      for (const tab of tabs) {
+        if (typeof tab.id !== 'number') continue;
+        chrome.tabs.sendMessage(tab.id, { type: 'fab:stateChanged', state }).catch(() => {});
+      }
+    });
   }
 
   private async _onActionClicked(): Promise<void> {
