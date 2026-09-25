@@ -8,7 +8,12 @@
     "activeTab",
     "tabs",
     "tabGroups",
-    "storage"
+    "tabCapture",
+    "offscreen",
+    "storage",
+    "browsingData",
+    "cookies",
+    "scripting"
   ],
   "host_permissions": [
     "<all_urls>"

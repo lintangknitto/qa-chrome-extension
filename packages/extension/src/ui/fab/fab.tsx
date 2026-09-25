@@ -17,6 +17,7 @@ import {
 	clearAuth,
 	getActiveSession,
 	getBaseUrl,
+	setBaseUrl,
 	getToken,
 	getUser,
 	saveAuth,
@@ -30,13 +31,15 @@ import { ActiveView } from './views/ActiveView';
 import { ResultView } from './views/ResultView';
 import { HistoryView, type GenerationItem } from './views/HistoryView';
 import { ProjectView } from './views/ProjectView';
+import { CleanerView } from './views/CleanerView';
+import { TestCaseResultModal } from './views/TestCaseResultModal';
 import { Toast } from './components/Toast';
-import { Play, History, Settings, LogOut, User, FolderKanban } from 'lucide-react';
+import { Play, History, Settings, LogOut, User, FolderKanban, Wrench, ChevronDown, ChevronRight, Trash2, Video } from 'lucide-react';
 import type { TestCaseItem } from '../../recording/apiClient';
 
 const DEFAULT_SIDEBAR_WIDTH = 520;
 const MIN_SIDEBAR_WIDTH = 420;
-const DEFAULT_BASE_URL = (import.meta.env?.VITE_API_BASE_URL as string) || 'http://localhost:8010';
+const DEFAULT_BASE_URL = (import.meta.env?.VITE_API_BASE_URL as string) || 'http://192.168.21.38:8010';
 
 interface FabAppProps {
 	settings: FabSettings;
@@ -65,6 +68,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	const [open, setOpen] = useState(false);
 	const [view, setView] = useState<FabView>('root');
 	const [railCollapsed, setRailCollapsed] = useState(false);
+	const [isToolsExpanded, setIsToolsExpanded] = useState(false);
+	const toolsHoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 	const rootRef = useRef<HTMLDivElement>(null);
 
 	// Resizable sidebar states
@@ -141,6 +146,15 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	const [generations, setGenerations] = useState<GenerationItem[]>([]);
 	const [activeGenSessionId, setActiveGenSessionId] = useState<number | null>(null);
 	const [prefilledTestCase, setPrefilledTestCase] = useState<PrefilledTestCase | null>(null);
+	const [isResultModalOpen, setResultModalOpen] = useState(false);
+	const [resultModalSessionId, setResultModalSessionId] = useState<number | null>(null);
+	const [resultModalTestCase, setResultModalTestCase] = useState<TestCaseItem | null>(null);
+
+	const handleOpenSessionDetail = useCallback((session: RecordingSession) => {
+		setResultModalSessionId(session.id_session);
+		setResultModalTestCase(null);
+		setResultModalOpen(true);
+	}, []);
 
 	const api = useMemo(
 		() =>
@@ -169,7 +183,14 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				getUser(),
 				getActiveSession()
 			]);
-			if (storedBaseUrl) setBaseUrlState(storedBaseUrl);
+			if (storedBaseUrl) {
+				if (storedBaseUrl.includes('localhost') || storedBaseUrl.includes('127.0.0.1')) {
+					setBaseUrlState(DEFAULT_BASE_URL);
+					void setBaseUrl(DEFAULT_BASE_URL).catch(() => {});
+				} else {
+					setBaseUrlState(storedBaseUrl);
+				}
+			}
 			setToken(storedToken);
 			setUser(storedUser);
 			setActiveSessionState(storedSession);
@@ -312,9 +333,43 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		return () => document.removeEventListener('keydown', onKeyDown);
 	}, [open]);
 
-	const closeAll = useCallback(() => {
-		setOpen(false);
+	const handleCloseToolsDropdown = useCallback(() => {
+		if (toolsHoverTimeoutRef.current) {
+			clearTimeout(toolsHoverTimeoutRef.current);
+			toolsHoverTimeoutRef.current = null;
+		}
+		setIsToolsExpanded(false);
 	}, []);
+
+	const handleToolsMouseEnter = useCallback(() => {
+		if (toolsHoverTimeoutRef.current) {
+			clearTimeout(toolsHoverTimeoutRef.current);
+			toolsHoverTimeoutRef.current = null;
+		}
+		setIsToolsExpanded(true);
+	}, []);
+
+	const handleToolsMouseLeave = useCallback(() => {
+		if (toolsHoverTimeoutRef.current) {
+			clearTimeout(toolsHoverTimeoutRef.current);
+		}
+		toolsHoverTimeoutRef.current = setTimeout(() => {
+			setIsToolsExpanded(false);
+		}, 150);
+	}, []);
+
+	useEffect(() => {
+		return () => {
+			if (toolsHoverTimeoutRef.current) {
+				clearTimeout(toolsHoverTimeoutRef.current);
+			}
+		};
+	}, []);
+
+	const closeAll = useCallback(() => {
+		handleCloseToolsDropdown();
+		setOpen(false);
+	}, [handleCloseToolsDropdown]);
 
 	const handleBack = useCallback(() => {
 		setError(null);
@@ -331,6 +386,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	}, [view, token]);
 
 	const handleNavigateRecorder = useCallback(() => {
+		handleCloseToolsDropdown();
 		setRailCollapsed(true);
 		setError(null);
 		setNotice(null);
@@ -341,7 +397,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		} else {
 			setView('start');
 		}
-	}, [state, activeSession, token]);
+	}, [state, activeSession, token, handleCloseToolsDropdown]);
 
 	const handleNavigateProjects = useCallback(() => {
 		setRailCollapsed(true);
@@ -366,19 +422,20 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		showNotice(`Skenario ${testCase.test_case_id} dipilih. Siap direkam.`, 'info');
 	}, [showNotice]);
 
-	const handleNavigateHistory = useCallback(() => {
-		setRailCollapsed(true);
-		setError(null);
-		setNotice(null);
-		setView('history');
-	}, []);
-
 	const handleNavigateSetting = useCallback(() => {
 		setRailCollapsed(true);
 		setError(null);
 		setNotice(null);
 		setView('setting');
 	}, []);
+
+	const handleNavigateCleaner = useCallback(() => {
+		handleCloseToolsDropdown();
+		setRailCollapsed(true);
+		setError(null);
+		setNotice(null);
+		setView('cleaner');
+	}, [handleCloseToolsDropdown]);
 
 	const handleLogin = useCallback(
 		async (credentials: { username: string; password: string }) => {
@@ -449,6 +506,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 			description: string;
 			target_url: string;
 			expected_result?: string | null;
+			record_video?: boolean;
 		}) => {
 			setBusy(true);
 			setError(null);
@@ -478,7 +536,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 								type: 'recordingStart',
 								idSession: createdSession.id_session,
 								apiBaseUrl: baseUrl,
-								tabIds
+								tabIds,
+								recordVideo: input.record_video !== false
 							},
 							(res: { success?: boolean; error?: string; groupId?: number } | undefined) => {
 								try {
@@ -510,14 +569,15 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					expected_result: input.expected_result ?? prefilledTestCase?.expected_result ?? null,
 					group_id: response.groupId ?? null,
 					last_sequence: createdSession.last_sequence ?? 0,
-					started_at: Date.now()
+					started_at: Date.now(),
+					record_video: input.record_video !== false
 				};
 				await setActiveSession(session);
 				setActiveSessionState(session);
 				setState('recording');
 				stateRef.current = 'recording';
 				setView('active');
-				showNotice('Recording berjalan. Tab sudah dimasukkan ke group Knitto QA Tools.', 'info');
+				showNotice('Recording berjalan. Tab sudah dimasukkan ke group Knitto QA.', 'info');
 			} catch (caught) {
 				setError((caught as Error).message);
 			} finally {
@@ -552,9 +612,10 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 			setBusy(true);
 			setError(null);
 			let stopWarning: string | null = null;
+			let recordedVideoUrl: string | null = null;
 			try {
 				try {
-					const response = await new Promise<{ success?: boolean; error?: string }>((resolve) => {
+					const response = await new Promise<{ success?: boolean; error?: string; videoDataUrl?: string; videoUrl?: string }>((resolve) => {
 						try {
 							if (!isExtensionContextValid() || !chrome.runtime?.sendMessage) {
 								return resolve({
@@ -578,6 +639,18 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					});
 					if (response && response.success === false)
 						stopWarning = response.error ?? 'Recorder gagal berhenti.';
+
+					if (response?.videoUrl) {
+						recordedVideoUrl = response.videoUrl;
+					} else if (response?.videoDataUrl && currentSession.record_video !== false) {
+						try {
+							const videoBlob = await (await fetch(response.videoDataUrl)).blob();
+							const uploadRes = await api.uploadSessionVideo(currentSession.id_session, videoBlob);
+							recordedVideoUrl = uploadRes.video_url;
+						} catch (videoErr) {
+							console.warn('Gagal mengunggah rekaman video:', videoErr);
+						}
+					}
 				} catch (stopError) {
 					stopWarning = (stopError as Error).message;
 				}
@@ -592,7 +665,9 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				setNotice(
 					stopWarning
 						? `Session selesai, tetapi recorder gagal berhenti (${stopWarning}).`
-						: 'Session selesai. Output automation dapat digenerate.'
+						: recordedVideoUrl
+							? 'Session selesai. Rekaman video tersimpan ke MinIO.'
+							: 'Session selesai. Output automation dapat digenerate.'
 				);
 				await loadSessions();
 				await loadProjects();
@@ -651,6 +726,31 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		setTimeout(() => URL.revokeObjectURL(url), 1000);
 	}, []);
 
+	const handleShareSession = useCallback(
+		async (idSession: number) => {
+			try {
+				const res = await api.generateShareUrl(idSession);
+				try {
+					await navigator.clipboard.writeText(res.share_url);
+				} catch {
+					const textarea = document.createElement('textarea');
+					textarea.value = res.share_url;
+					textarea.style.position = 'fixed';
+					textarea.style.opacity = '0';
+					document.body.appendChild(textarea);
+					textarea.focus();
+					textarea.select();
+					document.execCommand('copy');
+					document.body.removeChild(textarea);
+				}
+				showNotice('Link debug berhasil disalin ke clipboard!', 'success');
+			} catch (err) {
+				showNotice((err as Error).message || 'Gagal membagikan link sesi', 'error');
+			}
+		},
+		[api, showNotice]
+	);
+
 	const setSide = useCallback((side: 'left' | 'right') => {
 		const next = { ...settings, side };
 		setSettings(next);
@@ -671,7 +771,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	};
 
 	const currentView: FabView = !token ? 'login' : view;
-	const isRecorderActive = currentView === 'start' || currentView === 'active' || currentView === 'result';
+	const isRecorderActive = currentView === 'start' || currentView === 'active' || currentView === 'result' || currentView === 'history';
+	const isToolsActive = isRecorderActive || currentView === 'cleaner';
 	const userLevel = (user?.level ?? '').toUpperCase();
 	const username = (user?.username ?? '').toLowerCase();
 	const canCreateProject =
@@ -749,6 +850,13 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					badge: 'Selesai',
 					isRecording: false
 				};
+			case 'cleaner':
+				return {
+					dotClass: 'ready',
+					text: 'QA Cleaner & Reset Cache Domain',
+					badge: 'Cleaner',
+					isRecording: false
+				};
 			default:
 				return {
 					dotClass: '',
@@ -813,7 +921,10 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 							data-collapsed={railCollapsed ? 'true' : 'false'}
 							aria-label="Navigasi Utama"
 							onMouseEnter={() => setRailCollapsed(false)}
-							onMouseLeave={() => setRailCollapsed(false)}
+							onMouseLeave={() => {
+								setRailCollapsed(false);
+								handleCloseToolsDropdown();
+							}}
 						>
 							<div className="fab-rail-top">
 								<div className="fab-rail-brand" title="Knitto QA Tools">
@@ -826,24 +937,78 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 									</div>
 								</div>
 								<div className="fab-rail-nav">
-									<button
-										className={`fab-rail-btn ${isRecorderActive ? 'active' : ''}`}
-										aria-label="Recorder"
-										title="Recorder"
-										onClick={(e) => {
-											(e.currentTarget as HTMLElement)?.blur();
-											handleNavigateRecorder();
-										}}
+									<div
+										className="fab-rail-tools-group"
+										onMouseEnter={handleToolsMouseEnter}
+										onMouseLeave={handleToolsMouseLeave}
 									>
-										<div className="fab-rail-btn-icon">
-											<Play size={18} />
-											{state === 'recording' && <span className="fab-rail-dot" />}
-										</div>
-										<span className="fab-rail-label">Recorder</span>
-										{state === 'recording' && (
-											<span className="fab-rail-badge">LIVE</span>
+										<button
+											className={`fab-rail-btn fab-rail-group-btn ${isToolsActive ? 'group-active' : ''} ${(!isToolsExpanded && isToolsActive) ? 'active' : ''}`}
+											aria-label="Tools"
+											title={currentView === 'cleaner' ? 'Tools · Cleaner' : isRecorderActive ? 'Tools · Recorder' : 'Tools'}
+											aria-expanded={isToolsExpanded}
+											onClick={(e) => {
+												(e.currentTarget as HTMLElement)?.blur();
+												handleNavigateRecorder();
+											}}
+										>
+											<div className="fab-rail-btn-icon">
+												<Wrench size={18} />
+												{state === 'recording' && <span className="fab-rail-dot" />}
+											</div>
+											<span className="fab-rail-label">Tools</span>
+											{state === 'recording' ? (
+												<span className="fab-rail-badge">LIVE</span>
+											) : !isToolsExpanded ? (
+												currentView === 'cleaner' ? (
+													<span className="fab-rail-subbadge">Cleaner</span>
+												) : isRecorderActive ? (
+													<span className="fab-rail-subbadge">Recorder</span>
+												) : null
+											) : null}
+											<span className="fab-rail-chevron">
+												{isToolsExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+											</span>
+										</button>
+
+										{isToolsExpanded && (
+											<div className="fab-rail-submenu">
+												<button
+													className={`fab-rail-btn fab-rail-subitem ${isRecorderActive ? 'active' : ''}`}
+													aria-label="Recorder"
+													title="Recorder"
+													onClick={(e) => {
+														(e.currentTarget as HTMLElement)?.blur();
+														handleNavigateRecorder();
+													}}
+												>
+													<div className="fab-rail-btn-icon">
+														<Play size={16} />
+														{state === 'recording' && <span className="fab-rail-dot" />}
+													</div>
+													<span className="fab-rail-label">Recorder</span>
+													{state === 'recording' && (
+														<span className="fab-rail-badge">LIVE</span>
+													)}
+												</button>
+
+												<button
+													className={`fab-rail-btn fab-rail-subitem ${currentView === 'cleaner' ? 'active' : ''}`}
+													aria-label="Cleaner"
+													title="Cleaner"
+													onClick={(e) => {
+														(e.currentTarget as HTMLElement)?.blur();
+														handleNavigateCleaner();
+													}}
+												>
+													<div className="fab-rail-btn-icon">
+														<Trash2 size={16} />
+													</div>
+													<span className="fab-rail-label">Cleaner</span>
+												</button>
+											</div>
 										)}
-									</button>
+									</div>
 
 									<button
 										className={`fab-rail-btn ${currentView === 'projects' ? 'active' : ''}`}
@@ -858,21 +1023,6 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 											<FolderKanban size={18} />
 										</div>
 										<span className="fab-rail-label">Project</span>
-									</button>
-
-									<button
-										className={`fab-rail-btn ${currentView === 'history' ? 'active' : ''}`}
-										aria-label="Riwayat"
-										title="Riwayat"
-										onClick={(e) => {
-											(e.currentTarget as HTMLElement)?.blur();
-											handleNavigateHistory();
-										}}
-									>
-										<div className="fab-rail-btn-icon">
-											<History size={18} />
-										</div>
-										<span className="fab-rail-label">Riwayat Rekaman</span>
 									</button>
 
 									<button
@@ -928,7 +1078,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 						<div className="fab-panel">
 							<div className="fab-panel-header">
 								<div className="fab-panel-title">
-									{currentView !== 'start' && currentView !== 'active' ? (
+									{currentView !== 'start' && currentView !== 'active' && currentView !== 'history' ? (
 										<button
 											className="fab-sidebar-back"
 											aria-label="Kembali ke menu utama"
@@ -945,6 +1095,51 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 							</div>
 
 							<div className="fab-panel-body">
+								{isRecorderActive && currentView !== 'result' && (
+									<div className="fab-recorder-tabs" role="tablist" aria-label="Recorder Tab">
+										<button
+											type="button"
+											role="tab"
+											aria-selected={currentView !== 'history'}
+											className={`fab-recorder-tab-btn ${currentView !== 'history' ? 'active' : ''}`}
+											onClick={() => {
+												if (state === 'recording' || activeSession) {
+													setView('active');
+												} else {
+													setView('start');
+												}
+											}}
+										>
+											{state === 'recording' ? (
+												<>
+													<span className="fab-recorder-pulse-dot" />
+													<span>Sedang Merekam</span>
+												</>
+											) : (
+												<>
+													<Video size={13} />
+													<span>Mulai Rekam</span>
+												</>
+											)}
+										</button>
+										<button
+											type="button"
+											role="tab"
+											aria-selected={currentView === 'history'}
+											className={`fab-recorder-tab-btn ${currentView === 'history' ? 'active' : ''}`}
+											onClick={() => {
+												setView('history');
+												void loadSessions();
+											}}
+										>
+											<History size={13} />
+											<span>Riwayat Rekaman</span>
+											{sessions.length > 0 && (
+												<span className="fab-recorder-tab-count">{sessions.length}</span>
+											)}
+										</button>
+									</div>
+								)}
 								{currentView === 'start' ? (
 									<StartView
 										user={user}
@@ -1014,7 +1209,9 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 										onRefresh={loadSessions}
 										onGenerate={handleGenerate}
 										onViewGenerations={handleViewGenerations}
+										onOpenDetail={handleOpenSessionDetail}
 										onDownload={downloadOutput}
+										onShare={handleShareSession}
 									/>
 								) : currentView === 'setting' ? (
 									<div>
@@ -1043,6 +1240,18 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 											</div>
 										</div>
 									</div>
+								) : currentView === 'cleaner' ? (
+									<CleanerView
+										activeTabUrl={typeof window !== 'undefined' ? window.location?.href : undefined}
+										isRecordingActive={state === 'recording'}
+										onShowToast={(msg, toastType) => {
+											if (toastType === 'error') {
+												setError(msg);
+											} else {
+												showNotice(msg, toastType ?? 'success');
+											}
+										}}
+									/>
 								) : (
 									<StartView
 										user={user}
@@ -1074,6 +1283,25 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					</div>
 				)}
 			</aside>
+
+			<TestCaseResultModal
+				open={isResultModalOpen}
+				sessionId={resultModalSessionId}
+				testCase={resultModalTestCase}
+				api={api}
+				onClose={() => {
+					setResultModalOpen(false);
+					setResultModalSessionId(null);
+					setResultModalTestCase(null);
+				}}
+				onShowToast={(msg, toastType) => {
+					if (toastType === 'error') {
+						setError(msg);
+					} else {
+						showNotice(msg, toastType ?? 'success');
+					}
+				}}
+			/>
 
 			<button
 				className={`fab-trigger ${side === 'left' ? 'fab-side-left' : ''}`}

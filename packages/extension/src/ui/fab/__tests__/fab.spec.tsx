@@ -12,7 +12,10 @@ const apiMocks = vi.hoisted(() => ({
 	createCheckpoint: vi.fn(),
 	endSession: vi.fn(),
 	generateOutputs: vi.fn(),
-	listGenerations: vi.fn()
+	listGenerations: vi.fn(),
+	getSession: vi.fn(),
+	getSessionVideo: vi.fn(),
+	generateShareUrl: vi.fn()
 }));
 
 vi.mock('../../../recording/apiClient', () => ({
@@ -27,6 +30,9 @@ vi.mock('../../../recording/apiClient', () => ({
 		endSession = apiMocks.endSession;
 		generateOutputs = apiMocks.generateOutputs;
 		listGenerations = apiMocks.listGenerations;
+		getSession = apiMocks.getSession;
+		getSessionVideo = apiMocks.getSessionVideo;
+		generateShareUrl = apiMocks.generateShareUrl;
 	}
 }));
 
@@ -77,6 +83,20 @@ beforeEach(() => {
 				error_message: null
 			}
 		]
+	});
+	apiMocks.getSession.mockResolvedValue({
+		id_session: 101,
+		id_project: 1,
+		test_case_no: 'TC-01',
+		title: 'Test Order Flow',
+		status: 'completed',
+		result: 'PASS',
+		last_sequence: 5,
+		checkpoints: []
+	});
+	apiMocks.getSessionVideo.mockResolvedValue({
+		id_session: 101,
+		video_url: null
 	});
 
 	(globalThis as unknown as { chrome: unknown }).chrome = {
@@ -164,7 +184,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		expect((storageStore.get(FAB_SETTINGS_KEY) as { side: string }).side).toBe('left');
 
 		fireEvent.click(screen.getByRole('button', { name: 'Kembali ke menu utama' }));
-		expect(screen.getByRole('button', { name: 'Recorder' })).toBeTruthy();
+		expect(screen.getByRole('button', { name: 'Tools' })).toBeTruthy();
 	});
 
 	it('klik FAB saat belum login langsung ke Login, dan tombol Kembali TIDAK muncul (strict auth guard)', async () => {
@@ -178,8 +198,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 
 		// Tombol kembali tidak ada di layar login saat belum terotentikasi
 		expect(screen.queryByRole('button', { name: 'Kembali ke menu utama' })).toBeNull();
-		// Menu utama (Recorder / Setting) juga tidak dapat diakses
-		expect(screen.queryByRole('button', { name: 'Recorder' })).toBeNull();
+		// Menu utama (Tools / Setting) juga tidak dapat diakses
+		expect(screen.queryByRole('button', { name: 'Tools' })).toBeNull();
 		expect(screen.queryByRole('button', { name: 'Setting' })).toBeNull();
 	});
 
@@ -223,7 +243,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
 		await waitFor(() => expect(screen.getByText('Form Mulai Rekaman')).toBeTruthy());
 
@@ -260,8 +280,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 		openFab();
 
-		// Buka Recorder -> langsung ke Active karena ada session
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		// Buka Tools -> langsung ke Active karena ada session
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 		await waitFor(() => expect(screen.getByText('Active Session Test')).toBeTruthy());
 
 		// Tambah Checkpoint
@@ -300,7 +320,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			await new Promise((r) => setTimeout(r, 20));
 		});
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
 		await waitFor(() => expect(screen.getByText('Session To End')).toBeTruthy());
 		fireEvent.click(screen.getByRole('button', { name: 'End Recording' }));
@@ -329,10 +349,10 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			await new Promise((r) => setTimeout(r, 20));
 		});
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
-		await waitFor(() => expect(screen.getByRole('button', { name: 'Riwayat' })).toBeTruthy());
-		fireEvent.click(screen.getByRole('button', { name: 'Riwayat' }));
+		await waitFor(() => expect(screen.getByRole('tab', { name: /Riwayat Rekaman/i })).toBeTruthy());
+		fireEvent.click(screen.getByRole('tab', { name: /Riwayat Rekaman/i }));
 
 		await waitFor(() => expect(screen.getByText('Test Order Flow')).toBeTruthy());
 		fireEvent.click(screen.getByRole('button', { name: 'generate' }));
@@ -399,7 +419,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
 		await waitFor(() => expect(screen.getByText('Form Mulai Rekaman')).toBeTruthy());
 
@@ -431,7 +451,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
 		await waitFor(() => expect(screen.getByRole('button', { name: 'Logout' })).toBeTruthy());
 		fireEvent.click(screen.getByRole('button', { name: 'Logout' }));
@@ -452,7 +472,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
 		await waitFor(() => expect(screen.getByRole('button', { name: 'Logout' })).toBeTruthy());
 
@@ -490,7 +510,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
 		await waitFor(() => expect(screen.getByText('Form Mulai Rekaman')).toBeTruthy());
 
@@ -529,7 +549,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			await new Promise((r) => setTimeout(r, 20));
 		});
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
 		await waitFor(() => expect(screen.getByText('Session To Cancel')).toBeTruthy());
 		fireEvent.click(screen.getByRole('button', { name: 'End Recording' }));
@@ -541,7 +561,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		expect(apiMocks.endSession).not.toHaveBeenCalled();
 	});
 
-	it('layar Riwayat: klik hasil memanggil listGenerations dan menampilkan preview', async () => {
+	it('layar Riwayat: klik hasil membuka TestCaseResultModal dan memuat rincian sesi', async () => {
 		storageStore.set('qa_recording_token', 'mock-token');
 
 		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
@@ -549,18 +569,19 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			await new Promise((r) => setTimeout(r, 20));
 		});
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
-		await waitFor(() => expect(screen.getByRole('button', { name: 'Riwayat' })).toBeTruthy());
-		fireEvent.click(screen.getByRole('button', { name: 'Riwayat' }));
+		await waitFor(() => expect(screen.getByRole('tab', { name: /Riwayat Rekaman/i })).toBeTruthy());
+		fireEvent.click(screen.getByRole('tab', { name: /Riwayat Rekaman/i }));
 
 		await waitFor(() => expect(screen.getByText('Test Order Flow')).toBeTruthy());
 		fireEvent.click(screen.getByRole('button', { name: 'hasil' }));
 
 		await waitFor(() => {
+			expect(apiMocks.getSession).toHaveBeenCalledWith(101);
 			expect(apiMocks.listGenerations).toHaveBeenCalledWith(101);
-			expect(screen.getByText("test('example', async ({ page }) => {});")).toBeTruthy();
-			expect(screen.getByRole('button', { name: 'download' })).toBeTruthy();
+			expect(screen.getByText('Hasil Rekaman: TC-01')).toBeTruthy();
+			expect(screen.getByRole('button', { name: /^Re-run$/i })).toBeTruthy();
 		});
 	});
 
@@ -580,7 +601,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
 		await waitFor(() => {
 			expect(screen.getByLabelText(/Tab Other/)).toBeTruthy();
@@ -605,7 +626,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 
 		openFab();
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 
 		await waitFor(() => {
 			expect(screen.getByRole('button', { name: 'Tambah Project Baru' })).toBeTruthy();
@@ -641,7 +662,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 	});
 
-	it('navigasi 1-klik via Navigation Rail: berpindah antara Recorder, Riwayat, dan Setting', async () => {
+	it('navigasi 1-klik via Navigation Rail: berpindah antara Tools, Riwayat, dan Setting', async () => {
 		storageStore.set('qa_recording_token', 'mock-token');
 		storageStore.set('qa_recording_user', { id_user: 1, username: 'tester', nama: 'QA Tester' });
 
@@ -657,8 +678,9 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			expect(screen.getByRole('navigation', { name: 'Navigasi Utama' })).toBeTruthy();
 		});
 
-		// Klik Riwayat di rail
-		fireEvent.click(screen.getByRole('button', { name: 'Riwayat' }));
+		// Klik tab Riwayat Rekaman di Recorder
+		await waitFor(() => expect(screen.getByRole('tab', { name: /Riwayat Rekaman/i })).toBeTruthy());
+		fireEvent.click(screen.getByRole('tab', { name: /Riwayat Rekaman/i }));
 		await waitFor(() => {
 			expect(screen.getAllByText('Riwayat Session').length).toBeGreaterThanOrEqual(1);
 		});
@@ -669,8 +691,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			expect(screen.getByText('Pengaturan Sidebar')).toBeTruthy();
 		});
 
-		// Klik Recorder di rail untuk kembali ke form rekaman
-		fireEvent.click(screen.getByRole('button', { name: 'Recorder' }));
+		// Klik Tools di rail untuk kembali ke form rekaman
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
 		await waitFor(() => {
 			expect(screen.getByText('Form Mulai Rekaman')).toBeTruthy();
 		});
@@ -720,13 +742,14 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			expect(railLogo).toBeTruthy();
 
 			// Menu items tengah
-			const recorderBtn = screen.getByRole('button', { name: 'Recorder' });
-			const riwayatBtn = screen.getByRole('button', { name: 'Riwayat' });
+			const toolsBtn = screen.getByRole('button', { name: 'Tools' });
+			const projectBtn = screen.getByRole('button', { name: 'Project' });
 			const settingBtn = screen.getByRole('button', { name: 'Setting' });
-			expect(recorderBtn).toBeTruthy();
-			expect(riwayatBtn).toBeTruthy();
+			expect(toolsBtn).toBeTruthy();
+			expect(projectBtn).toBeTruthy();
 			expect(settingBtn).toBeTruthy();
-			expect(recorderBtn.classList.contains('active')).toBe(true);
+			expect(screen.queryByRole('button', { name: 'Riwayat' })).toBeNull();
+			expect(toolsBtn.classList.contains('group-active')).toBe(true);
 
 			// User avatar & logout di rail bottom
 			const avatar = screen.getByLabelText('User: QA Tester');
@@ -762,8 +785,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			expect(nav.querySelector('.fab-rail-brand-sub')?.textContent).toBe('Test Automation');
 
 			// Labels teks navigasi
-			expect(screen.getByText('Recorder')).toBeTruthy();
-			expect(screen.getByText('Riwayat Rekaman')).toBeTruthy();
+			expect(screen.getByText('Tools')).toBeTruthy();
+			expect(screen.getByText('Project')).toBeTruthy();
 			expect(screen.getByText('Pengaturan')).toBeTruthy();
 
 			// Detail User & Logout
@@ -802,8 +825,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		const nav = screen.getByRole('navigation', { name: 'Navigasi Utama' });
 		expect(nav.getAttribute('data-collapsed')).toBe('false');
 
-		// Klik menu Riwayat
-		fireEvent.click(screen.getByRole('button', { name: 'Riwayat' }));
+		// Klik menu Setting
+		fireEvent.click(screen.getByRole('button', { name: 'Setting' }));
 
 		// Rail seketika tertutup (data-collapsed="true")
 		expect(nav.getAttribute('data-collapsed')).toBe('true');
@@ -815,7 +838,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		expect(nav.classList.contains('fab-rail-collapsed')).toBe(false);
 	});
 
-	it('pulsing red dot recording indicator (.fab-rail-dot) muncul pada icon Recorder di rail saat recording aktif dan hilang saat idle', async () => {
+	it('pulsing red dot recording indicator (.fab-rail-dot) muncul pada icon Tools di rail saat recording aktif dan hilang saat idle', async () => {
 		storageStore.set('qa_recording_token', 'mock-token');
 		storageStore.set('qa_recording_user', { id_user: 1, username: 'tester', nama: 'QA Tester' });
 
@@ -826,8 +849,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		openFab();
 
 		await waitFor(() => {
-			const recorderBtn = screen.getByRole('button', { name: 'Recorder' });
-			expect(recorderBtn.querySelector('.fab-rail-dot')).toBeNull();
+			const toolsBtn = screen.getByRole('button', { name: 'Tools' });
+			expect(toolsBtn.querySelector('.fab-rail-dot')).toBeNull();
 		});
 
 		// Simulasi state recording aktif
@@ -838,8 +861,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 
 		await waitFor(() => {
-			const recorderBtn = screen.getByRole('button', { name: 'Recorder' });
-			expect(recorderBtn.querySelector('.fab-rail-dot')).toBeTruthy();
+			const toolsBtn = screen.getByRole('button', { name: 'Tools' });
+			expect(toolsBtn.querySelector('.fab-rail-dot')).toBeTruthy();
 		});
 
 		// Simulasi kembali ke idle
@@ -850,8 +873,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 
 		await waitFor(() => {
-			const recorderBtn = screen.getByRole('button', { name: 'Recorder' });
-			expect(recorderBtn.querySelector('.fab-rail-dot')).toBeNull();
+			const toolsBtn = screen.getByRole('button', { name: 'Tools' });
+			expect(toolsBtn.querySelector('.fab-rail-dot')).toBeNull();
 		});
 	});
 
@@ -865,8 +888,9 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 		openFab();
 
-		// Navigasi ke Riwayat
-		fireEvent.click(screen.getByRole('button', { name: 'Riwayat' }));
+		// Navigasi ke Riwayat via tab di Recorder
+		await waitFor(() => expect(screen.getByRole('tab', { name: /Riwayat Rekaman/i })).toBeTruthy());
+		fireEvent.click(screen.getByRole('tab', { name: /Riwayat Rekaman/i }));
 		await waitFor(() => {
 			expect(screen.getAllByText('Riwayat Session').length).toBeGreaterThanOrEqual(1);
 		});
@@ -1016,6 +1040,136 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			const footer = sidebar()?.querySelector('.fab-sidebar-footer');
 			expect(footer?.textContent).toContain('Manajemen Project & Test Case');
 			expect(footer?.textContent).toContain('2 Project');
+		});
+	});
+
+	it('navigasi Tools: hover membuka sub-menu dropdown (Recorder & Cleaner), mouse leave menutup dropdown', async () => {
+		storageStore.set('qa_recording_token', 'valid-token');
+		storageStore.set('qa_recording_user', { id_user: 1, username: 'tester', nama: 'QA Tester', level: 'QA' });
+
+		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 20));
+		});
+
+		openFab();
+
+		// Default state: sub-menu tertutup, root Tools aktif karena berada di view Recorder
+		const toolsBtn = screen.getByRole('button', { name: 'Tools' });
+		const toolsGroup = sidebar()?.querySelector('.fab-rail-tools-group');
+		expect(toolsGroup).toBeTruthy();
+		expect(toolsBtn.getAttribute('aria-expanded')).toBe('false');
+		expect(toolsBtn.classList.contains('active')).toBe(true);
+		expect(toolsBtn.classList.contains('group-active')).toBe(true);
+		expect(screen.queryByRole('button', { name: 'Recorder' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Cleaner' })).toBeNull();
+
+		// Hover (mouseEnter) pada tools group -> sub-menu terbuka, subitem Recorder aktif
+		fireEvent.mouseEnter(toolsGroup!);
+		expect(toolsBtn.getAttribute('aria-expanded')).toBe('true');
+		expect(toolsBtn.classList.contains('active')).toBe(false);
+		expect(toolsBtn.classList.contains('group-active')).toBe(true);
+		const recorderSubitem = screen.getByRole('button', { name: 'Recorder' });
+		const cleanerSubitem = screen.getByRole('button', { name: 'Cleaner' });
+		expect(recorderSubitem).toBeTruthy();
+		expect(cleanerSubitem).toBeTruthy();
+		expect(recorderSubitem.classList.contains('active')).toBe(true);
+
+		// Mouse leave pada tools group -> sub-menu menutup, root Tools kembali aktif
+		fireEvent.mouseLeave(toolsGroup!);
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 200));
+		});
+		expect(toolsBtn.getAttribute('aria-expanded')).toBe('false');
+		expect(toolsBtn.classList.contains('active')).toBe(true);
+		expect(screen.queryByRole('button', { name: 'Recorder' })).toBeNull();
+		expect(screen.queryByRole('button', { name: 'Cleaner' })).toBeNull();
+
+		// Hover lagi dan klik Cleaner sub-item
+		fireEvent.mouseEnter(toolsGroup!);
+		expect(screen.getByRole('button', { name: 'Cleaner' })).toBeTruthy();
+		fireEvent.click(screen.getByRole('button', { name: 'Cleaner' }));
+
+		// Header & CleanerView
+		await waitFor(() => {
+			expect(screen.getByText('QA Cleaner & Cache')).toBeTruthy();
+			expect(screen.getByText(/Quick Cleaner/i)).toBeTruthy();
+			expect(screen.getByRole('button', { name: /Bersihkan Semua Sekaligus/i })).toBeTruthy();
+		});
+
+		// Dropdown tertutup setelah navigasi, root Tools tetap berstatus active + indikator Cleaner
+		expect(toolsBtn.getAttribute('aria-expanded')).toBe('false');
+		expect(toolsBtn.classList.contains('active')).toBe(true);
+		expect(toolsBtn.querySelector('.fab-rail-subbadge')?.textContent).toBe('Cleaner');
+
+		// Footer cleaner status
+		const footer = sidebar()?.querySelector('.fab-sidebar-footer');
+		expect(footer?.textContent).toContain('QA Cleaner & Reset Cache Domain');
+		expect(footer?.textContent).toContain('Cleaner');
+
+		// Klik tombol back (←) kembali ke Start view
+		const backBtn = screen.getByRole('button', { name: 'Kembali ke menu utama' });
+		fireEvent.click(backBtn);
+
+		await waitFor(() => {
+			expect(screen.getByText('Mulai Recording')).toBeTruthy();
+		});
+	});
+
+	it('recorder segmented tabs: menampilkan indikator Sedang Merekam dengan pulsing dot saat recording dan dapat beralih ke Riwayat tanpa membatalkan rekaman', async () => {
+		storageStore.set('qa_recording_token', 'mock-token');
+		storageStore.set('qa_recording_user', { id_user: 1, username: 'tester', nama: 'QA Tester' });
+		storageStore.set('qa_recording_active_session', {
+			id_session: 600,
+			id_project: 1,
+			test_case_no: 'TC-TAB-01',
+			title: 'Tab Switching Active Session',
+			group_id: 30,
+			last_sequence: 1
+		});
+
+		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 20));
+		});
+		openFab();
+
+		// Buka Tools -> langsung ke Active karena ada session
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
+
+		// Simulasi recording aktif
+		act(() => {
+			runtimeListeners.forEach((listener) =>
+				listener({ type: 'fab:stateChanged', state: { recording: true, pendingEvents: 1 } })
+			);
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText('Tab Switching Active Session')).toBeTruthy();
+			// Tab 1 harus berlabel "Sedang Merekam" dengan pulsing dot
+			expect(screen.getByText('Sedang Merekam')).toBeTruthy();
+			expect(document.querySelector('.fab-recorder-pulse-dot')).toBeTruthy();
+			// Tab 2 berlabel "Riwayat Rekaman"
+			expect(screen.getByRole('tab', { name: /Riwayat Rekaman/i })).toBeTruthy();
+		});
+
+		// Beralih ke tab Riwayat Rekaman
+		fireEvent.click(screen.getByRole('tab', { name: /Riwayat Rekaman/i }));
+
+		await waitFor(() => {
+			// Layar berpindah ke HistoryView
+			expect(screen.getAllByText('Riwayat Session').length).toBeGreaterThanOrEqual(1);
+			// Recording tetap aktif (badge LIVE di rail tetap ada)
+			const nav = screen.getByRole('navigation', { name: 'Navigasi Utama' });
+			expect(nav.querySelector('.fab-rail-badge')?.textContent).toBe('LIVE');
+		});
+
+		// Klik tab "Sedang Merekam" kembali ke ActiveView
+		fireEvent.click(screen.getByRole('tab', { name: /Sedang Merekam/i }));
+
+		await waitFor(() => {
+			expect(screen.getByText('Tab Switching Active Session')).toBeTruthy();
+			expect(screen.getByRole('button', { name: 'End Recording' })).toBeTruthy();
 		});
 	});
 });

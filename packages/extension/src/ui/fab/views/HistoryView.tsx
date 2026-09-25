@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Search, RefreshCw, Download, Copy, Check, Eye, Code2, AlertTriangle } from 'lucide-react';
+import { Search, RefreshCw, Download, Copy, Check, Eye, Code2, AlertTriangle, Share2, Play } from 'lucide-react';
 import type { RecordingSession } from '../../../recording/apiClient';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/Card';
 import { Badge } from '../components/Badge';
@@ -15,7 +15,7 @@ export interface GenerationItem {
 	error_message: string | null;
 }
 
-interface HistoryViewProps {
+export interface HistoryViewProps {
 	sessions: RecordingSession[];
 	generations: GenerationItem[];
 	activeSessionId: number | null;
@@ -24,7 +24,9 @@ interface HistoryViewProps {
 	onRefresh: () => void;
 	onGenerate: (idSession: number) => void;
 	onViewGenerations: (idSession: number) => void;
+	onOpenDetail?: (session: RecordingSession) => void;
 	onDownload: (item: GenerationItem) => void;
+	onShare?: (idSession: number) => void;
 }
 
 export const HistoryView: React.FC<HistoryViewProps> = ({
@@ -36,7 +38,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 	onRefresh,
 	onGenerate,
 	onViewGenerations,
-	onDownload
+	onOpenDetail,
+	onDownload,
+	onShare
 }) => {
 	const [search, setSearch] = useState('');
 	const [selectedProject, setSelectedProject] = useState<string>('all');
@@ -89,7 +93,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 			const matchQuery =
 				!query ||
 				session.title.toLowerCase().includes(query) ||
-				session.test_case_no.toLowerCase().includes(query);
+				session.test_case_no.toLowerCase().includes(query) ||
+				String(session.id_session).includes(query);
 			const matchProj = selectedProject === 'all' || String(session.id_project) === selectedProject;
 			return matchQuery && matchProj;
 		});
@@ -101,6 +106,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 		if (res === 'FAIL') return <Badge variant="danger">FAIL</Badge>;
 		if (res === 'BLOCKED') return <Badge variant="warning">BLOCKED</Badge>;
 		return <Badge variant="neutral">{session.status}</Badge>;
+	};
+
+	const handleSessionClick = (session: RecordingSession) => {
+		if (onOpenDetail) {
+			onOpenDetail(session);
+		} else {
+			onViewGenerations(session.id_session);
+		}
 	};
 
 	return (
@@ -277,7 +290,12 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 						</div>
 					) : (
 						filteredSessions.map((session) => (
-							<div className="sp-list-item" key={session.id_session}>
+							<div
+								className="sp-list-item"
+								key={session.id_session}
+								style={{ cursor: 'pointer', transition: 'background 0.15s ease' }}
+								onClick={() => handleSessionClick(session)}
+							>
 								<div className="sp-button-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
 									<div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
 										<div
@@ -296,11 +314,28 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 											<span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#2F3574' }}>
 												{session.test_case_no}
 											</span>
+											{!session.id_project && (
+												<span style={{ fontSize: 10, background: '#EEF2FF', color: '#3730A3', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+													Quick
+												</span>
+											)}
 											<span>·</span>
 											{renderStatusBadge(session)}
+											<span>·</span>
+											<span style={{ fontSize: 11 }}>#Session {session.id_session}</span>
 										</div>
 									</div>
-									<div className="sp-button-row" style={{ gap: 6, flexShrink: 0 }}>
+									<div className="sp-button-row" style={{ gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+										{onShare && (
+											<Button
+												variant="ghost"
+												size="xs"
+												title="Bagikan Link Debug"
+												aria-label={`Bagikan ${session.test_case_no}`}
+												icon={<Share2 size={12} />}
+												onClick={() => onShare(session.id_session)}
+											/>
+										)}
 										<Button
 											variant="outline"
 											size="xs"
@@ -313,7 +348,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 											variant="secondary"
 											size="xs"
 											disabled={busy}
-											onClick={() => onViewGenerations(session.id_session)}
+											icon={<Eye size={11} />}
+											onClick={() => handleSessionClick(session)}
 										>
 											hasil
 										</Button>
@@ -327,3 +363,4 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 		</>
 	);
 };
+

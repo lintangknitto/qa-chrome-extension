@@ -1,6 +1,6 @@
 export type FabUiState = 'idle' | 'recording';
 
-export type FabView = 'root' | 'login' | 'start' | 'active' | 'result' | 'history' | 'setting' | 'projects';
+export type FabView = 'root' | 'login' | 'start' | 'active' | 'result' | 'history' | 'setting' | 'projects' | 'cleaner';
 
 export const fabViewTitles: Record<FabView, string> = {
 	root: 'Knitto QA Tools',
@@ -10,7 +10,8 @@ export const fabViewTitles: Record<FabView, string> = {
 	result: 'Hasil Recording',
 	history: 'Riwayat Session',
 	setting: 'Pengaturan',
-	projects: 'Manajemen Project & Test Case'
+	projects: 'Manajemen Project & Test Case',
+	cleaner: 'QA Cleaner & Cache'
 };
 
 export interface FabState {

@@ -17,6 +17,10 @@ export interface RecordingSession {
 	result: string | null;
 	actual_result?: string | null;
 	last_sequence: number;
+	share_token?: string | null;
+	video_url?: string | null;
+	record_video?: number | boolean | null;
+	target_url?: string | null;
 }
 
 export interface TestCaseItem {
@@ -130,10 +134,26 @@ export class RecordingApiClient {
 		id_test_case?: number | null;
 		test_case_no: string;
 		title: string;
-		description?: string;
-		target_url?: string;
+		description?: string | null;
+		target_url?: string | null;
 	}): Promise<RecordingSession> {
-		return this._request<RecordingSession>('POST', '/sessions', input);
+		const payload: Record<string, unknown> = {
+			test_case_no: input.test_case_no,
+			title: input.title
+		};
+		if (typeof input.id_project === 'number' && input.id_project > 0) {
+			payload.id_project = input.id_project;
+		}
+		if (typeof input.id_test_case === 'number' && input.id_test_case > 0) {
+			payload.id_test_case = input.id_test_case;
+		}
+		if (input.description) {
+			payload.description = input.description;
+		}
+		if (input.target_url) {
+			payload.target_url = input.target_url;
+		}
+		return this._request<RecordingSession>('POST', '/sessions', payload);
 	}
 
 	listTestCases(
@@ -237,6 +257,70 @@ export class RecordingApiClient {
 
 	listGenerations(idSession: number): Promise<{ items: unknown[] }> {
 		return this._request('GET', `/sessions/${idSession}/generations`);
+	}
+
+	generateShareUrl(sessionId: number): Promise<{ share_token: string; share_url: string }> {
+		return this._request('POST', `/sessions/${sessionId}/share`);
+	}
+
+	presignSessionVideo(
+		sessionId: number,
+		input: { size_bytes: number; content_type?: string }
+	): Promise<{ upload_url: string; object_key: string; content_type: string; expires_in: number }> {
+		return this._request('POST', `/sessions/${sessionId}/video/presign-upload`, input);
+	}
+
+	completeSessionVideo(
+		sessionId: number,
+		input: { object_key: string }
+	): Promise<{ id_session: number; video_url: string; object_key: string }> {
+		return this._request('POST', `/sessions/${sessionId}/video/complete`, input);
+	}
+
+	getSessionVideo(sessionId: number): Promise<{ id_session: number; video_url: string | null }> {
+		return this._request('GET', `/sessions/${sessionId}/video`);
+	}
+
+	async uploadSessionVideo(sessionId: number, videoBlob: Blob): Promise<{ video_url: string }> {
+		const contentType = videoBlob.type || 'video/webm';
+
+		// Jika di browser extension dengan chrome.runtime, delegasikan ke background agar bebas dari CORS & Mixed Content
+		if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+			try {
+				const dataUrl = await new Promise<string>((resolve, reject) => {
+					const reader = new FileReader();
+					reader.onloadend = () => resolve(reader.result as string);
+					reader.onerror = () => reject(new Error('Gagal membaca blob video'));
+					reader.readAsDataURL(videoBlob);
+				});
+
+				const bgRes = await new Promise<any>((resolve) => {
+					chrome.runtime.sendMessage(
+						{
+							type: 'sessionVideo:upload',
+							idSession: sessionId,
+							apiBaseUrl: this._baseUrl,
+							videoDataUrl: dataUrl
+						},
+						(res) => resolve(res)
+					);
+				});
+
+				if (bgRes?.success && bgRes?.videoUrl) {
+					return { video_url: bgRes.videoUrl };
+				}
+			} catch {
+				// Fallback ke direct HTTP upload
+			}
+		}
+
+		const presign = await this.presignSessionVideo(sessionId, {
+			size_bytes: videoBlob.size,
+			content_type: contentType
+		});
+		await this.uploadToPresignedUrl(presign.upload_url, videoBlob, contentType);
+		const complete = await this.completeSessionVideo(sessionId, { object_key: presign.object_key });
+		return { video_url: complete.video_url };
 	}
 
 	async uploadToPresignedUrl(

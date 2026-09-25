@@ -116,6 +116,8 @@ const COLUMN_ALIASES: Record<string, string[]> = {
 	automation_tools: ['automation tools', 'tools', 'alat otomasi', 'automation']
 };
 
+export const TOTAL_KNOWN_COLUMNS = Object.keys(COLUMN_ALIASES).length;
+
 export const findHeaderRow = (
 	rows: unknown[][]
 ): { rowIndex: number; columnMap: Record<string, number>; score: number } | null => {

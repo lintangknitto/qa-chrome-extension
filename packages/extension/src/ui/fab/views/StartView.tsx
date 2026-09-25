@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Play, Hash, FileText, Globe, Plus, CheckCircle, Info } from 'lucide-react';
+import { Play, Hash, FileText, Globe, Plus, CheckCircle, Info, Video } from 'lucide-react';
 import type { RecordingApiClient, RecordingProject, TestCaseItem } from '../../../recording/apiClient';
 import type { StoredUser } from '../../../recording/tokenStore';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/Card';
@@ -34,6 +34,7 @@ export interface StartViewProps {
 		description: string;
 		target_url: string;
 		expected_result?: string | null;
+		record_video?: boolean;
 	}) => void;
 	onCreateProject?: (input: {
 		name: string;
@@ -74,6 +75,7 @@ export const StartView: React.FC<StartViewProps> = ({
 	const [description, setDescription] = useState('');
 	const [targetUrl, setTargetUrl] = useState('');
 	const [activeTabUrl, setActiveTabUrl] = useState('');
+	const [recordVideo, setRecordVideo] = useState(true);
 
 	// Project test cases list
 	const [projectTestCases, setProjectTestCases] = useState<TestCaseItem[]>([]);
@@ -272,7 +274,8 @@ export const StartView: React.FC<StartViewProps> = ({
 			title: title.trim(),
 			description: description.trim(),
 			target_url: targetUrl.trim(),
-			expected_result: expectedResultPreview || null
+			expected_result: expectedResultPreview || null,
+			record_video: recordVideo
 		});
 	};
 
@@ -424,6 +427,19 @@ export const StartView: React.FC<StartViewProps> = ({
 							onChange={(event) => setTargetUrl(event.target.value)}
 							placeholder="Contoh: https://app.knitto.co.id/login"
 						/>
+
+						<div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '4px 0' }}>
+							<label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', fontSize: '12px', fontWeight: 500, color: '#334155' }}>
+								<input
+									type="checkbox"
+									checked={recordVideo}
+									onChange={(e) => setRecordVideo(e.target.checked)}
+									style={{ accentColor: '#2F3574', cursor: 'pointer' }}
+								/>
+								<Video size={14} color="#2F3574" />
+								<span>Rekam Video Layar (WebM)</span>
+							</label>
+						</div>
 
 						<div style={{ paddingTop: '8px' }}>
 							<Button

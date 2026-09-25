@@ -315,11 +315,15 @@ export const FAB_CSS = `
 .fab-rail[data-collapsed="true"] .fab-rail-label,
 .fab-rail[data-collapsed="true"] .fab-rail-brand-text,
 .fab-rail[data-collapsed="true"] .fab-rail-badge,
+.fab-rail[data-collapsed="true"] .fab-rail-subbadge,
 .fab-rail[data-collapsed="true"] .fab-rail-user-info,
+.fab-rail[data-collapsed="true"] .fab-rail-chevron,
 .fab-rail.fab-rail-collapsed .fab-rail-label,
 .fab-rail.fab-rail-collapsed .fab-rail-brand-text,
 .fab-rail.fab-rail-collapsed .fab-rail-badge,
-.fab-rail.fab-rail-collapsed .fab-rail-user-info {
+.fab-rail.fab-rail-collapsed .fab-rail-subbadge,
+.fab-rail.fab-rail-collapsed .fab-rail-user-info,
+.fab-rail.fab-rail-collapsed .fab-rail-chevron {
   opacity: 0 !important;
   transform: translateX(-6px) !important;
   pointer-events: none !important;
@@ -490,6 +494,98 @@ export const FAB_CSS = `
 .fab-rail[data-expanded="true"] .fab-rail-badge {
   opacity: 1;
   transform: translateX(0);
+}
+
+/* ===== Navigation Rail Tools Group & Sub-Menu ===== */
+.fab-rail-tools-group {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  gap: 3px;
+}
+
+.fab-rail-group-btn.group-active {
+  color: ${NAVY};
+  font-weight: 600;
+}
+
+.fab-rail-group-btn.active .fab-rail-chevron,
+.fab-rail-group-btn.group-active .fab-rail-chevron {
+  color: ${NAVY};
+}
+
+.fab-rail-subbadge {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 9999px;
+  background: #e0e7ff;
+  color: ${NAVY};
+  letter-spacing: 0.3px;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  white-space: nowrap;
+}
+
+.fab-rail:hover .fab-rail-subbadge,
+.fab-rail:focus-within .fab-rail-subbadge,
+.fab-rail[data-expanded="true"] .fab-rail-subbadge {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.fab-rail-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.2s cubic-bezier(0.16, 1, 0.3, 1), transform 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  color: #94a3b8;
+  margin-left: auto;
+}
+
+.fab-rail:hover .fab-rail-chevron,
+.fab-rail:focus-within .fab-rail-chevron,
+.fab-rail[data-expanded="true"] .fab-rail-chevron {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.fab-rail-submenu {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  padding: 2px 0 4px 0;
+  animation: fab-dropdown-fade 0.15s ease-out;
+}
+
+@keyframes fab-dropdown-fade {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fab-rail-subitem {
+  height: 36px;
+  padding: 0 10px;
+}
+
+.fab-rail:hover .fab-rail-subitem,
+.fab-rail:focus-within .fab-rail-subitem,
+.fab-rail[data-expanded="true"] .fab-rail-subitem {
+  padding-left: 20px;
+}
+
+.fab-rail-subitem .fab-rail-label {
+  font-size: 12px;
 }
 
 .fab-rail-dot {
@@ -1567,5 +1663,87 @@ export const FAB_CSS = `
   white-space: pre-wrap;
   word-break: break-all;
   margin-top: 8px;
+}
+
+/* ===== Recorder Top Segmented Tabs ===== */
+.fab-recorder-tabs {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #f1f5f9;
+  padding: 4px;
+  border-radius: 10px;
+  margin-bottom: 14px;
+  border: 1px solid #e2e8f0;
+}
+
+.fab-recorder-tab-btn {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  color: #64748b;
+  background: transparent;
+  border: none;
+  border-radius: 7px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.fab-recorder-tab-btn:hover {
+  color: #1e293b;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.fab-recorder-tab-btn.active {
+  background: #ffffff;
+  color: ${NAVY};
+  font-weight: 600;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+}
+
+.fab-recorder-tab-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: 10px;
+  background: #e2e8f0;
+  color: #475569;
+}
+
+.fab-recorder-tab-btn.active .fab-recorder-tab-count {
+  background: #EEF2FF;
+  color: ${NAVY};
+}
+
+.fab-recorder-pulse-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #dc2626;
+  box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+  animation: fab-recorder-pulse 1.4s infinite cubic-bezier(0.66, 0, 0, 1);
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+@keyframes fab-recorder-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0.7);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(220, 38, 38, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(220, 38, 38, 0);
+  }
 }
 `;

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
 	FolderKanban,
 	Plus,
@@ -12,11 +12,16 @@ import {
 	CheckCircle,
 	AlertCircle,
 	Clock,
-	XCircle
+	XCircle,
+	Eye,
+	RefreshCw,
+	FileText,
+	Share2
 } from 'lucide-react';
 import type {
 	RecordingApiClient,
 	RecordingProject,
+	RecordingSession,
 	TestCaseItem,
 	TestCaseSummary
 } from '../../../recording/apiClient';
@@ -27,6 +32,8 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { ImportTestCaseModal } from './ImportTestCaseModal';
 import { CreateEditTestCaseModal } from './CreateEditTestCaseModal';
+import { EmptyStateTestCase } from './EmptyStateTestCase';
+import { TestCaseResultModal } from './TestCaseResultModal';
 import type { ParsedImportTestCase } from '../../../recording/spreadsheetParser';
 
 export interface ProjectViewProps {
@@ -43,6 +50,9 @@ export interface ProjectViewProps {
 	onShowToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 	onActiveProjectChange?: (project: RecordingProject | null) => void;
 }
+
+const SYSTEM_TEMPLATE_URL =
+	'https://docs.google.com/spreadsheets/d/1k_08EdNZUBGBhLNU-FIPxqm06PpCfn4Dyprc4sDYCsI/edit?gid=603972469#gid=603972469';
 
 export const ProjectView: React.FC<ProjectViewProps> = ({
 	projects,
@@ -75,8 +85,20 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
 	// Modal states
 	const [isImportModalOpen, setImportModalOpen] = useState(false);
+	const [importPrefillUrl, setImportPrefillUrl] = useState<string | undefined>(undefined);
 	const [isCreateTcModalOpen, setCreateTcModalOpen] = useState(false);
 	const [editingTestCase, setEditingTestCase] = useState<TestCaseItem | null>(null);
+
+	// Result Modal state
+	const [isResultModalOpen, setResultModalOpen] = useState(false);
+	const [resultModalSessionId, setResultModalSessionId] = useState<number | null>(null);
+	const [resultModalTestCase, setResultModalTestCase] = useState<TestCaseItem | null>(null);
+
+	// Project Tab state: 'test-cases' | 'sessions'
+	const [activeProjectTab, setActiveProjectTab] = useState<'test-cases' | 'sessions'>('test-cases');
+	const [projectSessions, setProjectSessions] = useState<RecordingSession[]>([]);
+	const [loadingProjectSessions, setLoadingProjectSessions] = useState(false);
+	const [sessionSearch, setSessionSearch] = useState('');
 
 	// New Project modal states
 	const [isNewProjectModalOpen, setNewProjectModalOpen] = useState(false);
@@ -106,11 +128,32 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 		[api, tcSearch, tcStatusFilter, onShowToast]
 	);
 
+	const loadProjectSessions = useCallback(
+		async (idProject: number) => {
+			setLoadingProjectSessions(true);
+			try {
+				const res = await api.listSessions({ id_project: idProject, perPage: 100 });
+				setProjectSessions(res.items);
+			} catch (err) {
+				onShowToast((err as Error).message || 'Gagal memuat riwayat sesi project.', 'error');
+			} finally {
+				setLoadingProjectSessions(false);
+			}
+		},
+		[api, onShowToast]
+	);
+
 	useEffect(() => {
 		if (selectedProject) {
 			void loadTestCases(selectedProject.id_project);
 		}
 	}, [selectedProject, loadTestCases]);
+
+	useEffect(() => {
+		if (selectedProject && activeProjectTab === 'sessions') {
+			void loadProjectSessions(selectedProject.id_project);
+		}
+	}, [selectedProject, activeProjectTab, loadProjectSessions]);
 
 	const handleSaveNewProject = async (e: React.FormEvent) => {
 		e.preventDefault();
@@ -181,6 +224,17 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 		const s = projectSearch.toLowerCase();
 		return p.name.toLowerCase().includes(s) || (p.code && p.code.toLowerCase().includes(s));
 	});
+
+	const filteredProjectSessions = useMemo(() => {
+		const s = sessionSearch.toLowerCase().trim();
+		if (!s) return projectSessions;
+		return projectSessions.filter(
+			(sess) =>
+				sess.title.toLowerCase().includes(s) ||
+				sess.test_case_no.toLowerCase().includes(s) ||
+				String(sess.id_session).includes(s)
+		);
+	}, [projectSessions, sessionSearch]);
 
 	const renderStatusBadge = (status: string) => {
 		const st = (status || '').toLowerCase();
@@ -538,7 +592,94 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 				</CardHeader>
 
 				<CardContent>
-					{/* Filter Toolbar */}
+					{/* Project Tabs Switcher */}
+					<div
+						className="k-segmented"
+						style={{
+							display: 'flex',
+							gap: '4px',
+							background: '#f1f5f9',
+							padding: '4px',
+							borderRadius: '8px',
+							marginBottom: '12px',
+							border: '1px solid #e2e8f0'
+						}}
+						role="tablist"
+						aria-label="Tab Project"
+					>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={activeProjectTab === 'test-cases'}
+							style={{
+								flex: 1,
+								display: 'inline-flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								gap: '6px',
+								padding: '6px 12px',
+								fontSize: '12px',
+								fontWeight: activeProjectTab === 'test-cases' ? 600 : 500,
+								color: activeProjectTab === 'test-cases' ? '#2F3574' : '#64748b',
+								background: activeProjectTab === 'test-cases' ? '#ffffff' : 'transparent',
+								border: 'none',
+								borderRadius: '6px',
+								cursor: 'pointer',
+								boxShadow: activeProjectTab === 'test-cases' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
+								transition: 'all 0.15s ease'
+							}}
+							onClick={() => setActiveProjectTab('test-cases')}
+						>
+							<FileText size={13} />
+							<span>Daftar Test Case ({testCases.length})</span>
+						</button>
+						<button
+							type="button"
+							role="tab"
+							aria-selected={activeProjectTab === 'sessions'}
+							style={{
+								flex: 1,
+								display: 'inline-flex',
+								alignItems: 'center',
+								justifyContent: 'center',
+								gap: '6px',
+								padding: '6px 12px',
+								fontSize: '12px',
+								fontWeight: activeProjectTab === 'sessions' ? 600 : 500,
+								color: activeProjectTab === 'sessions' ? '#2F3574' : '#64748b',
+								background: activeProjectTab === 'sessions' ? '#ffffff' : 'transparent',
+								border: 'none',
+								borderRadius: '6px',
+								cursor: 'pointer',
+								boxShadow: activeProjectTab === 'sessions' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
+								transition: 'all 0.15s ease'
+							}}
+							onClick={() => {
+								setActiveProjectTab('sessions');
+							}}
+						>
+							<Play size={13} />
+							<span>Riwayat Sesi Project</span>
+							{projectSessions.length > 0 && (
+								<span
+									style={{
+										fontSize: '10px',
+										padding: '1px 6px',
+										borderRadius: '10px',
+										background: activeProjectTab === 'sessions' ? '#EEF2FF' : '#e2e8f0',
+										color: activeProjectTab === 'sessions' ? '#2F3574' : '#475569',
+										fontWeight: 700
+									}}
+								>
+									{projectSessions.length}
+								</span>
+							)}
+						</button>
+					</div>
+
+					{activeProjectTab === 'test-cases' ? (
+						<>
+							{/* Filter Toolbar */}
 					<div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
 						<div style={{ flex: 1 }}>
 							<Input
@@ -605,10 +746,24 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 									</tr>
 								) : testCases.length === 0 ? (
 									<tr>
-										<td colSpan={7} style={{ textAlign: 'center', padding: '36px 16px', color: '#64748b' }}>
-											Belum ada test case pada project ini. Klik <strong>Import Excel / CSV</strong> atau{' '}
-											<strong>Test Case Baru</strong>.
-										</td>
+										{Boolean(tcSearch.trim() || tcStatusFilter) ? (
+											<td colSpan={7} style={{ textAlign: 'center', padding: '36px 16px', color: '#64748b' }}>
+												Tidak ada test case yang cocok dengan filter pencarian.
+											</td>
+										) : (
+											<td colSpan={7} style={{ padding: '0', border: 'none' }}>
+												<EmptyStateTestCase
+													onUseTemplate={() => {
+														setImportPrefillUrl(SYSTEM_TEMPLATE_URL);
+														setImportModalOpen(true);
+													}}
+													onUseCustom={() => {
+														setImportPrefillUrl(undefined);
+														setImportModalOpen(true);
+													}}
+												/>
+											</td>
+										)}
 									</tr>
 								) : (
 									testCases.map((tc) => (
@@ -664,6 +819,23 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 													>
 														Rekam
 													</Button>
+													{Boolean(tc.last_session_id) && (
+														<Button
+															type="button"
+															variant="outline"
+															size="xs"
+															icon={<Eye size={11} />}
+															title="Lihat Hasil Rekaman Skenario Ini"
+															aria-label={`Hasil ${tc.test_case_id}`}
+															onClick={() => {
+																setResultModalSessionId(tc.last_session_id!);
+																setResultModalTestCase(tc);
+																setResultModalOpen(true);
+															}}
+														>
+															Hasil
+														</Button>
+													)}
 													<Button
 														type="button"
 														variant="ghost"
@@ -694,6 +866,129 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 							</tbody>
 						</table>
 					</div>
+						</>
+					) : (
+						<div>
+							{/* Filter & Refresh Toolbar */}
+							<div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
+								<div style={{ flex: 1 }}>
+									<Input
+										placeholder="Cari judul rekaman atau ID skenario..."
+										icon={<Search size={14} />}
+										value={sessionSearch}
+										onChange={(e) => setSessionSearch(e.target.value)}
+									/>
+								</div>
+								<Button
+									type="button"
+									variant="ghost"
+									size="sm"
+									loading={loadingProjectSessions}
+									disabled={loadingProjectSessions}
+									icon={<RefreshCw size={12} />}
+									onClick={() => selectedProject && void loadProjectSessions(selectedProject.id_project)}
+								>
+									Refresh
+								</Button>
+							</div>
+
+							{loadingProjectSessions ? (
+								<div style={{ textAlign: 'center', padding: '36px 16px', color: '#64748b', fontSize: '13px' }}>
+									Memuat riwayat sesi rekaman project...
+								</div>
+							) : filteredProjectSessions.length === 0 ? (
+								<div style={{ textAlign: 'center', padding: '36px 16px', color: '#64748b', fontSize: '13px', border: '1px dashed #cbd5e1', borderRadius: '8px' }}>
+									{projectSessions.length === 0
+										? 'Belum ada sesi rekaman untuk project ini. Rekam skenario dari tab Test Case.'
+										: `Tidak ada sesi yang cocok dengan pencarian "${sessionSearch}".`}
+								</div>
+							) : (
+								<div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '440px', overflowY: 'auto' }}>
+									{filteredProjectSessions.map((sess) => (
+											<div
+												key={sess.id_session}
+												style={{
+													padding: '12px 14px',
+													border: '1px solid #cbd5e1',
+													borderRadius: '8px',
+													background: '#ffffff',
+													display: 'flex',
+													justifyContent: 'space-between',
+													alignItems: 'center',
+													gap: '10px'
+												}}
+											>
+												<div style={{ flex: 1, minWidth: 0 }}>
+													<div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+														<span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: '12px', color: '#2F3574' }}>
+															{sess.test_case_no}
+														</span>
+														{renderStatusBadge(sess.result || sess.status)}
+														<span style={{ fontSize: '11px', color: '#64748b' }}>
+															#Session {sess.id_session}
+														</span>
+													</div>
+													<div style={{ fontSize: '13px', fontWeight: 600, color: '#0f172a', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+														{sess.title}
+													</div>
+													{sess.actual_result && (
+														<div style={{ fontSize: '11px', color: '#475569', marginTop: '2px', fontStyle: 'italic' }}>
+															Temuan: {sess.actual_result}
+														</div>
+													)}
+												</div>
+												<div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+													<Button
+														type="button"
+														variant="outline"
+														size="xs"
+														icon={<Eye size={12} />}
+														onClick={() => {
+															const matchedTc = testCases.find((t) => t.test_case_id === sess.test_case_no || t.id_test_case === sess.id_test_case) || null;
+															setResultModalSessionId(sess.id_session);
+															setResultModalTestCase(matchedTc);
+															setResultModalOpen(true);
+														}}
+													>
+														Hasil
+													</Button>
+													<Button
+														type="button"
+														variant="ghost"
+														size="xs"
+														icon={<Share2 size={12} />}
+														title="Bagikan Link Debug"
+														aria-label={`Bagikan ${sess.test_case_no}`}
+														onClick={async () => {
+															if (!api) return;
+															try {
+																const res = await api.generateShareUrl(sess.id_session);
+																try {
+																	await navigator.clipboard.writeText(res.share_url);
+																} catch {
+																	const textarea = document.createElement('textarea');
+																	textarea.value = res.share_url;
+																	textarea.style.position = 'fixed';
+																	textarea.style.opacity = '0';
+																	document.body.appendChild(textarea);
+																	textarea.focus();
+																	textarea.select();
+																	document.execCommand('copy');
+																	document.body.removeChild(textarea);
+																}
+																onShowToast?.('Link debug berhasil disalin ke clipboard!', 'success');
+															} catch (err) {
+																onShowToast?.((err as Error).message || 'Gagal membagikan sesi', 'error');
+															}
+														}}
+													/>
+												</div>
+											</div>
+										))}
+								</div>
+							)}
+						</div>
+					)}
 				</CardContent>
 			</Card>
 
@@ -701,7 +996,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 			<ImportTestCaseModal
 				isOpen={isImportModalOpen}
 				projectName={selectedProject.name}
-				onClose={() => setImportModalOpen(false)}
+				prefillUrl={importPrefillUrl}
+				onClose={() => {
+					setImportModalOpen(false);
+					setImportPrefillUrl(undefined);
+				}}
 				onImport={handleImportTestCases}
 			/>
 
@@ -715,6 +1014,20 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 					setEditingTestCase(null);
 				}}
 				onSave={handleSaveSingleTestCase}
+			/>
+
+			{/* Modal Hasil Rekaman Test Case */}
+			<TestCaseResultModal
+				open={isResultModalOpen}
+				sessionId={resultModalSessionId}
+				testCase={resultModalTestCase}
+				api={api}
+				onClose={() => {
+					setResultModalOpen(false);
+					setResultModalSessionId(null);
+					setResultModalTestCase(null);
+				}}
+				onShowToast={onShowToast}
 			/>
 		</div>
 	);

@@ -15,6 +15,7 @@ export interface StoredActiveSession {
 	last_sequence: number;
 	started_at?: number;
 	expected_result?: string | null;
+	record_video?: boolean;
 }
 
 const TOKEN_KEY = 'qa_recording_token';
