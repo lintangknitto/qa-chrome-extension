@@ -6,7 +6,11 @@ import {
 	Layers,
 	PlayCircle,
 	AlertCircle,
-	CheckCircle2
+	CheckCircle2,
+	Gauge,
+	Zap,
+	Clock,
+	Video
 } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
@@ -33,6 +37,8 @@ export interface ReRunModalProps {
 		targetUrl?: string;
 		parameterOverrides: Record<string, string>;
 		mode: 'tabGroup' | 'activeTab';
+		speedMode?: 'normal' | 'fast' | 'slow';
+		stepDelayMs?: number;
 		script?: string | null;
 	}) => Promise<void>;
 }
@@ -53,6 +59,7 @@ export const ReRunModal: React.FC<ReRunModalProps> = ({
 
 	const [parameters, setParameters] = useState<ReRunParameter[]>([]);
 	const [mode, setMode] = useState<'tabGroup' | 'activeTab'>('tabGroup');
+	const [speedMode, setSpeedMode] = useState<'normal' | 'fast' | 'slow'>('normal');
 	const [running, setRunning] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -103,6 +110,8 @@ export const ReRunModal: React.FC<ReRunModalProps> = ({
 			overrides[p.selector] = p.currentValue;
 		}
 
+		const stepDelayMs = speedMode === 'fast' ? 300 : speedMode === 'slow' ? 1500 : 800;
+
 		try {
 			await onStartReRun({
 				sessionId,
@@ -110,6 +119,8 @@ export const ReRunModal: React.FC<ReRunModalProps> = ({
 				targetUrl,
 				parameterOverrides: overrides,
 				mode,
+				speedMode,
+				stepDelayMs,
 				script
 			});
 			onClose();
@@ -357,6 +368,103 @@ export const ReRunModal: React.FC<ReRunModalProps> = ({
 							</div>
 						</label>
 					</div>
+				</div>
+
+				{/* Pilihan Kecepatan Replay & Perekaman Video */}
+				<div>
+					<div style={{ fontSize: 12, fontWeight: 700, color: '#0f172a', marginBottom: 8, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+						<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+							<Gauge size={13} color="#2F3574" />
+							<span>Kecepatan Replay (Pacing)</span>
+						</div>
+						<span style={{ fontSize: 11, color: '#64748b', fontWeight: 500 }}>
+							{speedMode === 'normal' ? 'Jeda 800ms / step' : speedMode === 'fast' ? 'Jeda 300ms / step' : 'Jeda 1500ms / step'}
+						</span>
+					</div>
+
+					<div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+						<button
+							type="button"
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								alignItems: 'center',
+								gap: 4,
+								padding: '10px 8px',
+								border: `1.5px solid ${speedMode === 'fast' ? '#2F3574' : '#e2e8f0'}`,
+								background: speedMode === 'fast' ? '#f0f4ff' : '#ffffff',
+								borderRadius: 8,
+								cursor: 'pointer',
+								textAlign: 'center',
+								transition: 'all 0.15s ease'
+							}}
+							onClick={() => setSpeedMode('fast')}
+						>
+							<div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 11, color: speedMode === 'fast' ? '#2F3574' : '#475569' }}>
+								<Zap size={12} color={speedMode === 'fast' ? '#2F3574' : '#64748b'} />
+								<span>Cepat</span>
+							</div>
+							<span style={{ fontSize: 10, color: '#64748b' }}>~300ms delay</span>
+						</button>
+
+						<button
+							type="button"
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								alignItems: 'center',
+								gap: 4,
+								padding: '10px 8px',
+								border: `1.5px solid ${speedMode === 'normal' ? '#2F3574' : '#e2e8f0'}`,
+								background: speedMode === 'normal' ? '#f0f4ff' : '#ffffff',
+								borderRadius: 8,
+								cursor: 'pointer',
+								textAlign: 'center',
+								transition: 'all 0.15s ease',
+								position: 'relative'
+							}}
+							onClick={() => setSpeedMode('normal')}
+						>
+							<span style={{ position: 'absolute', top: -7, right: 6, background: '#16a34a', color: '#ffffff', fontSize: 8.5, fontWeight: 700, padding: '1px 5px', borderRadius: 6 }}>
+								Disarankan
+							</span>
+							<div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 11, color: speedMode === 'normal' ? '#2F3574' : '#475569' }}>
+								<PlayCircle size={12} color={speedMode === 'normal' ? '#2F3574' : '#64748b'} />
+								<span>Normal</span>
+							</div>
+							<span style={{ fontSize: 10, color: '#64748b' }}>~800ms delay</span>
+						</button>
+
+						<button
+							type="button"
+							style={{
+								display: 'flex',
+								flexDirection: 'column',
+								alignItems: 'center',
+								gap: 4,
+								padding: '10px 8px',
+								border: `1.5px solid ${speedMode === 'slow' ? '#2F3574' : '#e2e8f0'}`,
+								background: speedMode === 'slow' ? '#f0f4ff' : '#ffffff',
+								borderRadius: 8,
+								cursor: 'pointer',
+								textAlign: 'center',
+								transition: 'all 0.15s ease'
+							}}
+							onClick={() => setSpeedMode('slow')}
+						>
+							<div style={{ display: 'flex', alignItems: 'center', gap: 4, fontWeight: 700, fontSize: 11, color: speedMode === 'slow' ? '#2F3574' : '#475569' }}>
+								<Clock size={12} color={speedMode === 'slow' ? '#2F3574' : '#64748b'} />
+								<span>Lambat / Debug</span>
+							</div>
+							<span style={{ fontSize: 10, color: '#64748b' }}>~1.5s delay</span>
+						</button>
+					</div>
+				</div>
+
+				{/* Video Recording Live Capture Notice */}
+				<div style={{ display: 'flex', alignItems: 'center', gap: 8, background: '#ecfdf5', border: '1px solid #a7f3d0', padding: '8px 12px', borderRadius: 8, fontSize: 11, color: '#065f46' }}>
+					<Video size={14} color="#059669" />
+					<span>Tab browser akan direkam otomatis (WebM) dan disimpan ke riwayat eksekusi (Historical Runs).</span>
 				</div>
 			</div>
 		</Modal>

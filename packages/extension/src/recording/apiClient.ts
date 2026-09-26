@@ -100,6 +100,10 @@ export class RecordingApiClient {
 		this._fetch = options.fetchImpl ?? fetch.bind(globalThis);
 	}
 
+	public get baseUrl(): string {
+		return this._baseUrl;
+	}
+
 	login(username: string, password: string): Promise<LoginResult> {
 		return this._request<LoginResult>('POST', '/auth/login', { username, password }, { skipAuth: true });
 	}

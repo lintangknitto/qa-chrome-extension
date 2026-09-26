@@ -228,7 +228,7 @@ describe('TestCaseResultModal', () => {
 		);
 
 		await waitFor(() => {
-			expect(screen.getByText('FAILED')).toBeTruthy();
+			expect(screen.getAllByText('FAILED').length).toBeGreaterThan(0);
 		});
 
 		(mockApi.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
@@ -247,7 +247,7 @@ describe('TestCaseResultModal', () => {
 		);
 
 		await waitFor(() => {
-			expect(screen.getByText('BLOCKED')).toBeTruthy();
+			expect(screen.getAllByText('BLOCKED').length).toBeGreaterThan(0);
 		});
 	});
 
@@ -544,5 +544,114 @@ describe('TestCaseResultModal', () => {
 		await waitFor(() => {
 			expect(onShowToast).toHaveBeenCalledWith('Gagal menghubungi backend', 'error');
 		});
+	});
+
+	it('Historical Runs: eksekusi re-run menambahkan Run #2, memungkinkan switching antar run dan memperbarui video playback URL', async () => {
+		const mockApi = createMockApi();
+		(mockApi.listGenerations as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+			items: [
+				{
+					id_generation: 1,
+					kind: 'playwright',
+					status: 'completed',
+					output: "test('login flow', async ({ page }) => { await page.goto('/login'); await page.fill('#email', 'admin@knitto.com'); });",
+					error_message: null
+				}
+			]
+		});
+		const onShowToast = vi.fn();
+
+		const originalChrome = globalThis.chrome;
+		const sendMessageMock = vi.fn((message, callback) => {
+			if (message.type === 'replay:run') {
+				callback?.({
+					success: true,
+					result: { success: true, totalSteps: 3, executedSteps: 3 },
+					videoUrl: 'http://localhost:9000/videos/session-77-rerun.webm'
+				});
+			}
+		});
+
+		globalThis.chrome = {
+			...originalChrome,
+			runtime: {
+				sendMessage: sendMessageMock
+			}
+		} as unknown as typeof chrome;
+
+		try {
+			render(
+				<TestCaseResultModal
+					open={true}
+					sessionId={77}
+					testCase={mockTestCase}
+					api={mockApi}
+					onClose={vi.fn()}
+					onShowToast={onShowToast}
+				/>
+			);
+
+			await waitFor(() => {
+				expect(screen.getByText('Riwayat Eksekusi (Historical Runs): 1 Run')).toBeTruthy();
+				expect(screen.getByText('Run #1 (Asli)')).toBeTruthy();
+			});
+
+			// Buka ReRunModal
+			const rerunHeaderBtn = screen.getByRole('button', { name: /^Re-run$/i });
+			fireEvent.click(rerunHeaderBtn);
+
+			await waitFor(() => {
+				expect(screen.getByText(/Re-run Dinamis: TC-AUTH-01/i)).toBeTruthy();
+			});
+
+			// Pilih opsi kecepatan Cepat & ganti parameter
+			const fastBtn = screen.getByRole('button', { name: /Cepat/i });
+			fireEvent.click(fastBtn);
+
+			const emailInput = screen.getByLabelText(/Override nilai untuk Email/i);
+			fireEvent.change(emailInput, { target: { value: 'rerun-user@knitto.com' } });
+
+			// Klik Mulai Re-run di modal
+			const startReRunBtn = screen.getAllByRole('button', { name: /Mulai Re-run/i })[0];
+			fireEvent.click(startReRunBtn);
+
+			// Verifikasi Run #2 (Re-run) muncul di riwayat eksekusi
+			await waitFor(() => {
+				expect(screen.getByText('Riwayat Eksekusi (Historical Runs): 2 Run')).toBeTruthy();
+				expect(screen.getByText('Run #2 (Re-run)')).toBeTruthy();
+				expect(screen.getByText(/Pacing: FAST/i)).toBeTruthy();
+				expect(screen.getByText(/Parameter Overrides:/i)).toBeTruthy();
+				expect(screen.getByText(/#email = "rerun-user@knitto.com"/i)).toBeTruthy();
+			});
+
+			// Verifikasi video player menampilkan URL video re-run
+			await waitFor(() => {
+				const currentVideo = document.querySelector('video');
+				expect(currentVideo?.getAttribute('src')).toBe('http://localhost:9000/videos/session-77-rerun.webm');
+			});
+
+			// Klik kembali ke Run #1 (Asli)
+			const run1Btn = screen.getByRole('button', { name: /Run #1 \(Asli\)/i });
+			fireEvent.click(run1Btn);
+
+			// Video kembali ke URL asli dan parameter overrides tidak tampil
+			await waitFor(() => {
+				const currentVideo = document.querySelector('video');
+				expect(currentVideo?.getAttribute('src')).toBe('http://localhost:9000/videos/session-77.webm');
+				expect(screen.queryByText(/Parameter Overrides:/i)).toBeNull();
+			});
+
+			// Klik lagi ke Run #2 (Re-run)
+			const run2Btn = screen.getByRole('button', { name: /Run #2 \(Re-run\)/i });
+			fireEvent.click(run2Btn);
+
+			await waitFor(() => {
+				const currentVideo = document.querySelector('video');
+				expect(currentVideo?.getAttribute('src')).toBe('http://localhost:9000/videos/session-77-rerun.webm');
+				expect(screen.getByText(/Parameter Overrides:/i)).toBeTruthy();
+			});
+		} finally {
+			globalThis.chrome = originalChrome;
+		}
 	});
 });

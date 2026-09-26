@@ -124,6 +124,8 @@ describe('ReRunModal', () => {
 					'#qty': '10'
 				},
 				mode: 'activeTab',
+				speedMode: 'normal',
+				stepDelayMs: 800,
 				script: sampleScript
 			});
 			expect(onClose).toHaveBeenCalled();
@@ -149,5 +151,75 @@ describe('ReRunModal', () => {
 
 		const startBtn = screen.getByRole('button', { name: /Mulai Re-run/i }) as HTMLButtonElement;
 		expect(startBtn.disabled).toBe(true);
+	});
+
+	it('dapat memilih opsi kecepatan Cepat (300ms) dan mengirimkan payload yang sesuai', async () => {
+		const onStartReRun = vi.fn().mockResolvedValue(undefined);
+		const onClose = vi.fn();
+
+		render(
+			<ReRunModal
+				open={true}
+				sessionId={50}
+				testCaseNo="TC-SPEED-01"
+				title="Speed Test Cepat"
+				script={sampleScript}
+				onClose={onClose}
+				onStartReRun={onStartReRun}
+			/>
+		);
+
+		// Klik opsi kecepatan Cepat
+		const fastBtn = screen.getByRole('button', { name: /Cepat/i });
+		fireEvent.click(fastBtn);
+
+		// Submit
+		fireEvent.click(screen.getByRole('button', { name: /Mulai Re-run/i }));
+
+		await waitFor(() => {
+			expect(onStartReRun).toHaveBeenCalledWith(
+				expect.objectContaining({
+					sessionId: 50,
+					speedMode: 'fast',
+					stepDelayMs: 300
+				})
+			);
+			expect(onClose).toHaveBeenCalled();
+		});
+	});
+
+	it('dapat memilih opsi kecepatan Lambat / Debug (1500ms) dan mengirimkan payload yang sesuai', async () => {
+		const onStartReRun = vi.fn().mockResolvedValue(undefined);
+		const onClose = vi.fn();
+
+		render(
+			<ReRunModal
+				open={true}
+				sessionId={51}
+				testCaseNo="TC-SPEED-02"
+				title="Speed Test Lambat"
+				script={sampleScript}
+				onClose={onClose}
+				onStartReRun={onStartReRun}
+			/>
+		);
+
+		// Klik opsi kecepatan Lambat / Debug
+		const slowBtn = screen.getByRole('button', { name: /Lambat \/ Debug/i });
+		fireEvent.click(slowBtn);
+
+		// Submit
+		fireEvent.click(screen.getByRole('button', { name: /Mulai Re-run/i }));
+
+		await waitFor(() => {
+			expect(onStartReRun).toHaveBeenCalledWith(
+				expect.objectContaining({
+					sessionId: 51,
+					speedMode: 'slow',
+					stepDelayMs: 1500
+				})
+			);
+			expect(onClose).toHaveBeenCalled();
+		});
 	});
 });

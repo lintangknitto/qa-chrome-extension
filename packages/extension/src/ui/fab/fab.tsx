@@ -655,6 +655,9 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					stopWarning = (stopError as Error).message;
 				}
 
+				const endedSessionId = currentSession.id_session;
+				const isProjectSession = Boolean(currentSession.id_project);
+
 				await api.endSession(currentSession.id_session, input);
 				await clearActiveSession();
 				setActiveSessionState(null);
@@ -671,7 +674,12 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				);
 				await loadSessions();
 				await loadProjects();
-				setView('history');
+
+				// Langsung buka modal hasil pengujian di dalam ekstensi
+				setResultModalSessionId(endedSessionId);
+				setResultModalTestCase(null);
+				setResultModalOpen(true);
+				setView(isProjectSession ? 'projects' : 'history');
 			} catch (caught) {
 				setError((caught as Error).message);
 			} finally {
@@ -1282,26 +1290,26 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 						</div>
 					</div>
 				)}
-			</aside>
 
-			<TestCaseResultModal
-				open={isResultModalOpen}
-				sessionId={resultModalSessionId}
-				testCase={resultModalTestCase}
-				api={api}
-				onClose={() => {
-					setResultModalOpen(false);
-					setResultModalSessionId(null);
-					setResultModalTestCase(null);
-				}}
-				onShowToast={(msg, toastType) => {
-					if (toastType === 'error') {
-						setError(msg);
-					} else {
-						showNotice(msg, toastType ?? 'success');
-					}
-				}}
-			/>
+				<TestCaseResultModal
+					open={isResultModalOpen}
+					sessionId={resultModalSessionId}
+					testCase={resultModalTestCase}
+					api={api}
+					onClose={() => {
+						setResultModalOpen(false);
+						setResultModalSessionId(null);
+						setResultModalTestCase(null);
+					}}
+					onShowToast={(msg, toastType) => {
+						if (toastType === 'error') {
+							setError(msg);
+						} else {
+							showNotice(msg, toastType ?? 'success');
+						}
+					}}
+				/>
+			</aside>
 
 			<button
 				className={`fab-trigger ${side === 'left' ? 'fab-side-left' : ''}`}

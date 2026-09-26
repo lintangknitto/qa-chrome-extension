@@ -348,6 +348,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 											variant="secondary"
 											size="xs"
 											disabled={busy}
+											title="Lihat Rincian Hasil di Ekstensi"
 											icon={<Eye size={11} />}
 											onClick={() => handleSessionClick(session)}
 										>

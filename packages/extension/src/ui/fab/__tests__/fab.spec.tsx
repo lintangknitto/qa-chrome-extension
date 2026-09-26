@@ -299,11 +299,11 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		expect(screen.getByText('Konfirmasi Selesai Recording')).toBeTruthy();
 	});
 
-	it('layar Result: konfirmasi End Session → berpindah ke Riwayat Session', async () => {
+	it('layar Result: konfirmasi End Session → membuka TestCaseResultModal langsung di dalam ekstensi', async () => {
 		storageStore.set('qa_recording_token', 'mock-token');
 		storageStore.set('qa_recording_active_session', {
 			id_session: 400,
-			id_project: 1,
+			id_project: null,
 			test_case_no: 'TC-END-01',
 			title: 'Session To End',
 			group_id: 15,
@@ -313,6 +313,15 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			id_session: 400,
 			status: 'completed',
 			result: 'PASS'
+		});
+		apiMocks.getSession.mockResolvedValueOnce({
+			id_session: 400,
+			id_project: null,
+			test_case_no: 'TC-END-01',
+			title: 'Session To End',
+			status: 'completed',
+			result: 'PASS',
+			actual_result: 'Semua test pass sesuai ekspektasi.'
 		});
 
 		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
@@ -336,7 +345,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 				result: 'PASS',
 				actual_result: 'Semua test pass sesuai ekspektasi.'
 			});
-			expect(screen.getAllByText('Riwayat Session').length).toBeGreaterThan(0);
+			expect(screen.getByText(/Hasil Rekaman: TC-END-01/i)).toBeTruthy();
 		});
 	});
 

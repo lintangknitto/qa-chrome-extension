@@ -17,7 +17,11 @@ import {
 	Video,
 	VideoOff,
 	Play,
-	ExternalLink
+	ExternalLink,
+	History,
+	Layers,
+	Zap,
+	Gauge
 } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
@@ -34,6 +38,22 @@ export interface TestCaseResultModalProps {
 	api: RecordingApiClient;
 	onClose: () => void;
 	onShowToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
+}
+
+export interface RunItem {
+	id: string;
+	runNumber: number;
+	label: string;
+	type: 'original' | 'rerun';
+	result?: string | null;
+	actualResult?: string | null;
+	videoUrl?: string | null;
+	timestamp?: string;
+	speedMode?: 'normal' | 'fast' | 'slow';
+	stepDelayMs?: number;
+	parameterOverrides?: Record<string, string>;
+	checkpoints?: CheckpointItem[];
+	sessionId?: number;
 }
 
 interface CheckpointItem {
@@ -58,6 +78,8 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 	const [error, setError] = useState<string | null>(null);
 	const [sessionDetail, setSessionDetail] = useState<(RecordingSession & { checkpoints?: CheckpointItem[] }) | null>(null);
 	const [generations, setGenerations] = useState<GenerationItem[]>([]);
+	const [runs, setRuns] = useState<RunItem[]>([]);
+	const [activeRunId, setActiveRunId] = useState<string>('');
 	const [busyGenerate, setBusyGenerate] = useState(false);
 	const [sharing, setSharing] = useState(false);
 	const [isReRunOpen, setReRunOpen] = useState(false);
@@ -107,6 +129,8 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		targetUrl?: string;
 		parameterOverrides: Record<string, string>;
 		mode: 'tabGroup' | 'activeTab';
+		speedMode?: 'normal' | 'fast' | 'slow';
+		stepDelayMs?: number;
 		script?: string | null;
 	}) => {
 		const res = await new Promise<any>((resolve) => {
@@ -114,7 +138,10 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 				chrome.runtime.sendMessage(
 					{
 						type: 'replay:run',
-						options: opts
+						options: {
+							...opts,
+							apiBaseUrl: api.baseUrl
+						}
 					},
 					(response) => resolve(response ?? { success: false, error: 'Tidak ada respon dari Service Worker' })
 				);
@@ -126,7 +153,28 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		if (!res?.success) {
 			throw new Error(res?.error || 'Replay gagal dijalankan');
 		}
-		onShowToast?.(`Replay ${opts.testCaseNo} berhasil dijalankan!`, 'success');
+
+		const nextRunNumber = runs.length + 1;
+		const newRun: RunItem = {
+			id: `run-rerun-${Date.now()}`,
+			runNumber: nextRunNumber,
+			label: `Run #${nextRunNumber} (Re-run)`,
+			type: 'rerun',
+			result: res.result?.success ? 'PASSED' : 'FAILED',
+			actualResult: res.result?.success
+				? `Replay sukses dieksekusi (${res.result.executedSteps || 0} langkah selesai).`
+				: (res.result?.error || 'Replay terhenti'),
+			videoUrl: res.videoUrl || res.videoDataUrl || null,
+			timestamp: new Date().toISOString(),
+			speedMode: opts.speedMode,
+			stepDelayMs: opts.stepDelayMs,
+			parameterOverrides: opts.parameterOverrides,
+			sessionId: opts.sessionId
+		};
+
+		setRuns((prev) => [...prev, newRun]);
+		setActiveRunId(newRun.id);
+		onShowToast?.(`Replay ${opts.testCaseNo} berhasil! Disimpan ke Run #${nextRunNumber}.`, 'success');
 	};
 
 	useEffect(() => {
@@ -159,8 +207,23 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 				}
 			}
 
+			const origRun: RunItem = {
+				id: `run-orig-${id}`,
+				runNumber: 1,
+				label: 'Run #1 (Asli)',
+				type: 'original',
+				result: sessionObj.result,
+				actualResult: sessionObj.actual_result,
+				videoUrl: sessionObj.video_url,
+				timestamp: (sessionObj as any).created_at,
+				checkpoints: sessionObj.checkpoints || [],
+				sessionId: id
+			};
+
 			setSessionDetail(sessionObj);
 			setGenerations((genRes.items || []) as GenerationItem[]);
+			setRuns([origRun]);
+			setActiveRunId(origRun.id);
 		} catch (err) {
 			setError((err as Error).message || 'Gagal memuat detail hasil rekaman.');
 		} finally {
@@ -175,6 +238,8 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		} else {
 			setSessionDetail(null);
 			setGenerations([]);
+			setRuns([]);
+			setActiveRunId('');
 			setError(null);
 		}
 	}, [isVisible, sessionId, loadData]);
@@ -288,10 +353,13 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		);
 	};
 
+	const activeRun = runs.find((r) => r.id === activeRunId) || runs[0];
 	const testCaseNo = testCase?.test_case_id || sessionDetail?.test_case_no || `Sesi #${sessionId}`;
 	const title = testCase?.title || sessionDetail?.title || 'Hasil Pengujian Rekaman';
-	const actualResult = sessionDetail?.actual_result || testCase?.actual_result;
-	const checkpoints = sessionDetail?.checkpoints || [];
+	const currentResult = activeRun?.result ?? sessionDetail?.result ?? testCase?.status;
+	const currentActualResult = activeRun?.actualResult ?? sessionDetail?.actual_result ?? testCase?.actual_result;
+	const currentVideoUrl = activeRun?.videoUrl ?? sessionDetail?.video_url;
+	const checkpoints = (activeRun?.checkpoints && activeRun.checkpoints.length > 0) ? activeRun.checkpoints : (sessionDetail?.checkpoints || []);
 
 	const playwrightGen = generations.find((g) => g.kind === 'playwright');
 	const playwrightScript = playwrightGen?.output || null;
@@ -370,11 +438,21 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 										<span style={{ fontFamily: 'monospace', fontWeight: 700, fontSize: 13, color: '#2F3574', background: '#EEF2FF', padding: '2px 8px', borderRadius: 6 }}>
 											{testCaseNo}
 										</span>
-										{renderResultBadge(sessionDetail?.result || testCase?.status)}
+										{!sessionDetail?.id_project && (
+											<span style={{ fontSize: 10, background: '#EEF2FF', color: '#3730A3', padding: '2px 8px', borderRadius: 12, fontWeight: 700, border: '1px solid #C7D2FE' }}>
+												⚡ Quick Record
+											</span>
+										)}
+										{renderResultBadge(currentResult)}
 									</div>
 									<h3 style={{ fontWeight: 700, fontSize: 14, color: '#0f172a', marginTop: 6, margin: '6px 0 0 0' }}>
 										{title}
 									</h3>
+									<div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
+										{sessionDetail?.id_project
+											? `Project #${sessionDetail.id_project}`
+											: 'Mode: Rekam Langsung (Tanpa Project)'}
+									</div>
 								</div>
 								{sessionDetail?.target_url && (
 									<div style={{ fontSize: 11, color: '#64748b', maxWidth: 260, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }} title={sessionDetail.target_url}>
@@ -383,18 +461,113 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 								)}
 							</div>
 
+							{/* Expected Result Box */}
+							{(sessionDetail?.expected_result || testCase?.expected_result) && (
+								<div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e2e8f0' }}>
+									<div style={{ fontSize: 11, fontWeight: 700, color: '#15803d', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
+										Expected Result:
+									</div>
+									<div style={{ fontSize: 12, color: '#14532d', background: '#f0fdf4', padding: '8px 12px', borderRadius: 6, border: '1px solid #bbf7d0', lineHeight: 1.5 }}>
+										{sessionDetail?.expected_result || testCase?.expected_result}
+									</div>
+								</div>
+							)}
+
 							{/* Temuan / Actual Result Box */}
-							{actualResult && (
+							{currentActualResult && (
 								<div style={{ marginTop: 10, paddingTop: 10, borderTop: '1px solid #e2e8f0' }}>
 									<div style={{ fontSize: 11, fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 4 }}>
-										Temuan QA / Actual Result:
+										Temuan QA / Actual Result ({activeRun?.label || 'Hasil Aktif'}):
 									</div>
 									<div style={{ fontSize: 12, color: '#1e293b', background: '#ffffff', padding: '8px 12px', borderRadius: 6, border: '1px solid #cbd5e1', lineHeight: 1.5 }}>
-										{actualResult}
+										{currentActualResult}
 									</div>
 								</div>
 							)}
 						</div>
+
+						{/* Historical Runs Navigation Bar */}
+						{runs.length > 0 && (
+							<div
+								style={{
+									background: '#f8fafc',
+									border: '1px solid #cbd5e1',
+									borderRadius: 10,
+									padding: '8px 12px',
+									display: 'flex',
+									flexDirection: 'column',
+									gap: 6
+								}}
+							>
+								<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+									<div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#2F3574' }}>
+										<History size={13} color="#2F3574" />
+										<span>Riwayat Eksekusi (Historical Runs): {runs.length} Run</span>
+									</div>
+									{activeRun?.speedMode && (
+										<span style={{ fontSize: 10, color: '#64748b', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+											<Gauge size={11} />
+											<span>Pacing: {activeRun.speedMode.toUpperCase()} ({activeRun.stepDelayMs || (activeRun.speedMode === 'fast' ? 300 : activeRun.speedMode === 'slow' ? 1500 : 800)}ms)</span>
+										</span>
+									)}
+								</div>
+
+								<div style={{ display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 2 }}>
+									{runs.map((r) => {
+										const isSelected = r.id === activeRun?.id;
+										const isPass = (r.result || '').toUpperCase() === 'PASSED' || (r.result || '').toUpperCase() === 'PASS';
+										const isFail = (r.result || '').toUpperCase() === 'FAILED' || (r.result || '').toUpperCase() === 'FAIL';
+										return (
+											<button
+												key={r.id}
+												type="button"
+												style={{
+													display: 'inline-flex',
+													alignItems: 'center',
+													gap: 6,
+													padding: '5px 10px',
+													borderRadius: 6,
+													fontSize: 11,
+													fontWeight: isSelected ? 700 : 500,
+													background: isSelected ? '#2F3574' : '#ffffff',
+													color: isSelected ? '#ffffff' : '#334155',
+													border: '1px solid ' + (isSelected ? '#2F3574' : '#cbd5e1'),
+													cursor: 'pointer',
+													whiteSpace: 'nowrap',
+													boxShadow: isSelected ? '0 1px 3px rgba(47, 53, 116, 0.25)' : 'none',
+													transition: 'all 0.15s ease'
+												}}
+												onClick={() => setActiveRunId(r.id)}
+											>
+												{r.type === 'original' ? <Play size={11} fill={isSelected ? '#ffffff' : '#475569'} /> : <Repeat size={11} />}
+												<span>{r.label}</span>
+												<span
+													style={{
+														fontSize: 9.5,
+														fontWeight: 700,
+														padding: '1px 5px',
+														borderRadius: 4,
+														background: isSelected
+															? (isPass ? '#15803d' : isFail ? '#b91c1c' : '#475569')
+															: (isPass ? '#dcfce7' : isFail ? '#fee2e2' : '#f1f5f9'),
+														color: isSelected ? '#ffffff' : (isPass ? '#15803d' : isFail ? '#b91c1c' : '#475569')
+													}}
+												>
+													{r.result || 'DONE'}
+												</span>
+											</button>
+										);
+									})}
+								</div>
+
+								{activeRun?.parameterOverrides && Object.keys(activeRun.parameterOverrides).length > 0 && (
+									<div style={{ fontSize: 10.5, color: '#475569', background: '#ffffff', padding: '4px 8px', borderRadius: 4, border: '1px solid #e2e8f0' }}>
+										<strong>Parameter Overrides:</strong>{' '}
+										{Object.entries(activeRun.parameterOverrides).map(([k, v]) => `${k} = "${v}"`).join(', ')}
+									</div>
+								)}
+							</div>
+						)}
 
 						{/* Segmented Tabs Navigation */}
 						<div
@@ -507,9 +680,9 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 											<Video size={15} color="#2F3574" />
 											<span>Rekaman Video Pengujian (WebM)</span>
 										</div>
-										{sessionDetail?.video_url && (
+										{currentVideoUrl && (
 											<a
-												href={sessionDetail.video_url}
+												href={currentVideoUrl}
 												target="_blank"
 												rel="noreferrer"
 												style={{ fontSize: 11, color: '#2F3574', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600 }}
@@ -520,13 +693,17 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 										)}
 									</div>
 
-									{sessionDetail?.video_url ? (
+									{currentVideoUrl ? (
 										<div style={{ background: '#090d16', borderRadius: 8, overflow: 'hidden', position: 'relative', border: '1px solid #1e293b' }}>
 											<video
 												ref={videoRef}
 												controls
 												preload="metadata"
-												src={sessionDetail.video_url}
+												key={currentVideoUrl}
+												src={currentVideoUrl}
+												onLoadedMetadata={(e) => {
+													e.currentTarget.playbackRate = videoPlaybackRate;
+												}}
 												style={{ width: '100%', maxHeight: 250, display: 'block', outline: 'none' }}
 											/>
 											{/* Video toolbar: Speed Controls & Download */}
@@ -555,8 +732,8 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 												</div>
 												<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 													<a
-														href={sessionDetail.video_url}
-														download={`session-${sessionId}-recording.webm`}
+														href={currentVideoUrl}
+														download={`session-${sessionId}-${activeRun?.label || 'run'}.webm`}
 														target="_blank"
 														rel="noreferrer"
 														style={{ textDecoration: 'none' }}
@@ -590,29 +767,24 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 									)}
 								</div>
 
-								{/* Quick Action Banner */}
+								{/* Status Otomasi Banner */}
 								<div style={{ background: '#EEF2FF', border: '1px solid #C7D2FE', borderRadius: 10, padding: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
 									<div>
 										<div style={{ fontWeight: 700, fontSize: 12, color: '#2F3574' }}>
-											Otomasi Skenario Ini
+											Otomasi Skenario
 										</div>
 										<div style={{ fontSize: 11, color: '#4338CA', marginTop: 2 }}>
 											{hasPlaywrightScript
-												? 'Script Playwright tersedia dan siap di-re-run langsung di browser.'
-												: 'Generate script Playwright untuk menjalankan otomasi browser secara instan.'}
+												? 'Script Playwright tersedia. Gunakan tombol Re-run di footer bawah untuk eksekusi replay.'
+												: 'Generate script Playwright untuk menjalankan otomasi browser.'}
 										</div>
 									</div>
-									<div style={{ display: 'flex', gap: 6 }}>
+									<div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
 										{hasPlaywrightScript ? (
-											<Button
-												type="button"
-												variant="primary"
-												size="xs"
-												icon={<Play size={12} fill="currentColor" />}
-												onClick={() => setReRunOpen(true)}
-											>
-												Mulai Re-run
-											</Button>
+											<span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: 6, fontWeight: 700, border: '1px solid #86efac', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+												<Check size={12} />
+												Script Siap
+											</span>
 										) : (
 											<Button
 												type="button"

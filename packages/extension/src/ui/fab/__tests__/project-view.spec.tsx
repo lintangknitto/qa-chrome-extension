@@ -195,11 +195,12 @@ describe('ProjectView & Test Case Spreadsheet Management', () => {
 			expect(screen.getByText('TC-AUTH-01')).toBeTruthy();
 		});
 
-		// Klik tombol Rekam untuk TC-AUTH-01
-		const rekamButtons = screen.getAllByTitle(/Rekam Skenario Ini/i);
-		expect(rekamButtons.length).toBe(2);
+		// Buka dropdown aksi untuk TC-AUTH-01 dan klik Mulai Rekam
+		const actionBtn = screen.getByRole('button', { name: 'Aksi TC-AUTH-01' });
+		fireEvent.click(actionBtn);
 
-		fireEvent.click(rekamButtons[0]);
+		const rekamOption = screen.getByText('Mulai Rekam');
+		fireEvent.click(rekamOption);
 
 		expect(onSelectTestCaseForRecording).toHaveBeenCalledWith(
 			mockProjects[0],
@@ -548,7 +549,7 @@ describe('ProjectView & Test Case Spreadsheet Management', () => {
 		expect(urlInput.value).toBe('');
 	});
 
-	it('klik tombol Hasil pada baris test case membuka TestCaseResultModal', async () => {
+	it('klik baris test case yang memiliki hasil membuka TestCaseResultModal', async () => {
 		const mockApi = createMockApi();
 		render(
 			<ProjectView
@@ -569,14 +570,15 @@ describe('ProjectView & Test Case Spreadsheet Management', () => {
 		// Klik project untuk membuka daftar test case
 		fireEvent.click(screen.getByText('Knitto Portal'));
 
-		// Tunggu sampai test case muncul dan periksa tombol Hasil
+		// Tunggu sampai test case muncul
 		await waitFor(() => {
 			expect(screen.getByText('TC-AUTH-02')).toBeTruthy();
-			expect(screen.getByRole('button', { name: 'Hasil TC-AUTH-02' })).toBeTruthy();
 		});
 
-		// Klik tombol Hasil
-		fireEvent.click(screen.getByRole('button', { name: 'Hasil TC-AUTH-02' }));
+		// Klik baris TC-AUTH-02 (yang memiliki last_session_id)
+		const row = screen.getByText('TC-AUTH-02').closest('tr');
+		expect(row).toBeTruthy();
+		fireEvent.click(row!);
 
 		// Modal detail hasil rekaman terbuka
 		await waitFor(() => {
@@ -620,7 +622,7 @@ describe('ProjectView & Test Case Spreadsheet Management', () => {
 		});
 	});
 
-	it('tombol Hasil tidak muncul pada baris test case tanpa last_session_id', async () => {
+	it('menu aksi Lihat Hasil & Video hanya muncul jika test case memiliki last_session_id', async () => {
 		const mockApi = createMockApi();
 		render(
 			<ProjectView
@@ -640,10 +642,13 @@ describe('ProjectView & Test Case Spreadsheet Management', () => {
 			expect(screen.getByText('TC-AUTH-01')).toBeTruthy();
 		});
 
-		// TC-AUTH-01 tidak punya last_session_id
-		expect(screen.queryByRole('button', { name: 'Hasil TC-AUTH-01' })).toBeNull();
-		// TC-AUTH-02 punya last_session_id
-		expect(screen.getByRole('button', { name: 'Hasil TC-AUTH-02' })).toBeTruthy();
+		// TC-AUTH-01 tidak punya last_session_id -> buka menu aksi TC-AUTH-01
+		fireEvent.click(screen.getByRole('button', { name: 'Aksi TC-AUTH-01' }));
+		expect(screen.queryByText('Lihat Hasil & Video')).toBeNull();
+
+		// TC-AUTH-02 punya last_session_id -> buka menu aksi TC-AUTH-02
+		fireEvent.click(screen.getByRole('button', { name: 'Aksi TC-AUTH-02' }));
+		expect(screen.getByText('Lihat Hasil & Video')).toBeTruthy();
 	});
 
 	it('input pencarian pada tab Riwayat Sesi Project menyaring sesi berdasarkan judul / nomor test case', async () => {
@@ -704,5 +709,143 @@ describe('ProjectView & Test Case Spreadsheet Management', () => {
 
 		expect(screen.queryByText('#Session 88')).toBeNull();
 		expect(screen.getByText('#Session 89')).toBeTruthy();
+	});
+
+	it('klik baris test case tanpa hasil (belum direkam) membuka modal Edit Test Case', async () => {
+		const mockApi = createMockApi();
+		render(
+			<ProjectView
+				projects={mockProjects}
+				api={mockApi}
+				canCreateProject={true}
+				onRefreshProjects={vi.fn().mockResolvedValue(undefined)}
+				onCreateProject={vi.fn().mockResolvedValue(1)}
+				onSelectTestCaseForRecording={vi.fn()}
+				onShowToast={vi.fn()}
+			/>
+		);
+
+		fireEvent.click(screen.getByText('Knitto Portal'));
+
+		await waitFor(() => {
+			expect(screen.getByText('TC-AUTH-01')).toBeTruthy();
+		});
+
+		// Klik baris TC-AUTH-01 (yang belum memiliki last_session_id)
+		const row = screen.getByText('TC-AUTH-01').closest('tr');
+		expect(row).toBeTruthy();
+		fireEvent.click(row!);
+
+		// Modal Edit Test Case terbuka
+		await waitFor(() => {
+			expect(screen.getByRole('dialog', { name: /Edit Test Case/i })).toBeTruthy();
+			expect(screen.getByDisplayValue('TC-AUTH-01')).toBeTruthy();
+		});
+	});
+
+	it('click outside menutup menu dropdown aksi test case', async () => {
+		const mockApi = createMockApi();
+		render(
+			<ProjectView
+				projects={mockProjects}
+				api={mockApi}
+				canCreateProject={true}
+				onRefreshProjects={vi.fn().mockResolvedValue(undefined)}
+				onCreateProject={vi.fn().mockResolvedValue(1)}
+				onSelectTestCaseForRecording={vi.fn()}
+				onShowToast={vi.fn()}
+			/>
+		);
+
+		fireEvent.click(screen.getByText('Knitto Portal'));
+
+		await waitFor(() => {
+			expect(screen.getByText('TC-AUTH-01')).toBeTruthy();
+		});
+
+		// Buka dropdown
+		const actionBtn = screen.getByRole('button', { name: 'Aksi TC-AUTH-01' });
+		fireEvent.click(actionBtn);
+
+		expect(screen.getByText('Mulai Rekam')).toBeTruthy();
+		expect(screen.getByText('Edit Test Case')).toBeTruthy();
+
+		// Trigger window click outside
+		fireEvent.click(document.body);
+
+		// Dropdown tertutup
+		expect(screen.queryByText('Mulai Rekam')).toBeNull();
+	});
+
+	it('klik Edit Test Case di dropdown aksi membuka modal edit', async () => {
+		const mockApi = createMockApi();
+		render(
+			<ProjectView
+				projects={mockProjects}
+				api={mockApi}
+				canCreateProject={true}
+				onRefreshProjects={vi.fn().mockResolvedValue(undefined)}
+				onCreateProject={vi.fn().mockResolvedValue(1)}
+				onSelectTestCaseForRecording={vi.fn()}
+				onShowToast={vi.fn()}
+			/>
+		);
+
+		fireEvent.click(screen.getByText('Knitto Portal'));
+
+		await waitFor(() => {
+			expect(screen.getByText('TC-AUTH-01')).toBeTruthy();
+		});
+
+		// Buka dropdown & klik Edit Test Case
+		fireEvent.click(screen.getByRole('button', { name: 'Aksi TC-AUTH-01' }));
+		const editBtn = screen.getByText('Edit Test Case');
+		fireEvent.click(editBtn);
+
+		await waitFor(() => {
+			expect(screen.getByRole('dialog', { name: /Edit Test Case/i })).toBeTruthy();
+		});
+	});
+
+	it('klik Hapus Test Case di dropdown aksi memanggil api.deleteTestCase setelah konfirmasi', async () => {
+		const mockApi = createMockApi();
+		const onShowToast = vi.fn();
+		const confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+		try {
+			render(
+				<ProjectView
+					projects={mockProjects}
+					api={mockApi}
+					canCreateProject={true}
+					onRefreshProjects={vi.fn().mockResolvedValue(undefined)}
+					onCreateProject={vi.fn().mockResolvedValue(1)}
+					onSelectTestCaseForRecording={vi.fn()}
+					onShowToast={onShowToast}
+				/>
+			);
+
+			fireEvent.click(screen.getByText('Knitto Portal'));
+
+			await waitFor(() => {
+				expect(screen.getByText('TC-AUTH-01')).toBeTruthy();
+			});
+
+			// Buka dropdown & klik Hapus Test Case
+			fireEvent.click(screen.getByRole('button', { name: 'Aksi TC-AUTH-01' }));
+			const deleteBtn = screen.getByText('Hapus Test Case');
+			fireEvent.click(deleteBtn);
+
+			await waitFor(() => {
+				expect(confirmSpy).toHaveBeenCalled();
+				expect(mockApi.deleteTestCase).toHaveBeenCalledWith(1, 101);
+				expect(onShowToast).toHaveBeenCalledWith(
+					expect.stringContaining('berhasil dihapus'),
+					'info'
+				);
+			});
+		} finally {
+			confirmSpy.mockRestore();
+		}
 	});
 });

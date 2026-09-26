@@ -21,6 +21,10 @@ export interface ReplayOptions {
 	steps?: ReplayActionStep[];
 	parameterOverrides: Record<string, string>; // selector -> new value
 	mode: 'tabGroup' | 'activeTab';
+	speedMode?: 'normal' | 'fast' | 'slow';
+	stepDelayMs?: number;
+	apiBaseUrl?: string;
+	onTabReady?: (tabId: number) => Promise<void> | void;
 }
 
 export interface ReplayResult {
@@ -547,6 +551,16 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 
 		await waitForTabLoaded(targetTabId);
 
+		if (options.onTabReady && targetTabId) {
+			try {
+				await options.onTabReady(targetTabId);
+			} catch {
+				// Abaikan jika video capture gagal dimulai
+			}
+		}
+
+		const pacingDelay = options.stepDelayMs ?? (options.speedMode === 'fast' ? 300 : options.speedMode === 'slow' ? 1500 : 800);
+
 		let executed = 0;
 		for (let i = 0; i < steps.length; i++) {
 			const step = steps[i];
@@ -575,7 +589,7 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 				if (typeof chrome !== 'undefined' && chrome.tabs?.update) {
 					await chrome.tabs.update(targetTabId, { url: dest });
 					await waitForTabLoaded(targetTabId);
-					await sleep(600);
+					await sleep(Math.max(600, pacingDelay));
 				}
 			} else if (step.action === 'wait') {
 				const duration = Math.min(step.timeoutMs || 1000, 5000);
@@ -607,7 +621,7 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 					throw new Error(lastErr);
 				}
 
-				await sleep(450);
+				await sleep(pacingDelay);
 			}
 
 			executed++;

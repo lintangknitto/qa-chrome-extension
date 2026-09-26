@@ -185,11 +185,60 @@ class PlaywrightExtension {
           .catch((err) => sendResponse({ success: false, error: (err as Error).message }));
         return true;
       }
-      case 'replay:run':
-        executeReplay(message.options).then(
-            result => sendResponse({ success: result.success, result }),
-            (error: any) => sendResponse({ success: false, error: error.message }));
+      case 'replay:run': {
+        const replayOpts = {
+          ...message.options,
+          onTabReady: async (tabId: number) => {
+            try {
+              await this._startTabVideoRecording(tabId);
+            } catch (err) {
+              debugLog('Gagal start video recording saat replay:', err);
+            }
+          }
+        };
+
+        (async () => {
+          try {
+            const result = await executeReplay(replayOpts);
+            let videoDataUrl: string | null = null;
+            let videoUrl: string | null = null;
+
+            try {
+              videoDataUrl = await this._stopTabVideoRecording();
+            } catch (stopErr) {
+              debugLog('Gagal stop tab video recording saat replay:', stopErr);
+            }
+
+            const targetApiBaseUrl = message.options?.apiBaseUrl || this._currentApiBaseUrl;
+            if (videoDataUrl && message.options?.sessionId && targetApiBaseUrl) {
+              try {
+                videoUrl = await this._uploadSessionVideoFromBackground(
+                  message.options.sessionId,
+                  targetApiBaseUrl,
+                  videoDataUrl
+                );
+              } catch (uploadErr) {
+                debugLog('Gagal upload video replay:', uploadErr);
+              }
+            }
+
+            sendResponse({
+              success: result.success,
+              result,
+              videoDataUrl,
+              videoUrl
+            });
+          } catch (error: any) {
+            try {
+              await this._stopTabVideoRecording();
+            } catch {
+              // Ignore
+            }
+            sendResponse({ success: false, error: error.message });
+          }
+        })();
         return true;
+      }
       case 'tabVideo:start':
         this._startTabVideoRecording(message.tabId ?? sender.tab?.id ?? 0).then(
             ok => sendResponse({ success: ok }),

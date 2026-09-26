@@ -195,4 +195,68 @@ describe('replayEngine', () => {
 			globalThis.chrome = originalChrome;
 		}
 	});
+
+	it('memanggil hook onTabReady dengan targetTabId saat tab siap', async () => {
+		const originalChrome = globalThis.chrome;
+		const onTabReadyMock = vi.fn().mockResolvedValue(undefined);
+		const executeScriptMock = vi.fn().mockResolvedValue([]);
+
+		globalThis.chrome = {
+			...originalChrome,
+			tabs: {
+				query: vi.fn().mockResolvedValue([{ id: 404 }])
+			},
+			scripting: {
+				executeScript: executeScriptMock
+			}
+		} as unknown as typeof chrome;
+
+		try {
+			const result = await executeReplay({
+				sessionId: 12,
+				testCaseNo: 'TC-HOOK-01',
+				parameterOverrides: {},
+				mode: 'activeTab',
+				steps: [{ action: 'wait', timeoutMs: 20 }],
+				onTabReady: onTabReadyMock
+			});
+
+			expect(result.success).toBe(true);
+			expect(onTabReadyMock).toHaveBeenCalledWith(404);
+		} finally {
+			globalThis.chrome = originalChrome;
+		}
+	});
+
+	it('menjalankan eksekusi dengan pacing delay kustom (fast 300ms / custom stepDelayMs)', async () => {
+		const originalChrome = globalThis.chrome;
+		const executeScriptMock = vi.fn().mockResolvedValue([]);
+
+		globalThis.chrome = {
+			...originalChrome,
+			tabs: {
+				query: vi.fn().mockResolvedValue([{ id: 505 }])
+			},
+			scripting: {
+				executeScript: executeScriptMock
+			}
+		} as unknown as typeof chrome;
+
+		try {
+			const result = await executeReplay({
+				sessionId: 13,
+				testCaseNo: 'TC-PACING-01',
+				parameterOverrides: {},
+				mode: 'activeTab',
+				speedMode: 'fast',
+				stepDelayMs: 10, // gunakan jeda kecil untuk kecepatan test
+				steps: [{ action: 'wait', timeoutMs: 10 }]
+			});
+
+			expect(result.success).toBe(true);
+			expect(result.executedSteps).toBe(1);
+		} finally {
+			globalThis.chrome = originalChrome;
+		}
+	});
 });

@@ -16,7 +16,9 @@ import {
 	Eye,
 	RefreshCw,
 	FileText,
-	Share2
+	Share2,
+	MoreVertical,
+	Repeat
 } from 'lucide-react';
 import type {
 	RecordingApiClient,
@@ -82,6 +84,21 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	const [loadingTestCases, setLoadingTestCases] = useState(false);
 	const [tcSearch, setTcSearch] = useState('');
 	const [tcStatusFilter, setTcStatusFilter] = useState('');
+	const [activeDropdownTcId, setActiveDropdownTcId] = useState<number | null>(null);
+
+	// Click outside listener for action dropdown
+	useEffect(() => {
+		const handleGlobalClick = (e: MouseEvent) => {
+			if (activeDropdownTcId !== null) {
+				const target = e.target as HTMLElement | null;
+				if (!target?.closest('.tc-action-dropdown-container')) {
+					setActiveDropdownTcId(null);
+				}
+			}
+		};
+		window.addEventListener('click', handleGlobalClick);
+		return () => window.removeEventListener('click', handleGlobalClick);
+	}, [activeDropdownTcId]);
 
 	// Modal states
 	const [isImportModalOpen, setImportModalOpen] = useState(false);
@@ -770,10 +787,22 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 										<tr
 											key={tc.id_test_case}
 											style={{
+												cursor: 'pointer',
 												transition: 'background 0.15s ease'
+											}}
+											onClick={() => {
+												if (tc.last_session_id) {
+													setResultModalSessionId(tc.last_session_id);
+													setResultModalTestCase(tc);
+													setResultModalOpen(true);
+												} else {
+													setEditingTestCase(tc);
+													setCreateTcModalOpen(true);
+												}
 											}}
 											onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
 											onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+											title={tc.last_session_id ? 'Klik baris untuk membuka hasil pengujian' : 'Klik baris untuk mengedit test case'}
 										>
 											<td style={{ padding: '10px 12px', textAlign: 'center', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' }}>
 												<span
@@ -807,57 +836,170 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 												{tc.expected_result || '-'}
 											</td>
 											<td style={{ padding: '10px 12px', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' }}>{renderStatusBadge(tc.status)}</td>
-											<td style={{ padding: '10px 12px', textAlign: 'center', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' }}>
-												<div style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', justifyContent: 'center' }}>
-													<Button
-														type="button"
-														variant="success"
-														size="xs"
-														icon={<Play size={11} fill="currentColor" />}
-														title="Rekam Skenario Ini Langsung"
-														onClick={() => onSelectTestCaseForRecording(selectedProject, tc)}
-													>
-														Rekam
-													</Button>
-													{Boolean(tc.last_session_id) && (
-														<Button
-															type="button"
-															variant="outline"
-															size="xs"
-															icon={<Eye size={11} />}
-															title="Lihat Hasil Rekaman Skenario Ini"
-															aria-label={`Hasil ${tc.test_case_id}`}
-															onClick={() => {
-																setResultModalSessionId(tc.last_session_id!);
-																setResultModalTestCase(tc);
-																setResultModalOpen(true);
-															}}
-														>
-															Hasil
-														</Button>
-													)}
+											<td
+												style={{ padding: '8px 10px', textAlign: 'center', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle', position: 'relative' }}
+												onClick={(e) => e.stopPropagation()}
+											>
+												<div className="tc-action-dropdown-container" style={{ position: 'relative', display: 'inline-block' }}>
 													<Button
 														type="button"
 														variant="ghost"
 														size="xs"
-														icon={<Edit size={12} />}
-														title="Edit Test Case"
-														aria-label={`Edit ${tc.test_case_id}`}
-														onClick={() => {
-															setEditingTestCase(tc);
-															setCreateTcModalOpen(true);
+														icon={<MoreVertical size={14} />}
+														aria-label={`Aksi ${tc.test_case_id}`}
+														title="Pilihan Aksi"
+														onClick={(e) => {
+															e.stopPropagation();
+															setActiveDropdownTcId(activeDropdownTcId === tc.id_test_case ? null : tc.id_test_case);
+														}}
+														style={{
+															padding: '4px 6px',
+															borderRadius: 6,
+															background: activeDropdownTcId === tc.id_test_case ? '#e2e8f0' : 'transparent'
 														}}
 													/>
-													<Button
-														type="button"
-														variant="ghost"
-														size="xs"
-														className="k-btn-danger-ghost"
-														icon={<Trash2 size={12} />}
-														title="Hapus Test Case"
-														aria-label={`Hapus ${tc.test_case_id}`}
-														onClick={() => handleDeleteTestCase(tc)}
-													/>
+
+													{activeDropdownTcId === tc.id_test_case && (
+														<div
+															style={{
+																position: 'absolute',
+																right: 0,
+																top: '100%',
+																marginTop: 4,
+																background: '#ffffff',
+																border: '1px solid #cbd5e1',
+																borderRadius: 8,
+																boxShadow: '0 10px 25px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+																zIndex: 50,
+																minWidth: 160,
+																padding: '4px',
+																display: 'flex',
+																flexDirection: 'column',
+																gap: 2,
+																textAlign: 'left'
+															}}
+															onClick={(e) => e.stopPropagation()}
+														>
+															<button
+																type="button"
+																style={{
+																	display: 'flex',
+																	alignItems: 'center',
+																	gap: 8,
+																	padding: '7px 10px',
+																	fontSize: 11.5,
+																	fontWeight: 600,
+																	color: '#15803d',
+																	background: 'transparent',
+																	border: 'none',
+																	borderRadius: 6,
+																	cursor: 'pointer',
+																	width: '100%',
+																	textAlign: 'left'
+																}}
+																onMouseEnter={(e) => (e.currentTarget.style.background = '#f0fdf4')}
+																onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+																onClick={() => {
+																	setActiveDropdownTcId(null);
+																	onSelectTestCaseForRecording(selectedProject, tc);
+																}}
+															>
+																<Play size={13} fill="#15803d" />
+																<span>Mulai Rekam</span>
+															</button>
+
+															{Boolean(tc.last_session_id) && (
+																<button
+																	type="button"
+																	style={{
+																		display: 'flex',
+																		alignItems: 'center',
+																		gap: 8,
+																		padding: '7px 10px',
+																		fontSize: 11.5,
+																		fontWeight: 600,
+																		color: '#2F3574',
+																		background: 'transparent',
+																		border: 'none',
+																		borderRadius: 6,
+																		cursor: 'pointer',
+																		width: '100%',
+																		textAlign: 'left'
+																	}}
+																	onMouseEnter={(e) => (e.currentTarget.style.background = '#eef2ff')}
+																	onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+																	onClick={() => {
+																		setActiveDropdownTcId(null);
+																		setResultModalSessionId(tc.last_session_id!);
+																		setResultModalTestCase(tc);
+																		setResultModalOpen(true);
+																	}}
+																>
+																	<Eye size={13} />
+																	<span>Lihat Hasil & Video</span>
+																</button>
+															)}
+
+															<button
+																type="button"
+																style={{
+																	display: 'flex',
+																	alignItems: 'center',
+																	gap: 8,
+																	padding: '7px 10px',
+																	fontSize: 11.5,
+																	fontWeight: 500,
+																	color: '#334155',
+																	background: 'transparent',
+																	border: 'none',
+																	borderRadius: 6,
+																	cursor: 'pointer',
+																	width: '100%',
+																	textAlign: 'left'
+																}}
+																onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+																onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+																onClick={() => {
+																	setActiveDropdownTcId(null);
+																	setEditingTestCase(tc);
+																	setCreateTcModalOpen(true);
+																}}
+															>
+																<Edit size={13} />
+																<span>Edit Test Case</span>
+															</button>
+
+															<div style={{ height: 1, background: '#f1f5f9', margin: '2px 0' }} />
+
+															<button
+																type="button"
+																style={{
+																	display: 'flex',
+																	alignItems: 'center',
+																	gap: 8,
+																	padding: '7px 10px',
+																	fontSize: 11.5,
+																	fontWeight: 500,
+																	color: '#b91c1c',
+																	background: 'transparent',
+																	border: 'none',
+																	borderRadius: 6,
+																	cursor: 'pointer',
+																	width: '100%',
+																	textAlign: 'left'
+																}}
+																onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
+																onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+																onClick={() => {
+																	setActiveDropdownTcId(null);
+																	handleDeleteTestCase(tc);
+																}}
+															>
+																<Trash2 size={13} />
+																<span>Hapus Test Case</span>
+															</button>
+														</div>
+													)}
 												</div>
 											</td>
 										</tr>
