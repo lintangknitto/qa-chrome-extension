@@ -15,7 +15,9 @@ export interface RecordingSession {
 	title: string;
 	status: string;
 	result: string | null;
+	expected_result?: string | null;
 	actual_result?: string | null;
+	description?: string | null;
 	last_sequence: number;
 	share_token?: string | null;
 	video_url?: string | null;
@@ -78,6 +80,8 @@ export class ApiError extends Error {
 	}
 }
 
+import { extensionFetch } from './extensionFetch';
+
 export interface ApiClientOptions {
 	baseUrl: string;
 	getToken: () => Promise<string | null>;
@@ -95,9 +99,7 @@ export class RecordingApiClient {
 		this._baseUrl = options.baseUrl.replace(/\/+$/, '');
 		this._getToken = options.getToken;
 		this._onUnauthorized = options.onUnauthorized;
-		// `fetch` wajib terikat ke global-nya; memanggilnya sebagai method instance
-		// (this._fetch(...)) memicu "Illegal invocation" di Chromium.
-		this._fetch = options.fetchImpl ?? fetch.bind(globalThis);
+		this._fetch = options.fetchImpl ?? extensionFetch;
 	}
 
 	public get baseUrl(): string {
@@ -253,6 +255,31 @@ export class RecordingApiClient {
 		input: { size_bytes?: number; checksum_sha256?: string }
 	): Promise<unknown> {
 		return this._request('POST', `/sessions/${idSession}/artifacts/${idArtifact}/complete`, input);
+	}
+
+	listArtifacts(idSession: number): Promise<{ items: Array<{ id_artifact: number; kind: string; object_key: string; content_type: string; size_bytes: number }> }> {
+		return this._request('GET', `/sessions/${idSession}/artifacts`);
+	}
+
+	getArtifactDownloadUrl(idSession: number, idArtifact: number): Promise<{ download_url: string }> {
+		return this._request('GET', `/sessions/${idSession}/artifacts/${idArtifact}/download-url`);
+	}
+
+	async uploadStorageStateArtifact(
+		idSession: number,
+		storageState: unknown
+	): Promise<unknown> {
+		const jsonStr = JSON.stringify(storageState, null, 2);
+		const blob = new Blob([jsonStr], { type: 'application/json' });
+		const presign = await this.presignArtifactUpload(idSession, {
+			kind: 'storage_state',
+			content_type: 'application/json',
+			size_bytes: blob.size
+		});
+		await this.uploadToPresignedUrl(presign.upload_url, blob, 'application/json');
+		return this.completeArtifactUpload(idSession, presign.artifact.id_artifact, {
+			size_bytes: blob.size
+		});
 	}
 
 	generateOutputs(idSession: number, kinds?: string[]): Promise<unknown> {

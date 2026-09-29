@@ -20,6 +20,7 @@ import { ConnectedTabGroup, cleanupStalePlaywrightGroups, isNonDebuggableUrl, un
 import { RecordingController } from './recording/recorder';
 import { getToken } from './recording/tokenStore';
 import { executeReplay, type ReplayOptions } from './recording/replayEngine';
+import { captureBrowserStorageState, type PlaywrightStorageState } from './recording/storageStateCapture';
 
 type PageMessage = {
   type: 'connectionRequested';
@@ -83,6 +84,28 @@ type PageMessage = {
   idSession: number;
   apiBaseUrl: string;
   videoDataUrl: string;
+} | {
+  type: 'storageState:capture';
+  targetUrl?: string;
+  tabId?: number;
+  phase?: 'initial' | 'final' | 'checkpoint';
+} | {
+  type: 'storageState:upload';
+  idSession: number;
+  apiBaseUrl: string;
+  storageState: PlaywrightStorageState;
+} | {
+  type: 'api:request';
+  url: string;
+  method?: string;
+  headers?: Record<string, string>;
+  body?: string;
+  bodyBase64?: string;
+} | {
+  type: 'media:fetchBlobUrl';
+  url: string;
+  apiBaseUrl?: string;
+  sessionId?: number;
 };
 
 class PlaywrightExtension {
@@ -104,6 +127,9 @@ class PlaywrightExtension {
 
   // Promise-based message handling is not supported in Chrome: https://issues.chromium.org/issues/40753031
   private _onMessage(message: PageMessage, sender: chrome.runtime.MessageSender, sendResponse: (response: any) => void) {
+    if ((message as any)?.target === 'offscreen') {
+      return false;
+    }
     switch (message.type) {
       case 'connectionRequested': {
         const selectorTabId = sender.tab!.id!;
@@ -161,27 +187,72 @@ class PlaywrightExtension {
               this._broadcastFabState();
               const videoDataUrl = await this._stopTabVideoRecording();
               let videoUrl: string | null = null;
-              if (videoDataUrl && this._currentSessionId && this._currentApiBaseUrl) {
+              let finalStorageState: PlaywrightStorageState | null = null;
+
+              const sid = this._currentSessionId;
+              const apiBase = this._currentApiBaseUrl;
+
+              if (sid && apiBase) {
+                // 1. Upload Video if available
+                if (videoDataUrl) {
+                  try {
+                    videoUrl = await this._uploadSessionVideoFromBackground(sid, apiBase, videoDataUrl);
+                  } catch (uploadErr) {
+                    debugLog('Gagal upload video dari background:', uploadErr);
+                  }
+                }
+
+                // 2. Capture and Upload Final Storage State
                 try {
-                  videoUrl = await this._uploadSessionVideoFromBackground(
-                    this._currentSessionId,
-                    this._currentApiBaseUrl,
-                    videoDataUrl
-                  );
-                } catch (uploadErr) {
-                  debugLog('Gagal upload video dari background:', uploadErr);
+                  const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true }).catch(() => []);
+                  if (activeTab?.url) {
+                    finalStorageState = await captureBrowserStorageState({
+                      targetUrl: activeTab.url,
+                      tabId: activeTab.id,
+                      phase: 'final'
+                    });
+                    if (finalStorageState) {
+                      await this._uploadStorageStateFromBackground(sid, apiBase, finalStorageState);
+                    }
+                  }
+                } catch (stateErr) {
+                  debugLog('Gagal capture final storage state:', stateErr);
                 }
               }
-              const sid = this._currentSessionId;
+
               this._currentSessionId = null;
               this._currentApiBaseUrl = null;
-              sendResponse({ success: true, videoDataUrl, videoUrl, idSession: sid });
+              sendResponse({
+                success: true,
+                videoDataUrl,
+                videoUrl,
+                storageState: finalStorageState,
+                idSession: sid
+              });
             },
             (error: any) => sendResponse({ success: false, error: error.message }));
         return true;
       case 'sessionVideo:upload': {
         this._uploadSessionVideoFromBackground(message.idSession, message.apiBaseUrl, message.videoDataUrl)
           .then((videoUrl) => sendResponse({ success: true, videoUrl }))
+          .catch((err) => sendResponse({ success: false, error: (err as Error).message }));
+        return true;
+      }
+      case 'storageState:capture': {
+        const tabId = message.tabId ?? sender.tab?.id;
+        const targetUrl = message.targetUrl ?? sender.tab?.url ?? '';
+        captureBrowserStorageState({
+          targetUrl,
+          tabId,
+          phase: message.phase || 'final'
+        })
+          .then((storageState) => sendResponse({ success: true, storageState }))
+          .catch((err) => sendResponse({ success: false, error: (err as Error).message }));
+        return true;
+      }
+      case 'storageState:upload': {
+        this._uploadStorageStateFromBackground(message.idSession, message.apiBaseUrl, message.storageState)
+          .then(() => sendResponse({ success: true }))
           .catch((err) => sendResponse({ success: false, error: (err as Error).message }));
         return true;
       }
@@ -346,6 +417,105 @@ class PlaywrightExtension {
           .catch((err) => sendResponse({ success: false, error: (err as Error).message || 'Gagal membersihkan data.' }));
         return true;
       }
+      case 'api:request': {
+        (async () => {
+          let reqBody: BodyInit | undefined = message.body;
+          if (message.bodyBase64) {
+            const binaryStr = atob(message.bodyBase64);
+            const bytes = new Uint8Array(binaryStr.length);
+            for (let i = 0; i < binaryStr.length; i++) {
+              bytes[i] = binaryStr.charCodeAt(i);
+            }
+            reqBody = bytes;
+          }
+          const response = await fetch(message.url, {
+            method: message.method || 'GET',
+            headers: message.headers,
+            body: reqBody
+          });
+          const text = await response.text();
+          const headers: [string, string][] = [];
+          response.headers.forEach((val, key) => {
+            headers.push([key, val]);
+          });
+          return {
+            success: true,
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok,
+            headers,
+            body: text
+          };
+        })()
+          .then((result) => sendResponse(result))
+          .catch((err) => sendResponse({ success: false, error: (err as Error).message || 'Gagal melakukan request network via background proxy.' }));
+        return true;
+      }
+      case 'media:fetchBlobUrl': {
+        (async () => {
+          try {
+            let fetchUrl = message.url;
+            const targetApiBase = message.apiBaseUrl || this._currentApiBaseUrl;
+            if (targetApiBase && (fetchUrl.includes('127.0.0.1:9000') || fetchUrl.includes('localhost:9000'))) {
+              try {
+                const apiHost = new URL(targetApiBase).hostname;
+                if (apiHost && apiHost !== '127.0.0.1' && apiHost !== 'localhost') {
+                  fetchUrl = fetchUrl.replace('127.0.0.1:9000', `${apiHost}:9000`).replace('localhost:9000', `${apiHost}:9000`);
+                }
+              } catch {
+                // Ignore URL parse error
+              }
+            }
+
+            let res: Response | null = null;
+
+            // Prioritize backend streaming endpoint if sessionId & targetApiBase are available
+            if (targetApiBase && message.sessionId) {
+              const streamUrl = `${targetApiBase.replace(/\/+$/, '')}/sessions/${message.sessionId}/video/stream`;
+              try {
+                const streamRes = await fetch(streamUrl);
+                if (streamRes.ok) {
+                  res = streamRes;
+                }
+              } catch {
+                // Ignore stream error and fallback to direct fetchUrl
+              }
+            }
+
+            // Fallback to direct MinIO URL if stream endpoint did not succeed
+            if (!res && fetchUrl) {
+              try {
+                const directRes = await fetch(fetchUrl);
+                if (directRes.ok) {
+                  res = directRes;
+                }
+              } catch {
+                // Ignore direct fetch error
+              }
+            }
+
+            if (!res || !res.ok) {
+              throw new Error(`Gagal memuat file media`);
+            }
+
+            const blob = await res.blob();
+            const buffer = await blob.arrayBuffer();
+            const bytes = new Uint8Array(buffer);
+            let binary = '';
+            const chunkSize = 8192;
+            for (let i = 0; i < bytes.length; i += chunkSize) {
+              binary += String.fromCharCode.apply(null, Array.from(bytes.subarray(i, i + chunkSize)));
+            }
+            const base64 = btoa(binary);
+            const mimeType = blob.type || 'video/webm';
+            const dataUrl = `data:${mimeType};base64,${base64}`;
+            sendResponse({ success: true, dataUrl, size: blob.size });
+          } catch (err) {
+            sendResponse({ success: false, error: (err as Error).message });
+          }
+        })();
+        return true;
+      }
     }
   }
 
@@ -464,16 +634,31 @@ class PlaywrightExtension {
   }
 
   private async _startTabVideoRecording(targetTabId: number): Promise<boolean> {
-    if (!chrome.tabCapture || !chrome.tabCapture.getMediaStreamId) {
-      debugLog('chrome.tabCapture tidak didukung di environment ini.');
-      return false;
-    }
     try {
       await this._ensureOffscreenDocument();
-      await this._pingOffscreen();
+      const isOffscreenReady = await this._pingOffscreen();
+      if (!isOffscreenReady) {
+        debugLog('Offscreen document belum merespon ping, mencoba melanjutkan...');
+      }
 
-      const streamId = await chrome.tabCapture.getMediaStreamId({ targetTabId });
-      if (!streamId) return false;
+      let streamId: string | null = null;
+      if (chrome.tabCapture && typeof chrome.tabCapture.getMediaStreamId === 'function') {
+        streamId = await new Promise<string | null>((resolve) => {
+          try {
+            chrome.tabCapture.getMediaStreamId({ targetTabId }, (id) => {
+              if (chrome.runtime?.lastError) {
+                debugLog('tabCapture.getMediaStreamId note:', chrome.runtime.lastError.message, '- fallback ke CDP screencast');
+                resolve(null);
+              } else {
+                resolve(id || null);
+              }
+            });
+          } catch (err) {
+            debugLog('tabCapture.getMediaStreamId exception:', err, '- fallback ke CDP screencast');
+            resolve(null);
+          }
+        });
+      }
 
       let startRes: any = null;
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -498,6 +683,7 @@ class PlaywrightExtension {
       }
 
       this._isVideoRecordingActive = Boolean(startRes?.success);
+      debugLog('Perekaman video tab status:', this._isVideoRecordingActive, startRes?.mode ? `[mode: ${startRes.mode}]` : '');
       return this._isVideoRecordingActive;
     } catch (err) {
       debugLog('Gagal memulai perekaman video tab:', err);
@@ -506,22 +692,33 @@ class PlaywrightExtension {
   }
 
   private async _stopTabVideoRecording(): Promise<string | null> {
-    if (!this._isVideoRecordingActive) return null;
+    if (!this._isVideoRecordingActive) {
+      debugLog('Perekaman video tidak aktif saat recordingStop.');
+      return null;
+    }
     this._isVideoRecordingActive = false;
     try {
       const res = await new Promise<any>((resolve) => {
+        const timeout = setTimeout(() => {
+          debugLog('Timeout menunggu stop video recording dari offscreen.');
+          resolve({ success: false, dataUrl: null });
+        }, 8000);
+
         chrome.runtime.sendMessage(
           {
             target: 'offscreen',
             type: 'OFFSCREEN_STOP_RECORDING'
           },
           (response) => {
+            clearTimeout(timeout);
             resolve(response ?? { success: true, dataUrl: null });
           }
         );
       });
       await this._closeOffscreenDocument();
-      return (res?.dataUrl as string) ?? null;
+      const videoDataUrl = (res?.dataUrl as string) ?? null;
+      debugLog('Hasil perekaman video didapat:', videoDataUrl ? `Ada (${res?.size || 0} bytes)` : 'Kosong');
+      return videoDataUrl;
     } catch (err) {
       debugLog('Gagal menghentikan perekaman video tab:', err);
       await this._closeOffscreenDocument();
@@ -537,11 +734,48 @@ class PlaywrightExtension {
     try {
       const token = await getToken();
       const cleanBaseUrl = apiBaseUrl.replace(/\/+$/, '');
-      const blob = await (await fetch(videoDataUrl)).blob();
-      const contentType = blob.type || 'video/webm';
+
+      const base64Data = videoDataUrl.includes(',') ? videoDataUrl.split(',')[1] : videoDataUrl;
+      const mimeMatch = videoDataUrl.match(/^data:([^;]+);/);
+      const contentType = mimeMatch ? mimeMatch[1] : 'video/webm';
+
+      // 1. Coba Direct API Upload terlebih dahulu (satu request aman ke port API 8010 tanpa presign S3 host issue)
+      try {
+        const directUploadRes = await fetch(`${cleanBaseUrl}/sessions/${sessionId}/video/upload`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'Authorization': token ? `Bearer ${token}` : ''
+          },
+          body: JSON.stringify({
+            video_base64: base64Data,
+            content_type: contentType
+          })
+        });
+
+        if (directUploadRes.ok) {
+          const directData = await directUploadRes.json();
+          const resObj = directData?.result ?? directData;
+          if (resObj?.video_url) {
+            debugLog('Direct video upload sukses:', resObj.video_url);
+            return resObj.video_url;
+          }
+        }
+      } catch (directErr) {
+        debugLog('Direct video upload failed, trying fallback presign:', directErr);
+      }
+
+      // 2. Fallback ke Presigned URL upload jika direct upload tidak tersedia
+      const binaryStr = atob(base64Data);
+      const bytes = new Uint8Array(binaryStr.length);
+      for (let i = 0; i < binaryStr.length; i++) {
+        bytes[i] = binaryStr.charCodeAt(i);
+      }
+      const blob = new Blob([bytes], { type: contentType });
 
       // 1. Presign
-      const presignRes = await fetch(`${cleanBaseUrl}/api/v1/sessions/${sessionId}/video/presign-upload`, {
+      const presignRes = await fetch(`${cleanBaseUrl}/sessions/${sessionId}/video/presign-upload`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -554,7 +788,11 @@ class PlaywrightExtension {
         const errJson = await presignRes.json().catch(() => ({}));
         throw new Error(errJson.message || `Presign video failed HTTP ${presignRes.status}`);
       }
-      const presign = await presignRes.json();
+      const presignData = await presignRes.json();
+      const presign = presignData?.result ?? presignData;
+      if (!presign?.upload_url || !presign?.object_key) {
+        throw new Error('Upload URL atau object_key tidak ditemukan dalam respon presign');
+      }
 
       // 2. PUT to MinIO
       const minioPutRes = await fetch(presign.upload_url, {
@@ -567,7 +805,7 @@ class PlaywrightExtension {
       }
 
       // 3. Complete
-      const completeRes = await fetch(`${cleanBaseUrl}/api/v1/sessions/${sessionId}/video/complete`, {
+      const completeRes = await fetch(`${cleanBaseUrl}/sessions/${sessionId}/video/complete`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -580,11 +818,68 @@ class PlaywrightExtension {
         const errJson = await completeRes.json().catch(() => ({}));
         throw new Error(errJson.message || `Complete video failed HTTP ${completeRes.status}`);
       }
-      const complete = await completeRes.json();
-      return complete.video_url || null;
+      const completeData = await completeRes.json();
+      const complete = completeData?.result ?? completeData;
+      debugLog('Presigned video upload sukses:', complete?.video_url);
+      return complete?.video_url || null;
     } catch (err) {
       debugLog('Gagal upload video dari background:', (err as Error).message);
       return null;
+    }
+  }
+
+  private async _uploadStorageStateFromBackground(
+    sessionId: number,
+    apiBaseUrl: string,
+    storageState: PlaywrightStorageState
+  ): Promise<void> {
+    try {
+      const token = await getToken();
+      const cleanBaseUrl = apiBaseUrl.replace(/\/+$/, '');
+      const jsonStr = JSON.stringify(storageState, null, 2);
+      const blob = new Blob([jsonStr], { type: 'application/json' });
+
+      // 1. Presign
+      const presignRes = await fetch(`${cleanBaseUrl}/sessions/${sessionId}/artifacts/presign-upload`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({
+          kind: 'storage_state',
+          content_type: 'application/json',
+          size_bytes: blob.size
+        })
+      });
+      if (!presignRes.ok) return;
+      const presignData = await presignRes.json();
+      const presign = presignData?.result ?? presignData;
+      const uploadUrl = presign?.upload_url;
+      const artifactId = presign?.artifact?.id_artifact;
+      if (!uploadUrl || !artifactId) return;
+
+      // 2. PUT
+      const minioPutRes = await fetch(uploadUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: blob
+      });
+      if (!minioPutRes.ok) return;
+
+      // 3. Complete
+      await fetch(`${cleanBaseUrl}/sessions/${sessionId}/artifacts/${artifactId}/complete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify({ size_bytes: blob.size })
+      });
+    } catch (err) {
+      debugLog('Gagal upload storage state artifact:', err);
     }
   }
 
@@ -600,14 +895,40 @@ class PlaywrightExtension {
     await chrome.tabGroups.update(groupId, { title: 'Knitto QA', color: 'blue' });
 
     if (recordVideo && tabIds[0]) {
-      void this._startTabVideoRecording(tabIds[0]);
+      try {
+        await this._startTabVideoRecording(tabIds[0]);
+      } catch (err) {
+        debugLog('Gagal inisialisasi perekaman video tab:', err);
+      }
     }
+
+    // Capture initial storage state asynchronously
+    (async () => {
+      try {
+        if (tabIds[0]) {
+          const tab = await chrome.tabs.get(tabIds[0]);
+          if (tab?.url && !isNonDebuggableUrl(tab.url)) {
+            const initialStorage = await captureBrowserStorageState({
+              targetUrl: tab.url,
+              tabId: tabIds[0],
+              phase: 'initial'
+            });
+            if (initialStorage) {
+              await this._uploadStorageStateFromBackground(idSession, apiBaseUrl, initialStorage);
+            }
+          }
+        }
+      } catch (err) {
+        debugLog('Gagal capture initial storage state:', err);
+      }
+    })();
 
     await this._recorder.start({
       idSession,
       apiBaseUrl,
       getToken,
       recordingGroupId: groupId,
+      recordVideo: recordVideo !== false
     });
 
     this._broadcastFabState();

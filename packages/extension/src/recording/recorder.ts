@@ -19,6 +19,7 @@ export interface RecordingStartOptions {
 	flushIntervalMs?: number;
 	maxBatchSize?: number;
 	captureScreenshots?: boolean;
+	recordVideo?: boolean;
 }
 
 interface PendingRequest {
@@ -134,11 +135,22 @@ export class RecordingController {
 		const script = actionCaptureScript();
 		await this._sendCommand(tabId, 'Page.addScriptToEvaluateOnNewDocument', { source: script }).catch(() => {});
 		await this._sendCommand(tabId, 'Runtime.evaluate', { expression: script }).catch(() => {});
+
+		if (this._options?.recordVideo !== false) {
+			await this._sendCommand(tabId, 'Page.startScreencast', {
+				format: 'jpeg',
+				quality: 75,
+				maxWidth: 1280,
+				maxHeight: 720,
+				everyNthFrame: 1
+			}).catch(() => {});
+		}
 	}
 
 	async detachTab(tabId: number): Promise<void> {
 		if (!this._attachedTabs.has(tabId)) return;
 		this._attachedTabs.delete(tabId);
+		await this._sendCommand(tabId, 'Page.stopScreencast').catch(() => {});
 		await new Promise<void>((resolve) => {
 			chrome.debugger.detach({ tabId }, () => {
 				void chrome.runtime.lastError;
@@ -244,8 +256,31 @@ export class RecordingController {
 			case 'Page.frameNavigated':
 				this._onFrameNavigated(tabId, params);
 				break;
+			case 'Page.screencastFrame':
+				this._onScreencastFrame(tabId, params);
+				break;
 			default:
 				break;
+		}
+	}
+
+	private _onScreencastFrame(tabId: number, params: Record<string, unknown>): void {
+		const sessionId = params.sessionId as number;
+		if (typeof sessionId === 'number') {
+			this._sendCommand(tabId, 'Page.screencastFrameAck', { sessionId }).catch(() => {});
+		}
+		if (typeof params.data === 'string') {
+			try {
+				chrome.runtime.sendMessage({
+					target: 'offscreen',
+					type: 'OFFSCREEN_ADD_FRAME',
+					data: params.data
+				}, () => {
+					void chrome.runtime.lastError;
+				});
+			} catch {
+				// Ignore
+			}
 		}
 	}
 
@@ -258,10 +293,26 @@ export class RecordingController {
 
 	private _onBindingCalled(tabId: number, params: Record<string, unknown>): void {
 		if (params.name !== ACTION_BINDING_NAME || typeof params.payload !== 'string') return;
-		let parsed: { action?: string; element?: ElementDescriptor; value?: string | null; value_redacted?: boolean };
+		let parsed: {
+			action?: string;
+			element?: ElementDescriptor;
+			value?: string | null;
+			checked?: boolean;
+			selectedText?: string;
+			key?: string;
+			value_redacted?: boolean;
+		};
 		try {
 			parsed = JSON.parse(params.payload);
 		} catch {
+			return;
+		}
+
+		if (
+			parsed.element?.id === 'qa-knitto-fab-host' ||
+			parsed.element?.cssPath?.includes('qa-knitto-fab-host') ||
+			parsed.element?.testId?.startsWith('qa-knitto-')
+		) {
 			return;
 		}
 
@@ -273,6 +324,9 @@ export class RecordingController {
 				locators,
 				element: parsed.element ?? null,
 				value: parsed.value ?? null,
+				checked: parsed.checked,
+				selectedText: parsed.selectedText,
+				key: parsed.key,
 				value_redacted: parsed.value_redacted === true
 			},
 			{ tabId }
@@ -426,7 +480,10 @@ export class RecordingController {
 				size_bytes: buffer.byteLength
 			});
 		} catch (error) {
-			debugLog('Gagal mengambil/mengunggah screenshot:', error);
+			const msg = (error as Error).message || '';
+			if (!msg.includes('Detached') && !msg.includes('not attached')) {
+				debugLog('Gagal mengambil/mengunggah screenshot:', error);
+			}
 		}
 	}
 

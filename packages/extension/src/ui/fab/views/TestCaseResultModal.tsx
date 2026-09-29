@@ -21,14 +21,23 @@ import {
 	History,
 	Layers,
 	Zap,
-	Gauge
+	Gauge,
+	Database,
+	Cookie,
+	Key,
+	Search,
+	Shield,
+	Eye,
+	EyeOff
 } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { ReRunModal } from './ReRunModal';
 import type { RecordingApiClient, RecordingSession, TestCaseItem } from '../../../recording/apiClient';
+import type { PlaywrightStorageState, PlaywrightCookie, StorageEntry } from '../../../recording/storageStateCapture';
 import type { GenerationItem } from './HistoryView';
+import { extensionFetch } from '../../../recording/extensionFetch';
 
 export interface TestCaseResultModalProps {
 	isOpen?: boolean;
@@ -38,6 +47,7 @@ export interface TestCaseResultModalProps {
 	api: RecordingApiClient;
 	onClose: () => void;
 	onShowToast?: (message: string, type?: 'success' | 'error' | 'info') => void;
+	activeGenerations?: Map<number, { id_session: number; title: string; status: string; startTime?: number; error?: string }>;
 }
 
 export interface RunItem {
@@ -70,7 +80,8 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 	testCase,
 	api,
 	onClose,
-	onShowToast
+	onShowToast,
+	activeGenerations
 }) => {
 	const isVisible = open ?? isOpen ?? false;
 
@@ -84,10 +95,27 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 	const [sharing, setSharing] = useState(false);
 	const [isReRunOpen, setReRunOpen] = useState(false);
 	const [copiedId, setCopiedId] = useState<number | null>(null);
-	const [activeTab, setActiveTab] = useState<'overview' | 'checkpoints' | 'script'>('overview');
+	const [activeTab, setActiveTab] = useState<'overview' | 'checkpoints' | 'script' | 'storage'>('overview');
+	const [storageState, setStorageState] = useState<PlaywrightStorageState | null>(null);
+	const [storageSubTab, setStorageSubTab] = useState<'cookies' | 'local' | 'session'>('cookies');
+	const [storageFilter, setStorageFilter] = useState('');
+	const [showValues, setShowValues] = useState<Record<string, boolean>>({});
+	const [storageCopied, setStorageCopied] = useState(false);
 	const [videoPlaybackRate, setVideoPlaybackRate] = useState(1);
+	const [playableVideoSrc, setPlayableVideoSrc] = useState<string | null>(null);
+	const [videoLoading, setVideoLoading] = useState(false);
+	const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
+	const [videoRetryCount, setVideoRetryCount] = useState(0);
 	const videoRef = useRef<HTMLVideoElement | null>(null);
 	const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+	const activeRun = runs.find((r) => r.id === activeRunId) || runs[0];
+	const testCaseNo = testCase?.test_case_id || sessionDetail?.test_case_no || `Sesi #${sessionId}`;
+	const title = testCase?.title || sessionDetail?.title || 'Hasil Pengujian Rekaman';
+	const currentResult = activeRun?.result ?? sessionDetail?.result ?? testCase?.status;
+	const currentActualResult = activeRun?.actualResult ?? sessionDetail?.actual_result ?? testCase?.actual_result;
+	const currentVideoUrl = activeRun?.videoUrl ?? sessionDetail?.video_url;
+	const checkpoints = (activeRun?.checkpoints && activeRun.checkpoints.length > 0) ? activeRun.checkpoints : (sessionDetail?.checkpoints || []);
 
 	const handlePlaybackRateChange = (rate: number) => {
 		setVideoPlaybackRate(rate);
@@ -140,6 +168,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 						type: 'replay:run',
 						options: {
 							...opts,
+							storageState: storageState || undefined,
 							apiBaseUrl: api.baseUrl
 						}
 					},
@@ -220,6 +249,26 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 				sessionId: id
 			};
 
+			// Coba muat artifact storage_state (Cookies, LocalStorage, SessionStorage)
+			try {
+				if (typeof api.listArtifacts === 'function') {
+					const artRes = await api.listArtifacts(id);
+					const storageArt = (artRes.items || []).find((a) => a.kind === 'storage_state');
+					if (storageArt && typeof api.getArtifactDownloadUrl === 'function') {
+						const dl = await api.getArtifactDownloadUrl(id, storageArt.id_artifact);
+						if (dl?.download_url) {
+							const stateResp = await extensionFetch(dl.download_url);
+							if (stateResp.ok) {
+								const stateData = await stateResp.json();
+								setStorageState(stateData);
+							}
+						}
+					}
+				}
+			} catch {
+				// Abaikan jika artifact storage belum ada
+			}
+
 			setSessionDetail(sessionObj);
 			setGenerations((genRes.items || []) as GenerationItem[]);
 			setRuns([origRun]);
@@ -231,6 +280,94 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		}
 	}, [api]);
 
+	// Muat stream video ke blob object URL agar dapat diputar di halaman HTTPS tanpa terblokir Mixed Content & CORS
+	useEffect(() => {
+		let isMounted = true;
+		let objectUrlToRevoke: string | null = null;
+
+		const loadVideo = async () => {
+			if (!currentVideoUrl) {
+				setPlayableVideoSrc(null);
+				setVideoLoading(false);
+				setVideoLoadError(null);
+				return;
+			}
+
+			// Jika sudah berupa blob: atau data: URL, langsung gunakan
+			if (currentVideoUrl.startsWith('blob:') || currentVideoUrl.startsWith('data:')) {
+				setPlayableVideoSrc(currentVideoUrl);
+				setVideoLoading(false);
+				setVideoLoadError(null);
+				return;
+			}
+
+			setVideoLoading(true);
+			setVideoLoadError(null);
+
+			try {
+				if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+					const res = await new Promise<{ success: boolean; dataUrl?: string; error?: string }>((resolve) => {
+						chrome.runtime.sendMessage(
+							{
+								type: 'media:fetchBlobUrl',
+								url: currentVideoUrl,
+								apiBaseUrl: api.baseUrl,
+								sessionId: activeRun?.sessionId || sessionId
+							},
+							(response) => resolve(response ?? { success: false, error: 'Tidak ada respon dari Service Worker' })
+						);
+					});
+
+					if (!isMounted) return;
+
+					if (res.success && res.dataUrl) {
+						// Konversi base64 dataUrl ke Blob URL lokal
+						const parts = res.dataUrl.split(',');
+						const header = parts[0] || '';
+						const base64Data = parts[1] || '';
+						const mime = header.match(/:(.*?);/)?.[1] || 'video/webm';
+						const byteCharacters = atob(base64Data);
+						const byteNumbers = new Array(byteCharacters.length);
+						for (let i = 0; i < byteCharacters.length; i++) {
+							byteNumbers[i] = byteCharacters.charCodeAt(i);
+						}
+						const byteArray = new Uint8Array(byteNumbers);
+						const blob = new Blob([byteArray], { type: mime });
+						const objUrl = URL.createObjectURL(blob);
+						objectUrlToRevoke = objUrl;
+
+						setPlayableVideoSrc(objUrl);
+						setVideoLoading(false);
+						setVideoLoadError(null);
+					} else {
+						throw new Error(res.error || 'Gagal memuat video rekaman');
+					}
+				} else {
+					setPlayableVideoSrc(currentVideoUrl);
+					setVideoLoading(false);
+				}
+			} catch (err) {
+				if (!isMounted) return;
+				setPlayableVideoSrc(null);
+				setVideoLoading(false);
+				setVideoLoadError((err as Error).message || 'Gagal memuat video');
+			}
+		};
+
+		void loadVideo();
+
+		return () => {
+			isMounted = false;
+			if (objectUrlToRevoke) {
+				try {
+					URL.revokeObjectURL(objectUrlToRevoke);
+				} catch {
+					// Ignore
+				}
+			}
+		};
+	}, [currentVideoUrl, api.baseUrl, activeRun?.sessionId, sessionId, videoRetryCount]);
+
 	useEffect(() => {
 		if (isVisible && sessionId) {
 			void loadData(sessionId);
@@ -240,9 +377,73 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 			setGenerations([]);
 			setRuns([]);
 			setActiveRunId('');
+			setStorageState(null);
+			setStorageFilter('');
 			setError(null);
 		}
 	}, [isVisible, sessionId, loadData]);
+
+	// Deteksi ketersediaan script Playwright
+	const playwrightGen = generations.find((g) => g.kind === 'playwright');
+	const playwrightScript = playwrightGen?.output || null;
+	const hasPlaywrightScript = Boolean(
+		playwrightGen?.status === 'completed' && playwrightScript && playwrightScript.trim().length > 0
+	);
+
+	// Deteksi apakah seluruh jenis generation (playwright & markdown) sudah selesai
+	const hasCompletedAll = generations.length > 0 && generations.every(
+		(g) => g.status === 'completed' || g.status === 'failed'
+	);
+	const hasAnyPending = generations.some(
+		(g) => g.status === 'processing' || g.status === 'pending'
+	);
+	const hasFailedGeneration = Boolean(
+		(sessionId && activeGenerations?.get(sessionId)?.status === 'failed') ||
+		(!hasCompletedAll && generations.some((g) => g.status === 'failed'))
+	);
+	const isGenerating = Boolean(
+		!hasCompletedAll &&
+		!hasFailedGeneration &&
+		(
+			hasAnyPending ||
+			busyGenerate ||
+			(sessionId && activeGenerations?.get(sessionId)?.status === 'processing')
+		)
+	);
+
+	// Polling otomatis listGenerations sampai semua generasi (playwright & markdown) selesai
+	useEffect(() => {
+		if (!isVisible || !sessionId) return;
+
+		let isMounted = true;
+		let pollCount = 0;
+		const maxPolls = 45; // Maksimal 67.5 detik
+
+		const pollTimer = setInterval(async () => {
+			pollCount++;
+			try {
+				const res = await api.listGenerations(sessionId);
+				if (!isMounted) return;
+				const items = (res.items || []) as GenerationItem[];
+				if (items.length > 0) {
+					setGenerations(items);
+					const allDone = items.length > 0 && items.every(
+						(g) => g.status === 'completed' || g.status === 'failed'
+					);
+					if (allDone || pollCount >= maxPolls) {
+						clearInterval(pollTimer);
+					}
+				}
+			} catch {
+				// Abaikan polling error
+			}
+		}, 1500);
+
+		return () => {
+			isMounted = false;
+			clearInterval(pollTimer);
+		};
+	}, [isVisible, sessionId, api]);
 
 	const handleCopy = async (code: string | null, idGen: number) => {
 		if (!code) return;
@@ -303,6 +504,34 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		}
 	};
 
+	const handleCopyStorageState = async () => {
+		if (!storageState) return;
+		const jsonStr = JSON.stringify(storageState, null, 2);
+		try {
+			await navigator.clipboard.writeText(jsonStr);
+			setStorageCopied(true);
+			setTimeout(() => setStorageCopied(false), 2500);
+			onShowToast?.('storageState JSON berhasil disalin!', 'success');
+		} catch {
+			try {
+				const textarea = document.createElement('textarea');
+				textarea.value = jsonStr;
+				textarea.style.position = 'fixed';
+				textarea.style.opacity = '0';
+				document.body.appendChild(textarea);
+				textarea.focus();
+				textarea.select();
+				document.execCommand('copy');
+				document.body.removeChild(textarea);
+				setStorageCopied(true);
+				setTimeout(() => setStorageCopied(false), 2500);
+				onShowToast?.('storageState JSON berhasil disalin!', 'success');
+			} catch {
+				onShowToast?.('Gagal menyalin storageState JSON', 'error');
+			}
+		}
+	};
+
 	const handleGenerate = async () => {
 		if (!sessionId || busyGenerate) return;
 		setBusyGenerate(true);
@@ -353,18 +582,6 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		);
 	};
 
-	const activeRun = runs.find((r) => r.id === activeRunId) || runs[0];
-	const testCaseNo = testCase?.test_case_id || sessionDetail?.test_case_no || `Sesi #${sessionId}`;
-	const title = testCase?.title || sessionDetail?.title || 'Hasil Pengujian Rekaman';
-	const currentResult = activeRun?.result ?? sessionDetail?.result ?? testCase?.status;
-	const currentActualResult = activeRun?.actualResult ?? sessionDetail?.actual_result ?? testCase?.actual_result;
-	const currentVideoUrl = activeRun?.videoUrl ?? sessionDetail?.video_url;
-	const checkpoints = (activeRun?.checkpoints && activeRun.checkpoints.length > 0) ? activeRun.checkpoints : (sessionDetail?.checkpoints || []);
-
-	const playwrightGen = generations.find((g) => g.kind === 'playwright');
-	const playwrightScript = playwrightGen?.output || null;
-	const hasPlaywrightScript = Boolean(playwrightScript && playwrightScript.trim().length > 0);
-
 	return (
 		<>
 			<Modal
@@ -393,13 +610,15 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 								type="button"
 								variant="primary"
 								size="sm"
-								disabled={!hasPlaywrightScript || loading || busyGenerate}
+								disabled={!hasPlaywrightScript || loading || isGenerating}
 								icon={<Repeat size={13} />}
 								onClick={() => setReRunOpen(true)}
 								title={
-									hasPlaywrightScript
-										? 'Jalankan ulang skenario ini secara visual di browser'
-										: 'Script otomasi belum terbuat. Generate script terlebih dahulu untuk menjalankan re-run.'
+									isGenerating
+										? 'Script Playwright sedang diproses di background...'
+										: hasPlaywrightScript
+											? 'Jalankan ulang skenario ini secara visual di browser'
+											: 'Script otomasi belum terbuat. Tunggu proses background selesai untuk menjalankan re-run.'
 								}
 							>
 								Re-run
@@ -668,6 +887,38 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 									</span>
 								)}
 							</button>
+
+							<button
+								type="button"
+								role="tab"
+								aria-selected={activeTab === 'storage'}
+								style={{
+									flex: 1,
+									display: 'inline-flex',
+									alignItems: 'center',
+									justifyContent: 'center',
+									gap: 6,
+									padding: '7px 12px',
+									fontSize: 12,
+									fontWeight: activeTab === 'storage' ? 700 : 500,
+									color: activeTab === 'storage' ? '#2F3574' : '#64748b',
+									background: activeTab === 'storage' ? '#ffffff' : 'transparent',
+									border: 'none',
+									borderRadius: 6,
+									cursor: 'pointer',
+									boxShadow: activeTab === 'storage' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
+									transition: 'all 0.15s ease'
+								}}
+								onClick={() => setActiveTab('storage')}
+							>
+								<Database size={14} />
+								<span>Storage & Cookies</span>
+								{Boolean(storageState?.cookies?.length || storageState?.origins?.[0]?.localStorage?.length) && (
+									<span style={{ fontSize: 10, background: '#e0e7ff', color: '#3730a3', padding: '1px 5px', borderRadius: 8, fontWeight: 700 }}>
+										{(storageState?.cookies?.length || 0) + (storageState?.origins?.[0]?.localStorage?.length || 0)}
+									</span>
+								)}
+							</button>
 						</div>
 
 						{/* TAB 1: OVERVIEW & VIDEO */}
@@ -695,17 +946,54 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 
 									{currentVideoUrl ? (
 										<div style={{ background: '#090d16', borderRadius: 8, overflow: 'hidden', position: 'relative', border: '1px solid #1e293b' }}>
-											<video
-												ref={videoRef}
-												controls
-												preload="metadata"
-												key={currentVideoUrl}
-												src={currentVideoUrl}
-												onLoadedMetadata={(e) => {
-													e.currentTarget.playbackRate = videoPlaybackRate;
-												}}
-												style={{ width: '100%', maxHeight: 250, display: 'block', outline: 'none' }}
-											/>
+											{videoLoading ? (
+												<div style={{ padding: '40px 16px', textAlign: 'center', color: '#94a3b8', fontSize: '12px' }}>
+													<RefreshCw size={24} className="k-spinner" style={{ margin: '0 auto 8px', display: 'block', animation: 'spin 1s linear infinite', color: '#818cf8' }} />
+													Memuat dan menyiapkan video rekaman...
+												</div>
+											) : videoLoadError ? (
+												<div style={{ padding: '24px 16px', textAlign: 'center', color: '#f87171' }}>
+													<VideoOff size={24} style={{ margin: '0 auto 6px', color: '#f87171' }} />
+													<div style={{ fontSize: '12px', fontWeight: 600 }}>Gagal Memuat Video</div>
+													<div style={{ fontSize: '11px', color: '#cbd5e1', marginTop: 2, marginBottom: 8 }}>{videoLoadError}</div>
+													<div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
+														<Button
+															type="button"
+															variant="secondary"
+															size="xs"
+															onClick={() => {
+																setPlayableVideoSrc(null);
+																setVideoLoadError(null);
+																setVideoRetryCount((c) => c + 1);
+															}}
+														>
+															Coba Lagi
+														</Button>
+														<a
+															href={currentVideoUrl}
+															target="_blank"
+															rel="noreferrer"
+															style={{ textDecoration: 'none' }}
+														>
+															<Button type="button" variant="outline" size="xs">
+																Buka Direct Link
+															</Button>
+														</a>
+													</div>
+												</div>
+											) : (
+												<video
+													ref={videoRef}
+													controls
+													preload="metadata"
+													key={playableVideoSrc || currentVideoUrl}
+													src={playableVideoSrc || currentVideoUrl}
+													onLoadedMetadata={(e) => {
+														e.currentTarget.playbackRate = videoPlaybackRate;
+													}}
+													style={{ width: '100%', maxHeight: 250, display: 'block', outline: 'none' }}
+												/>
+											)}
 											{/* Video toolbar: Speed Controls & Download */}
 											<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '6px 12px', borderTop: '1px solid #1e293b', flexWrap: 'wrap', gap: 6 }}>
 												<div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -732,7 +1020,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 												</div>
 												<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 													<a
-														href={currentVideoUrl}
+														href={playableVideoSrc || currentVideoUrl}
 														download={`session-${sessionId}-${activeRun?.label || 'run'}.webm`}
 														target="_blank"
 														rel="noreferrer"
@@ -774,30 +1062,41 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 											Otomasi Skenario
 										</div>
 										<div style={{ fontSize: 11, color: '#4338CA', marginTop: 2 }}>
-											{hasPlaywrightScript
-												? 'Script Playwright tersedia. Gunakan tombol Re-run di footer bawah untuk eksekusi replay.'
-												: 'Generate script Playwright untuk menjalankan otomasi browser.'}
+											{hasCompletedAll && hasPlaywrightScript
+												? 'Script Playwright dan Laporan Debugging siap. Gunakan tombol Re-run di footer bawah untuk eksekusi replay.'
+												: isGenerating
+												? 'Script Playwright & Laporan Debugging sedang diproses bersamaan oleh AI di background...'
+												: hasFailedGeneration
+												? 'Gagal memproses output otomatis di background. Anda dapat mencoba Generate Ulang.'
+												: hasPlaywrightScript
+												? 'Script Playwright siap. Gunakan tombol Re-run di footer bawah untuk eksekusi replay.'
+												: 'Script Playwright sedang dipersiapkan di background...'}
 										</div>
 									</div>
 									<div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
-										{hasPlaywrightScript ? (
+										{hasCompletedAll && hasPlaywrightScript ? (
 											<span style={{ fontSize: 11, background: '#dcfce7', color: '#15803d', padding: '4px 10px', borderRadius: 6, fontWeight: 700, border: '1px solid #86efac', display: 'inline-flex', alignItems: 'center', gap: 4 }}>
 												<Check size={12} />
 												Script Siap
 											</span>
-										) : (
+										) : isGenerating ? (
+											<span style={{ fontSize: 11, background: '#eff6ff', color: '#1d4ed8', padding: '4px 10px', borderRadius: 6, fontWeight: 700, border: '1px solid #93c5fd', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+												<RefreshCw size={12} style={{ animation: 'spin 1s linear infinite' }} />
+												Sedang Diproses...
+											</span>
+										) : hasFailedGeneration ? (
 											<Button
 												type="button"
-												variant="primary"
+												variant="secondary"
 												size="xs"
 												loading={busyGenerate}
 												disabled={busyGenerate}
 												icon={<Sparkles size={12} />}
 												onClick={handleGenerate}
 											>
-												Generate Script
+												Generate Ulang
 											</Button>
-										)}
+										) : null}
 									</div>
 								</div>
 							</div>
@@ -846,40 +1145,67 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 							</div>
 						)}
 
-						{/* TAB 3: PLAYWRIGHT SCRIPT */}
+						{/* TAB 3: PLAYWRIGHT SCRIPT & AI OUTPUT */}
 						{activeTab === 'script' && (
 							<div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
 								<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
 									<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 										<Code2 size={15} color="#2F3574" />
 										<span style={{ fontSize: 12, fontWeight: 700, color: '#0f172a' }}>
-											Kode Otomasi Playwright (AI Generated)
+											Kode Otomasi & Output AI
 										</span>
 									</div>
-									<Button
-										type="button"
-										variant="primary"
-										size="xs"
-										loading={busyGenerate}
-										disabled={busyGenerate}
-										icon={<Sparkles size={11} />}
-										onClick={handleGenerate}
-									>
-										{generations.length > 0 ? 'Generate Ulang' : 'Generate Script'}
-									</Button>
+									{!isGenerating && generations.length > 0 && (
+										<Button
+											type="button"
+											variant="secondary"
+											size="xs"
+											loading={busyGenerate}
+											disabled={busyGenerate}
+											icon={<Sparkles size={11} />}
+											onClick={handleGenerate}
+										>
+											Generate Ulang
+										</Button>
+									)}
 								</div>
 
-								{generations.length === 0 ? (
-									<div style={{ border: '1px dashed #cbd5e1', borderRadius: 10, padding: '24px 16px', textAlign: 'center', background: '#f8fafc' }}>
-										<FileText size={28} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
-										<div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>
-											Belum ada script otomasi yang digenerate
+								{isGenerating ? (
+									<div style={{ border: '1px dashed #93c5fd', borderRadius: 10, padding: '36px 16px', textAlign: 'center', background: '#eff6ff' }}>
+										<RefreshCw size={32} color="#2563eb" style={{ margin: '0 auto 10px', animation: 'spin 1s linear infinite' }} />
+										<div style={{ fontSize: 13, fontWeight: 700, color: '#1e40af' }}>
+											Sedang Menyusun Script Playwright & Laporan Pengujian...
 										</div>
-										<div style={{ fontSize: 11, color: '#64748b', marginTop: 4, maxWidth: 320, margin: '4px auto 0' }}>
-											Klik tombol &quot;Generate Script&quot; di atas untuk membuat kode Playwright dari rekaman sesi ini secara instan.
+										<div style={{ fontSize: 11, color: '#3b82f6', marginTop: 6, maxWidth: 400, margin: '6px auto 0', lineHeight: 1.5 }}>
+											AI sedang menganalisis rekaman interaksi & checkpoints untuk menyusun skrip uji otomatis serta dokumen investigasi debugging secara lengkap. Seluruh hasil akan muncul bersamaan di sini.
 										</div>
 									</div>
-								) : (
+								) : hasFailedGeneration ? (
+									<div style={{ border: '1px dashed #fca5a5', borderRadius: 10, padding: '24px 16px', textAlign: 'center', background: '#fef2f2' }}>
+										<AlertCircle size={28} color="#dc2626" style={{ margin: '0 auto 8px' }} />
+										<div style={{ fontSize: 13, fontWeight: 700, color: '#991b1b' }}>
+											Gagal Memproses Script Otomatis
+										</div>
+										<div style={{ fontSize: 11, color: '#b91c1c', marginTop: 4, maxWidth: 360, margin: '4px auto 0' }}>
+											{generations.find((g) => g.status === 'failed')?.error_message ||
+												activeGenerations?.get(sessionId || 0)?.error ||
+												'Terjadi kendala saat menghubungi AI model. Silakan periksa koneksi atau coba generate ulang.'}
+										</div>
+										<div style={{ marginTop: 12 }}>
+											<Button
+												type="button"
+												variant="primary"
+												size="xs"
+												loading={busyGenerate}
+												disabled={busyGenerate}
+												icon={<Sparkles size={11} />}
+												onClick={handleGenerate}
+											>
+												Coba Generate Ulang
+											</Button>
+										</div>
+									</div>
+								) : generations.length > 0 ? (
 									generations.map((item) => (
 										<div key={item.id_generation} style={{ border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#0f172a' }}>
 											{/* Code Block Header */}
@@ -907,7 +1233,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 																icon={<Download size={12} />}
 																onClick={() => handleDownload(item)}
 															>
-																Unduh {item.kind === 'playwright' ? '.spec.ts' : item.kind === 'report' ? '.md' : '.' + item.kind}
+																Unduh {item.kind === 'playwright' ? '.spec.ts' : item.kind === 'report' || item.kind === 'markdown' ? '.md' : '.' + item.kind}
 															</Button>
 														</>
 													)}
@@ -938,6 +1264,350 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 											)}
 										</div>
 									))
+								) : (
+									<div style={{ border: '1px dashed #cbd5e1', borderRadius: 10, padding: '28px 16px', textAlign: 'center', background: '#f8fafc' }}>
+										<Code2 size={28} color="#64748b" style={{ margin: '0 auto 8px' }} />
+										<div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>
+											Belum Ada Script Otomasi
+										</div>
+										<div style={{ fontSize: 11, color: '#64748b', marginTop: 4, maxWidth: 360, margin: '4px auto 0' }}>
+											Klik tombol di bawah untuk membuat skrip Playwright dan laporan investigasi dengan bantuan AI.
+										</div>
+										<div style={{ marginTop: 12 }}>
+											<Button
+												type="button"
+												variant="primary"
+												size="xs"
+												loading={busyGenerate}
+												disabled={busyGenerate}
+												icon={<Sparkles size={11} />}
+												onClick={handleGenerate}
+											>
+												Generate Script AI
+											</Button>
+										</div>
+									</div>
+								)}
+							</div>
+						)}
+
+						{/* TAB 4: STORAGE & COOKIES */}
+						{activeTab === 'storage' && (
+							<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+								{/* Storage Header Card */}
+								<div
+									style={{
+										display: 'flex',
+										justifyContent: 'space-between',
+										alignItems: 'center',
+										background: '#ffffff',
+										border: '1px solid #cbd5e1',
+										borderRadius: 10,
+										padding: '10px 14px',
+										flexWrap: 'wrap',
+										gap: 8
+									}}
+								>
+									<div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+										<Database size={16} color="#2F3574" />
+										<div>
+											<div style={{ fontSize: 12.5, fontWeight: 700, color: '#0f172a' }}>
+												Browser Context State Snapshot
+											</div>
+											<div style={{ fontSize: 11, color: '#64748b' }}>
+												Cookies, LocalStorage, dan SessionStorage tersimpan dalam format Playwright storageState
+											</div>
+										</div>
+									</div>
+
+									{storageState && (
+										<Button
+											type="button"
+											variant="secondary"
+											size="xs"
+											icon={storageCopied ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+											onClick={handleCopyStorageState}
+										>
+											{storageCopied ? 'Tersalin!' : 'Salin JSON storageState'}
+										</Button>
+									)}
+								</div>
+
+								{/* Sub-tab Pill Switcher & Search Bar */}
+								<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+									<div style={{ display: 'inline-flex', gap: 4, background: '#f1f5f9', padding: 3, borderRadius: 8, border: '1px solid #e2e8f0' }}>
+										<button
+											type="button"
+											style={{
+												padding: '4px 10px',
+												fontSize: 11,
+												fontWeight: storageSubTab === 'cookies' ? 700 : 500,
+												color: storageSubTab === 'cookies' ? '#2F3574' : '#64748b',
+												background: storageSubTab === 'cookies' ? '#ffffff' : 'transparent',
+												border: 'none',
+												borderRadius: 6,
+												cursor: 'pointer',
+												display: 'inline-flex',
+												alignItems: 'center',
+												gap: 4
+											}}
+											onClick={() => setStorageSubTab('cookies')}
+										>
+											<Cookie size={12} />
+											<span>Cookies ({storageState?.cookies?.length || 0})</span>
+										</button>
+
+										<button
+											type="button"
+											style={{
+												padding: '4px 10px',
+												fontSize: 11,
+												fontWeight: storageSubTab === 'local' ? 700 : 500,
+												color: storageSubTab === 'local' ? '#2F3574' : '#64748b',
+												background: storageSubTab === 'local' ? '#ffffff' : 'transparent',
+												border: 'none',
+												borderRadius: 6,
+												cursor: 'pointer',
+												display: 'inline-flex',
+												alignItems: 'center',
+												gap: 4
+											}}
+											onClick={() => setStorageSubTab('local')}
+										>
+											<Key size={12} />
+											<span>LocalStorage ({storageState?.origins?.[0]?.localStorage?.length || 0})</span>
+										</button>
+
+										<button
+											type="button"
+											style={{
+												padding: '4px 10px',
+												fontSize: 11,
+												fontWeight: storageSubTab === 'session' ? 700 : 500,
+												color: storageSubTab === 'session' ? '#2F3574' : '#64748b',
+												background: storageSubTab === 'session' ? '#ffffff' : 'transparent',
+												border: 'none',
+												borderRadius: 6,
+												cursor: 'pointer',
+												display: 'inline-flex',
+												alignItems: 'center',
+												gap: 4
+											}}
+											onClick={() => setStorageSubTab('session')}
+										>
+											<Database size={12} />
+											<span>SessionStorage ({storageState?.origins?.[0]?.sessionStorage?.length || 0})</span>
+										</button>
+									</div>
+
+									<div style={{ flex: 1, minWidth: 160, maxWidth: 260 }}>
+										<div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+											<Search size={12} style={{ position: 'absolute', left: 8, color: '#94a3b8' }} />
+											<input
+												type="text"
+												placeholder="Filter key atau domain..."
+												value={storageFilter}
+												onChange={(e) => setStorageFilter(e.target.value)}
+												style={{
+													width: '100%',
+													padding: '5px 8px 5px 26px',
+													fontSize: 11,
+													borderRadius: 6,
+													border: '1px solid #cbd5e1',
+													outline: 'none'
+												}}
+											/>
+										</div>
+									</div>
+								</div>
+
+								{/* Storage Content Display */}
+								{!storageState ? (
+									<div style={{ border: '1px dashed #cbd5e1', borderRadius: 10, padding: '24px 16px', textAlign: 'center', background: '#f8fafc' }}>
+										<Database size={28} color="#94a3b8" style={{ margin: '0 auto 8px' }} />
+										<div style={{ fontSize: 13, fontWeight: 600, color: '#334155' }}>
+											Tidak ada state storage yang tercatat
+										</div>
+										<div style={{ fontSize: 11, color: '#64748b', marginTop: 4 }}>
+											Storage snapshot (cookies & localStorage) akan otomatis terekam saat memulai dan mengakhiri sesi.
+										</div>
+									</div>
+								) : storageSubTab === 'cookies' ? (
+									/* Cookies Table */
+									<div style={{ border: '1px solid #e2e8f0', borderRadius: 8, overflow: 'hidden', background: '#ffffff' }}>
+										{(() => {
+											const filteredCookies = (storageState.cookies || []).filter((c) => {
+												const q = storageFilter.toLowerCase();
+												return !q || c.name.toLowerCase().includes(q) || c.domain.toLowerCase().includes(q) || c.value.toLowerCase().includes(q);
+											});
+											if (filteredCookies.length === 0) {
+												return (
+													<div style={{ padding: '20px', textAlign: 'center', fontSize: 11, color: '#64748b' }}>
+														{storageFilter ? 'Tidak ada cookie yang cocok dengan filter.' : 'Tidak ada cookie yang terekam pada sesi ini.'}
+													</div>
+												);
+											}
+											return (
+												<div style={{ maxHeight: 320, overflowY: 'auto' }}>
+													<table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, textAlign: 'left' }}>
+														<thead>
+															<tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#475569', fontWeight: 600 }}>
+																<th style={{ padding: '8px 10px' }}>Name</th>
+																<th style={{ padding: '8px 10px' }}>Value</th>
+																<th style={{ padding: '8px 10px' }}>Domain & Path</th>
+																<th style={{ padding: '8px 10px' }}>Security</th>
+																<th style={{ padding: '8px 10px' }}>Expires</th>
+															</tr>
+														</thead>
+														<tbody>
+															{filteredCookies.map((cookie, idx) => {
+																const isValueVisible = showValues[`cookie_${idx}`];
+																return (
+																	<tr key={`${cookie.domain}_${cookie.name}_${idx}`} style={{ borderBottom: '1px solid #f1f5f9', verticalAlign: 'top' }}>
+																		<td style={{ padding: '8px 10px', fontWeight: 600, color: '#0f172a', fontFamily: 'monospace' }}>
+																			{cookie.name}
+																		</td>
+																		<td style={{ padding: '8px 10px', maxWidth: 200, wordBreak: 'break-all' }}>
+																			<div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+																				<span style={{ fontFamily: 'monospace', color: '#334155' }}>
+																					{isValueVisible ? cookie.value : (cookie.value.length > 20 ? cookie.value.slice(0, 8) + '••••••••' : '••••••••')}
+																				</span>
+																				<button
+																					type="button"
+																					style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: '#94a3b8' }}
+																					onClick={() => setShowValues((p) => ({ ...p, [`cookie_${idx}`]: !p[`cookie_${idx}`] }))}
+																					title={isValueVisible ? 'Sembunyikan nilai' : 'Tampilkan nilai'}
+																				>
+																					{isValueVisible ? <EyeOff size={11} /> : <Eye size={11} />}
+																				</button>
+																			</div>
+																		</td>
+																		<td style={{ padding: '8px 10px', color: '#64748b' }}>
+																			<div>{cookie.domain}</div>
+																			<div style={{ fontSize: 10, color: '#94a3b8' }}>{cookie.path}</div>
+																		</td>
+																		<td style={{ padding: '8px 10px' }}>
+																			<div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+																				{cookie.httpOnly && (
+																					<span style={{ fontSize: 9, background: '#fef3c7', color: '#92400e', padding: '1px 4px', borderRadius: 4, fontWeight: 700 }}>
+																						HttpOnly
+																					</span>
+																				)}
+																				{cookie.secure && (
+																					<span style={{ fontSize: 9, background: '#dcfce7', color: '#166534', padding: '1px 4px', borderRadius: 4, fontWeight: 700 }}>
+																						Secure
+																					</span>
+																				)}
+																				{cookie.sameSite && cookie.sameSite !== 'None' && (
+																					<span style={{ fontSize: 9, background: '#e0e7ff', color: '#3730a3', padding: '1px 4px', borderRadius: 4, fontWeight: 700 }}>
+																						{cookie.sameSite}
+																					</span>
+																				)}
+																			</div>
+																		</td>
+																		<td style={{ padding: '8px 10px', fontSize: 10, color: '#64748b' }}>
+																			{cookie.expires > 0 ? new Date(cookie.expires * 1000).toLocaleDateString() : 'Session'}
+																		</td>
+																	</tr>
+																);
+															})}
+														</tbody>
+													</table>
+												</div>
+											);
+										})()}
+									</div>
+								) : (
+									/* LocalStorage / SessionStorage Key-Value Cards */
+									<div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+										{(() => {
+											const origin = storageState.origins?.[0];
+											const entries: StorageEntry[] = storageSubTab === 'local' ? (origin?.localStorage || []) : (origin?.sessionStorage || []);
+											const filteredEntries = entries.filter((e) => {
+												const q = storageFilter.toLowerCase();
+												return !q || e.name.toLowerCase().includes(q) || e.value.toLowerCase().includes(q);
+											});
+
+											if (filteredEntries.length === 0) {
+												return (
+													<div style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: '20px', textAlign: 'center', background: '#ffffff', fontSize: 11, color: '#64748b' }}>
+														{storageFilter ? 'Tidak ada key yang cocok dengan filter.' : `Tidak ada data ${storageSubTab === 'local' ? 'LocalStorage' : 'SessionStorage'} yang tersimpan.`}
+													</div>
+												);
+											}
+
+											return (
+												<div style={{ maxHeight: 320, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 6 }}>
+													{filteredEntries.map((entry, idx) => {
+														const keyId = `${storageSubTab}_${idx}`;
+														const isVisible = showValues[keyId];
+														return (
+															<div
+																key={entry.name}
+																style={{
+																	background: '#ffffff',
+																	border: '1px solid #e2e8f0',
+																	borderRadius: 6,
+																	padding: '8px 10px',
+																	display: 'flex',
+																	flexDirection: 'column',
+																	gap: 4
+																}}
+															>
+																<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+																	<span style={{ fontWeight: 700, fontSize: 11.5, color: '#0f172a', fontFamily: 'monospace' }}>
+																		{entry.name}
+																	</span>
+																	<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+																		<button
+																			type="button"
+																			style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: '#64748b' }}
+																			onClick={() => setShowValues((p) => ({ ...p, [keyId]: !p[keyId] }))}
+																			title={isVisible ? 'Sembunyikan' : 'Tampilkan'}
+																		>
+																			{isVisible ? <EyeOff size={12} /> : <Eye size={12} />}
+																		</button>
+																		<button
+																			type="button"
+																			style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: '#2F3574' }}
+																			onClick={async () => {
+																				try {
+																					await navigator.clipboard.writeText(entry.value);
+																					onShowToast?.(`Key "${entry.name}" disalin!`, 'success');
+																				} catch {
+																					// Ignore
+																				}
+																			}}
+																			title="Salin value"
+																		>
+																			<Copy size={12} />
+																		</button>
+																	</div>
+																</div>
+																<pre
+																	style={{
+																		margin: 0,
+																		background: '#f8fafc',
+																		padding: '6px 8px',
+																		borderRadius: 4,
+																		fontSize: 10.5,
+																		color: '#334155',
+																		maxHeight: isVisible ? 120 : 36,
+																		overflowY: 'auto',
+																		whiteSpace: 'pre-wrap',
+																		wordBreak: 'break-all',
+																		fontFamily: 'ui-monospace, monospace'
+																	}}
+																>
+																	{entry.value}
+																</pre>
+															</div>
+														);
+													})}
+												</div>
+											);
+										})()}
+									</div>
 								)}
 							</div>
 						)}

@@ -9,6 +9,7 @@ export interface ModalProps {
 	children: React.ReactNode;
 	footer?: React.ReactNode;
 	noPadding?: boolean;
+	closeOnOverlayClick?: boolean;
 }
 
 export const Modal: React.FC<ModalProps> = ({
@@ -18,7 +19,8 @@ export const Modal: React.FC<ModalProps> = ({
 	title,
 	children,
 	footer,
-	noPadding = false
+	noPadding = false,
+	closeOnOverlayClick = true
 }) => {
 	const isVisible = open ?? isOpen ?? false;
 
@@ -38,8 +40,21 @@ export const Modal: React.FC<ModalProps> = ({
 	if (!isVisible) return null;
 
 	return (
-		<div className="k-modal-overlay" role="dialog" aria-modal="true" aria-label={title}>
-			<div className="k-modal-sheet">
+		<div
+			className="k-modal-overlay"
+			role="dialog"
+			aria-modal="true"
+			aria-label={title}
+			onClick={(e) => {
+				if (
+					closeOnOverlayClick &&
+					(e.target === e.currentTarget || (e.target as HTMLElement).classList?.contains('k-modal-overlay'))
+				) {
+					onClose();
+				}
+			}}
+		>
+			<div className="k-modal-sheet" onClick={(e) => e.stopPropagation()}>
 				<div className="k-modal-header">
 					<span style={{ fontWeight: 700, fontSize: '14px', color: '#0f172a' }}>{title}</span>
 					<button

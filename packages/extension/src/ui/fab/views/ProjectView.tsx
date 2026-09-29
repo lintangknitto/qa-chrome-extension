@@ -51,6 +51,7 @@ export interface ProjectViewProps {
 	onSelectTestCaseForRecording: (project: RecordingProject, testCase: TestCaseItem) => void;
 	onShowToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 	onActiveProjectChange?: (project: RecordingProject | null) => void;
+	activeGenerations?: Map<number, { id_session: number; title: string; status: string; startTime?: number; error?: string }>;
 }
 
 const SYSTEM_TEMPLATE_URL =
@@ -64,7 +65,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	onCreateProject,
 	onSelectTestCaseForRecording,
 	onShowToast,
-	onActiveProjectChange
+	onActiveProjectChange,
+	activeGenerations
 }) => {
 	const [selectedProject, setSelectedProject] = useState<RecordingProject | null>(null);
 
@@ -1164,6 +1166,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 				sessionId={resultModalSessionId}
 				testCase={resultModalTestCase}
 				api={api}
+				activeGenerations={activeGenerations}
 				onClose={() => {
 					setResultModalOpen(false);
 					setResultModalSessionId(null);

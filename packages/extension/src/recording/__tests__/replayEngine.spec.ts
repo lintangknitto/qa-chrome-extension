@@ -31,7 +31,7 @@ describe('replayEngine', () => {
 		const steps = parseScriptToReplaySteps(script);
 		expect(steps).toEqual([
 			{ action: 'fill', selector: 'Ketik email', value: 'user@knitto.id', description: 'Mengisi field "Ketik email" dengan "user@knitto.id"' },
-			{ action: 'click', selector: 'text=Masuk', description: 'Mengklik elemen "text=Masuk"' },
+			{ action: 'click', selector: 'role:button:Masuk', description: 'Mengklik elemen role button "Masuk"' },
 			{ action: 'select', selector: '#role', value: 'qa', description: 'Memilih opsi "qa" pada "#role"' },
 			{ action: 'check', selector: '#agree-terms', value: 'true', description: 'Centang "#agree-terms"' }
 		]);
@@ -255,6 +255,66 @@ describe('replayEngine', () => {
 
 			expect(result.success).toBe(true);
 			expect(result.executedSteps).toBe(1);
+		} finally {
+			globalThis.chrome = originalChrome;
+		}
+	});
+
+	it('mengurai baris script Playwright dengan assignment variabel dan regex locators', () => {
+		const script = `
+			await page.goto('https://chat.knitto.org/chat');
+			const daftarChat = page.getByRole('button', { name: /chat|pesan/i });
+			await daftarChat.click();
+			const kolomPesan = page.getByPlaceholder(/ketik pesan/i);
+			await kolomPesan.fill('Pesan otomatis');
+			const tombolKirim = page.getByRole('button', { name: 'Kirim' });
+			await tombolKirim.click();
+		`;
+
+		const steps = parseScriptToReplaySteps(script);
+		expect(steps).toEqual([
+			{ action: 'goto', url: 'https://chat.knitto.org/chat', description: 'Navigasi ke https://chat.knitto.org/chat' },
+			{ action: 'click', selector: 'role:button:chat|pesan', description: 'Mengklik elemen role button "chat|pesan"' },
+			{ action: 'fill', selector: 'ketik pesan', value: 'Pesan otomatis', description: 'Mengisi field "ketik pesan" dengan "Pesan otomatis"' },
+			{ action: 'click', selector: 'role:button:Kirim', description: 'Mengklik elemen role button "Kirim"' }
+		]);
+	});
+
+	it('memulihkan storageState cookies dan localStorage saat eksekusi replay', async () => {
+		const originalChrome = globalThis.chrome;
+		const setCookieMock = vi.fn().mockResolvedValue({});
+		const executeScriptMock = vi.fn().mockResolvedValue([]);
+
+		globalThis.chrome = {
+			...originalChrome,
+			tabs: {
+				query: vi.fn().mockResolvedValue([{ id: 606 }]),
+				update: vi.fn().mockResolvedValue({})
+			},
+			cookies: {
+				set: setCookieMock
+			},
+			scripting: {
+				executeScript: executeScriptMock
+			}
+		} as unknown as typeof chrome;
+
+		try {
+			const result = await executeReplay({
+				sessionId: 14,
+				testCaseNo: 'TC-STORAGE-01',
+				parameterOverrides: {},
+				mode: 'activeTab',
+				storageState: {
+					cookies: [{ name: 'auth_token', value: 'secret_jwt', domain: 'knitto.org', path: '/' }],
+					origins: [{ origin: 'https://knitto.org', localStorage: [{ name: 'user_id', value: '42' }] }]
+				},
+				steps: [{ action: 'wait', timeoutMs: 10 }]
+			});
+
+			expect(result.success).toBe(true);
+			expect(setCookieMock).toHaveBeenCalled();
+			expect(executeScriptMock).toHaveBeenCalled();
 		} finally {
 			globalThis.chrome = originalChrome;
 		}

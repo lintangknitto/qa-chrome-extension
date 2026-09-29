@@ -223,6 +223,29 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 	});
 
+	it('sesi kadaluarsa atau token terhapus langsung melempar user ke layar Login (strict auth guard)', async () => {
+		storageStore.set('qa_recording_token', 'mock-token');
+		storageStore.set('qa_recording_user', { id_user: 1, username: 'tester', nama: 'QA Tester' });
+		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 20));
+		});
+		openFab();
+		expect(screen.getByRole('button', { name: 'Tools' })).toBeTruthy();
+
+		// Simulasi token di-clear
+		await act(async () => {
+			storageStore.delete('qa_recording_token');
+			storageStore.delete('qa_recording_user');
+			// Trigger onStorageChange
+			storageListeners.forEach((listener) => listener({}, 'local'));
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText('Login ke QA Server')).toBeTruthy();
+		});
+	});
+
 	it('alur start recording → layar Active: membuat session dan mengirim recordingStart', async () => {
 		// Mock token sudah ada di storage
 		storageStore.set('qa_recording_token', 'mock-token');
@@ -257,8 +280,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 
 		await waitFor(() => {
 			expect(apiMocks.createSession).toHaveBeenCalled();
-			expect(screen.getAllByText('Recording Aktif').length).toBeGreaterThan(0);
-			expect(screen.getByText('Checkout E2E')).toBeTruthy();
+			const aside = document.querySelector('aside.fab-sidebar');
+			expect(aside?.getAttribute('data-open')).toBe('false');
 		});
 	});
 
@@ -349,9 +372,69 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		});
 	});
 
-	it('layar Riwayat: klik generate memanggil generateOutputs', async () => {
+	it('layar Result: konfirmasi End Session memicu generateOutputs di background dan memunculkan notifikasi banner aktif', async () => {
 		storageStore.set('qa_recording_token', 'mock-token');
-		apiMocks.generateOutputs.mockResolvedValueOnce({ success: true });
+		storageStore.set('qa_recording_active_session', {
+			id_session: 450,
+			id_project: 1,
+			test_case_no: 'TC-AUTO-01',
+			title: 'Auto Generation Session',
+			group_id: 15,
+			last_sequence: 2
+		});
+		apiMocks.endSession.mockResolvedValueOnce({
+			id_session: 450,
+			status: 'completed',
+			result: 'PASS'
+		});
+		let resolveGen: (value: any) => void;
+		const genPromise = new Promise((resolve) => {
+			resolveGen = resolve;
+		});
+		apiMocks.generateOutputs.mockReturnValueOnce(genPromise);
+
+		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
+		await act(async () => {
+			await new Promise((r) => setTimeout(r, 20));
+		});
+		openFab();
+		fireEvent.click(screen.getByRole('button', { name: 'Tools' }));
+
+		await waitFor(() => expect(screen.getByText('Auto Generation Session')).toBeTruthy());
+		fireEvent.click(screen.getByRole('button', { name: 'End Recording' }));
+
+		expect(screen.getByText('Konfirmasi Selesai Recording')).toBeTruthy();
+		fireEvent.change(screen.getByPlaceholderText('Tuliskan hasil aktual pengujian yang didapatkan...'), {
+			target: { value: 'Pass testing auto-gen' }
+		});
+		fireEvent.click(screen.getByRole('button', { name: 'Konfirmasi End Session' }));
+
+		await waitFor(() => {
+			expect(apiMocks.endSession).toHaveBeenCalledWith(450, {
+				result: 'PASS',
+				actual_result: 'Pass testing auto-gen'
+			});
+			expect(apiMocks.generateOutputs).toHaveBeenCalledWith(450, ['playwright', 'markdown']);
+		});
+
+		// Memverifikasi banner generasi sedang berjalan
+		await waitFor(() => {
+			expect(screen.getByText(/Memproses Script:/i)).toBeTruthy();
+			expect(screen.getByText(/Auto Generation Session/i)).toBeTruthy();
+		});
+
+		// Resolve generasi
+		await act(async () => {
+			resolveGen!({ success: true });
+		});
+
+		await waitFor(() => {
+			expect(screen.getByText(/berhasil dibuat!/i)).toBeTruthy();
+		});
+	});
+
+	it('layar Riwayat: tidak menampilkan tombol generate manual di list row dan klik hasil membuka modal detail', async () => {
+		storageStore.set('qa_recording_token', 'mock-token');
 
 		render(<FabApp settings={{ enabled: true, side: 'right' }} />);
 		await act(async () => {
@@ -364,10 +447,14 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		fireEvent.click(screen.getByRole('tab', { name: /Riwayat Rekaman/i }));
 
 		await waitFor(() => expect(screen.getByText('Test Order Flow')).toBeTruthy());
-		fireEvent.click(screen.getByRole('button', { name: 'generate' }));
+		// Tombol generate manual di list row sudah dihilangkan sesuai spesifikasi background generation
+		expect(screen.queryByRole('button', { name: 'generate' })).toBeNull();
 
+		// Klik baris hasil rekaman membuka TestCaseResultModal
+		fireEvent.click(screen.getByText('Test Order Flow'));
 		await waitFor(() => {
-			expect(apiMocks.generateOutputs).toHaveBeenCalledWith(101);
+			expect(apiMocks.getSession).toHaveBeenCalledWith(101);
+			expect(screen.getByText(/Hasil Rekaman: TC-01/i)).toBeTruthy();
 		});
 	});
 

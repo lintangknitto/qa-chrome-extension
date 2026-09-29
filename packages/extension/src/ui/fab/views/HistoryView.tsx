@@ -19,10 +19,11 @@ export interface HistoryViewProps {
 	sessions: RecordingSession[];
 	generations: GenerationItem[];
 	activeSessionId: number | null;
+	activeGenerations?: Map<number, { id_session: number; title: string; status: string }>;
 	busy: boolean;
 	error: string | null;
 	onRefresh: () => void;
-	onGenerate: (idSession: number) => void;
+	onGenerate?: (idSession: number) => void;
 	onViewGenerations: (idSession: number) => void;
 	onOpenDetail?: (session: RecordingSession) => void;
 	onDownload: (item: GenerationItem) => void;
@@ -33,6 +34,7 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 	sessions,
 	generations,
 	activeSessionId,
+	activeGenerations,
 	busy,
 	error,
 	onRefresh,
@@ -320,7 +322,14 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 												</span>
 											)}
 											<span>·</span>
-											{renderStatusBadge(session)}
+											{activeGenerations?.get(session.id_session)?.status === 'processing' ? (
+												<span style={{ fontSize: 10, background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #bfdbfe' }}>
+													<RefreshCw size={10} className="spin" style={{ animation: 'spin 1.2s linear infinite' }} />
+													Generating Script...
+												</span>
+											) : (
+												renderStatusBadge(session)
+											)}
 											<span>·</span>
 											<span style={{ fontSize: 11 }}>#Session {session.id_session}</span>
 										</div>
@@ -336,14 +345,6 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 												onClick={() => onShare(session.id_session)}
 											/>
 										)}
-										<Button
-											variant="outline"
-											size="xs"
-											disabled={busy}
-											onClick={() => onGenerate(session.id_session)}
-										>
-											generate
-										</Button>
 										<Button
 											variant="secondary"
 											size="xs"

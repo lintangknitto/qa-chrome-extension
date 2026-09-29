@@ -34,8 +34,9 @@ import { ProjectView } from './views/ProjectView';
 import { CleanerView } from './views/CleanerView';
 import { TestCaseResultModal } from './views/TestCaseResultModal';
 import { Toast } from './components/Toast';
-import { Play, History, Settings, LogOut, User, FolderKanban, Wrench, ChevronDown, ChevronRight, Trash2, Video } from 'lucide-react';
+import { Play, History, Settings, LogOut, User, FolderKanban, Wrench, ChevronDown, ChevronRight, Trash2, Video, RefreshCw } from 'lucide-react';
 import type { TestCaseItem } from '../../recording/apiClient';
+import { io, type Socket } from 'socket.io-client';
 
 const DEFAULT_SIDEBAR_WIDTH = 520;
 const MIN_SIDEBAR_WIDTH = 420;
@@ -145,10 +146,20 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	const [sessions, setSessions] = useState<RecordingSession[]>([]);
 	const [generations, setGenerations] = useState<GenerationItem[]>([]);
 	const [activeGenSessionId, setActiveGenSessionId] = useState<number | null>(null);
+	const [activeGenerations, setActiveGenerations] = useState<Map<number, { id_session: number; title: string; status: 'processing' | 'completed' | 'failed'; startTime: number; error?: string }>>(new Map());
 	const [prefilledTestCase, setPrefilledTestCase] = useState<PrefilledTestCase | null>(null);
 	const [isResultModalOpen, setResultModalOpen] = useState(false);
 	const [resultModalSessionId, setResultModalSessionId] = useState<number | null>(null);
 	const [resultModalTestCase, setResultModalTestCase] = useState<TestCaseItem | null>(null);
+
+	const showNotice = useCallback((msg: string, type: 'success' | 'info' | 'error' = 'info') => {
+		setNotice(msg);
+		setNoticeType(type);
+	}, []);
+
+	const handleCloseNotice = useCallback(() => {
+		setNotice(null);
+	}, []);
 
 	const handleOpenSessionDetail = useCallback((session: RecordingSession) => {
 		setResultModalSessionId(session.id_session);
@@ -170,9 +181,10 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					setState('idle');
 					stateRef.current = 'idle';
 					setView('login');
+					showNotice('Sesi login telah berakhir atau belum login. Silakan login kembali.', 'error');
 				}
 			}),
-		[baseUrl]
+		[baseUrl, showNotice]
 	);
 
 	const loadBootstrap = useCallback(async () => {
@@ -253,6 +265,82 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		void loadSessions();
 	}, [token, loadProjects, loadSessions]);
 
+	// Realtime Socket.IO listener untuk background generation status
+	useEffect(() => {
+		if (!token || !baseUrl) return;
+		let socket: Socket | null = null;
+		try {
+			socket = io(baseUrl, {
+				path: '/knitto-socket',
+				transports: ['websocket'],
+				auth: { token }
+			});
+
+			socket.on('generation:started', (payload: { idSession?: number; kind?: string }) => {
+				const idSession = Number(payload?.idSession);
+				if (!idSession) return;
+				setActiveGenerations((prev) => {
+					const existing = prev.get(idSession);
+					const next = new Map(prev);
+					next.set(idSession, {
+						id_session: idSession,
+						title: existing?.title || `Session #${idSession}`,
+						status: 'processing',
+						startTime: existing?.startTime || Date.now()
+					});
+					return next;
+				});
+			});
+
+			socket.on('generation:completed', (payload: { idSession?: number; kind?: string }) => {
+				const idSession = Number(payload?.idSession);
+				if (!idSession) return;
+				setActiveGenerations((prev) => {
+					const existing = prev.get(idSession);
+					const next = new Map(prev);
+					next.set(idSession, {
+						id_session: idSession,
+						title: existing?.title || `Session #${idSession}`,
+						status: 'completed',
+						startTime: existing?.startTime || Date.now()
+					});
+					return next;
+				});
+				showNotice(`Script Playwright untuk Sesi #${idSession} berhasil dibuat!`, 'success');
+				void loadSessions();
+			});
+
+			socket.on('generation:failed', (payload: { idSession?: number; kind?: string; error?: string }) => {
+				const idSession = Number(payload?.idSession);
+				if (!idSession) return;
+				setActiveGenerations((prev) => {
+					const existing = prev.get(idSession);
+					const next = new Map(prev);
+					next.set(idSession, {
+						id_session: idSession,
+						title: existing?.title || `Session #${idSession}`,
+						status: 'failed',
+						startTime: existing?.startTime || Date.now(),
+						error: payload?.error
+					});
+					return next;
+				});
+			});
+		} catch {
+			// Abaikan jika socket error
+		}
+
+		return () => {
+			if (socket) {
+				try {
+					socket.disconnect();
+				} catch {
+					// Ignore
+				}
+			}
+		};
+	}, [token, baseUrl, loadSessions, showNotice]);
+
 	useEffect(() => {
 		let cancelled = false;
 		void requestFabState()
@@ -308,15 +396,6 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		}, 2000);
 		return () => clearInterval(timer);
 	}, [state]);
-
-	const showNotice = useCallback((msg: string, type: 'success' | 'info' | 'error' = 'info') => {
-		setNotice(msg);
-		setNoticeType(type);
-	}, []);
-
-	const handleCloseNotice = useCallback(() => {
-		setNotice(null);
-	}, []);
 
 	// Tutup dengan Esc ketika sidebar terbuka
 	useEffect(() => {
@@ -403,8 +482,12 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		setRailCollapsed(true);
 		setError(null);
 		setNotice(null);
+		if (!token) {
+			setView('login');
+			return;
+		}
 		setView('projects');
-	}, []);
+	}, [token]);
 
 	const handleSelectTestCaseForRecording = useCallback((project: RecordingProject, testCase: TestCaseItem) => {
 		setPrefilledTestCase({
@@ -426,16 +509,24 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		setRailCollapsed(true);
 		setError(null);
 		setNotice(null);
+		if (!token) {
+			setView('login');
+			return;
+		}
 		setView('setting');
-	}, []);
+	}, [token]);
 
 	const handleNavigateCleaner = useCallback(() => {
 		handleCloseToolsDropdown();
 		setRailCollapsed(true);
 		setError(null);
 		setNotice(null);
+		if (!token) {
+			setView('login');
+			return;
+		}
 		setView('cleaner');
-	}, [handleCloseToolsDropdown]);
+	}, [token, handleCloseToolsDropdown]);
 
 	const handleLogin = useCallback(
 		async (credentials: { username: string; password: string }) => {
@@ -577,6 +668,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				setState('recording');
 				stateRef.current = 'recording';
 				setView('active');
+				setOpen(false);
 				showNotice('Recording berjalan. Tab sudah dimasukkan ke group Knitto QA.', 'info');
 			} catch (caught) {
 				setError((caught as Error).message);
@@ -656,6 +748,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				}
 
 				const endedSessionId = currentSession.id_session;
+				const sessionTitle = currentSession.title;
 				const isProjectSession = Boolean(currentSession.id_project);
 
 				await api.endSession(currentSession.id_session, input);
@@ -669,11 +762,54 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					stopWarning
 						? `Session selesai, tetapi recorder gagal berhenti (${stopWarning}).`
 						: recordedVideoUrl
-							? 'Session selesai. Rekaman video tersimpan ke MinIO.'
-							: 'Session selesai. Output automation dapat digenerate.'
+							? 'Session selesai. Script Playwright sedang diproses di background...'
+							: 'Session selesai. Script Playwright sedang diproses di background...'
 				);
 				await loadSessions();
 				await loadProjects();
+
+				// Trigger background auto-generation non-blocking
+				setActiveGenerations((prev) => {
+					const next = new Map(prev);
+					next.set(endedSessionId, {
+						id_session: endedSessionId,
+						title: sessionTitle,
+						status: 'processing',
+						startTime: Date.now()
+					});
+					return next;
+				});
+
+				void (async () => {
+					try {
+						await api.generateOutputs(endedSessionId, ['playwright', 'markdown']);
+						setActiveGenerations((prev) => {
+							const next = new Map(prev);
+							next.set(endedSessionId, {
+								id_session: endedSessionId,
+								title: sessionTitle,
+								status: 'completed',
+								startTime: Date.now()
+							});
+							return next;
+						});
+						showNotice(`Script Playwright untuk "${sessionTitle}" berhasil dibuat!`, 'success');
+						void loadSessions();
+					} catch (genErr) {
+						setActiveGenerations((prev) => {
+							const next = new Map(prev);
+							next.set(endedSessionId, {
+								id_session: endedSessionId,
+								title: sessionTitle,
+								status: 'failed',
+								startTime: Date.now(),
+								error: (genErr as Error).message
+							});
+							return next;
+						});
+						console.warn('Auto-generation error:', genErr);
+					}
+				})();
 
 				// Langsung buka modal hasil pengujian di dalam ekstensi
 				setResultModalSessionId(endedSessionId);
@@ -1102,6 +1238,32 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 								</button>
 							</div>
 
+							{/* Floating Background Auto-Generation Status Banner */}
+							{Array.from(activeGenerations.values()).some((g) => g.status === 'processing') && (
+								<div
+									style={{
+										background: '#eff6ff',
+										borderBottom: '1px solid #bfdbfe',
+										padding: '6px 12px',
+										display: 'flex',
+										alignItems: 'center',
+										justifyContent: 'space-between',
+										fontSize: 11,
+										color: '#1e40af'
+									}}
+								>
+									<div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+										<RefreshCw size={12} className="spin" style={{ animation: 'spin 1.2s linear infinite', flexShrink: 0 }} />
+										<span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+											<strong>Memproses Script:</strong> {Array.from(activeGenerations.values()).find((g) => g.status === 'processing')?.title}
+										</span>
+									</div>
+									<span style={{ fontSize: 9.5, background: '#dbeafe', color: '#1d4ed8', padding: '1px 6px', borderRadius: 8, fontWeight: 700, flexShrink: 0 }}>
+										Generating...
+									</span>
+								</div>
+							)}
+
 							<div className="fab-panel-body">
 								{isRecorderActive && currentView !== 'result' && (
 									<div className="fab-recorder-tabs" role="tablist" aria-label="Recorder Tab">
@@ -1170,6 +1332,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 										onCreateProject={handleCreateProject}
 										onSelectTestCaseForRecording={handleSelectTestCaseForRecording}
 										onActiveProjectChange={setActiveProjectInView}
+										activeGenerations={activeGenerations}
 										onShowToast={(msg, toastType) => {
 											if (toastType === 'error') {
 												setError(msg);
@@ -1212,6 +1375,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 										sessions={sessions}
 										generations={generations}
 										activeSessionId={activeGenSessionId}
+										activeGenerations={activeGenerations}
 										busy={busy}
 										error={error}
 										onRefresh={loadSessions}
@@ -1296,6 +1460,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					sessionId={resultModalSessionId}
 					testCase={resultModalTestCase}
 					api={api}
+					activeGenerations={activeGenerations}
 					onClose={() => {
 						setResultModalOpen(false);
 						setResultModalSessionId(null);

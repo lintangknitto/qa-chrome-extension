@@ -24,6 +24,7 @@ export interface ReplayOptions {
 	speedMode?: 'normal' | 'fast' | 'slow';
 	stepDelayMs?: number;
 	apiBaseUrl?: string;
+	storageState?: any;
 	onTabReady?: (tabId: number) => Promise<void> | void;
 }
 
@@ -36,8 +37,49 @@ export interface ReplayResult {
 	groupId?: number;
 }
 
+function preprocessScriptToStatements(script: string): string[] {
+	const noBlockComments = script.replace(/\/\*[\s\S]*?\*\//g, '');
+	const rawLines = noBlockComments.split('\n');
+	const statements: string[] = [];
+	let currentStmt = '';
+
+	for (const raw of rawLines) {
+		const trimmed = raw.trim();
+		if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
+
+		if (currentStmt) {
+			if (
+				trimmed.startsWith('.') ||
+				trimmed.startsWith('(') ||
+				trimmed.startsWith('{') ||
+				trimmed.startsWith('>') ||
+				!currentStmt.endsWith(';')
+			) {
+				currentStmt += ' ' + trimmed;
+			} else {
+				statements.push(currentStmt);
+				currentStmt = trimmed;
+			}
+		} else {
+			currentStmt = trimmed;
+		}
+
+		if (currentStmt.endsWith(';')) {
+			statements.push(currentStmt);
+			currentStmt = '';
+		}
+	}
+
+	if (currentStmt) {
+		statements.push(currentStmt);
+	}
+
+	return statements;
+}
+
 /**
- * Mengurai baris script Playwright menjadi sekuens aksi replay browser yang komprehensif.
+ * Mengurai baris script Playwright menjadi sekuens aksi replay browser yang komprehensif,
+ * mendukung pemanggilan langsung maupun assignment variabel, multiline chained calls, dan regex locators.
  */
 export function parseScriptToReplaySteps(script: string, fallbackUrl?: string): ReplayActionStep[] {
 	if (!script) {
@@ -45,14 +87,36 @@ export function parseScriptToReplaySteps(script: string, fallbackUrl?: string): 
 	}
 
 	const steps: ReplayActionStep[] = [];
-	const lines = script.split('\n');
+	const statements = preprocessScriptToStatements(script);
+	const locatorVariables = new Map<string, string>();
 
-	for (const rawLine of lines) {
-		const line = rawLine.trim().replace(/^await\s+/, '');
+	for (const rawStmt of statements) {
+		const line = rawStmt.trim().replace(/^await\s+/, '');
 		if (!line || line.startsWith('//') || line.startsWith('/*') || line.startsWith('*')) continue;
 
+		// 0. Pelacakan assignment variabel: const btn = page.getByRole(...) / page.locator(...)
+		const varAssignMatch = line.match(/^(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:await\s+)?(page\.[a-zA-Z0-9_$.()]+\([^;]*\)(?:\.[a-zA-Z0-9_$.()]+\([^;]*\))*)/);
+		if (varAssignMatch) {
+			const varName = varAssignMatch[1];
+			const expr = varAssignMatch[2];
+			locatorVariables.set(varName, expr);
+			continue;
+		}
+
+		// Resolusi baris yang menggunakan nama variabel
+		let resolvedLine = line;
+		for (const [varName, expr] of locatorVariables.entries()) {
+			const varUsagePattern = new RegExp(`\\b${varName}\\.([a-zA-Z0-9_]+)\\(`, 'g');
+			if (varUsagePattern.test(resolvedLine)) {
+				resolvedLine = resolvedLine.replace(
+					new RegExp(`\\b${varName}\\.`, 'g'),
+					`${expr}.`
+				);
+			}
+		}
+
 		// 1. page.goto('...')
-		const gotoMatch = line.match(/page\.goto\(\s*['"`]([^'"`]+)['"`]\s*.*\)/);
+		const gotoMatch = resolvedLine.match(/page\.goto\(\s*['"`]([^'"`]+)['"`]\s*.*\)/);
 		if (gotoMatch) {
 			steps.push({
 				action: 'goto',
@@ -64,49 +128,113 @@ export function parseScriptToReplaySteps(script: string, fallbackUrl?: string): 
 
 		// 2. page.fill / locator.fill / getBy*.fill
 		const fillMatch =
-			line.match(/page\.fill\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			line.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\(\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			line.match(/page\.getByPlaceholder\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\(\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			line.match(/page\.getByLabel\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\(\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			line.match(/page\.getByTestId\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\(\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			line.match(/page\.getByRole\(\s*['"`](?:textbox|searchbox|combobox)['"`]\s*(?:,\s*\{[^}]*name:\s*['"`]([^'"`]+)['"`][^}]*\})?\s*\)\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			line.match(/page\.type\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/);
+			resolvedLine.match(/page\.fill\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/) ||
+			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
+			resolvedLine.match(/page\.getByPlaceholder\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
+			resolvedLine.match(/page\.getByLabel\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
+			resolvedLine.match(/page\.getByTestId\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
+			resolvedLine.match(/page\.getByRole\(\s*['"`](?:textbox|searchbox|combobox)['"`]\s*(?:,\s*\{[^}]*name:\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)[^}]*\})?\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
+			resolvedLine.match(/page\.type\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/);
 
 		if (fillMatch) {
-			const selector = fillMatch[1];
-			const value = fillMatch[2] ?? '';
+			const selector = fillMatch[1] || fillMatch[2] || '';
+			const val = fillMatch[3] !== undefined ? fillMatch[3] : (fillMatch[2] !== undefined && !fillMatch[3] && fillMatch[1] ? fillMatch[2] : (fillMatch[1] ? '' : ''));
+			const cleanValue = fillMatch[fillMatch.length - 1] ?? val ?? '';
 			steps.push({
 				action: 'fill',
 				selector,
-				value,
-				description: `Mengisi field "${selector}" dengan "${value}"`
+				value: cleanValue,
+				description: `Mengisi field "${selector}" dengan "${cleanValue}"`
 			});
 			continue;
 		}
 
-		// 3. page.click / locator.click / getByRole.click / getByText.click
-		const clickMatch =
-			line.match(/page\.click\(\s*['"`]([^'"`]+)['"`]\s*.*\)/) ||
-			line.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\(\))*\.click\(/) ||
-			line.match(/page\.getByRole\(\s*['"`]([^'"`]+)['"`]\s*(?:,\s*\{[^}]*name:\s*['"`]([^'"`]+)['"`][^}]*\})?\s*\)\.click\(/) ||
-			line.match(/page\.getByText\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\(\))*\.click\(/) ||
-			line.match(/page\.getByTestId\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\(\))*\.click\(/) ||
-			line.match(/page\.getByPlaceholder\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\(\))*\.click\(/);
-
-		if (clickMatch) {
-			const selector = clickMatch[2] ? `text=${clickMatch[2]}` : clickMatch[1];
+		// 3. page.click / locator.click / getByRole.click / getByTestId / getByLabel / getByText / getByTitle / getByPlaceholder
+		const roleClickMatch = resolvedLine.match(/page\.getByRole\(\s*['"`]([^'"`]+)['"`]\s*(?:,\s*\{[^}]*name:\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)[^}]*\})?\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
+		if (roleClickMatch) {
+			const role = roleClickMatch[1];
+			const name = roleClickMatch[2] || roleClickMatch[3] || '';
+			const selector = name ? `role:${role}:${name}` : `role:${role}`;
 			steps.push({
 				action: 'click',
 				selector,
-				description: `Mengklik elemen "${selector}"`
+				description: `Mengklik elemen role ${role}${name ? ` "${name}"` : ''}`
+			});
+			continue;
+		}
+
+		const testIdClickMatch = resolvedLine.match(/page\.getByTestId\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
+		if (testIdClickMatch) {
+			const testId = testIdClickMatch[1];
+			steps.push({
+				action: 'click',
+				selector: `[data-testid="${testId}"]`,
+				description: `Mengklik elemen test-id "${testId}"`
+			});
+			continue;
+		}
+
+		const labelClickMatch = resolvedLine.match(/page\.getByLabel\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
+		if (labelClickMatch) {
+			const label = labelClickMatch[1] || labelClickMatch[2];
+			steps.push({
+				action: 'click',
+				selector: `label:${label}`,
+				description: `Mengklik elemen label "${label}"`
+			});
+			continue;
+		}
+
+		const textClickMatch = resolvedLine.match(/page\.getByText\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
+		if (textClickMatch) {
+			const txt = textClickMatch[1] || textClickMatch[2];
+			steps.push({
+				action: 'click',
+				selector: `text=${txt}`,
+				description: `Mengklik elemen berteks "${txt}"`
+			});
+			continue;
+		}
+
+		const placeholderClickMatch = resolvedLine.match(/page\.getByPlaceholder\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
+		if (placeholderClickMatch) {
+			const ph = placeholderClickMatch[1] || placeholderClickMatch[2];
+			steps.push({
+				action: 'click',
+				selector: `placeholder:${ph}`,
+				description: `Mengklik elemen placeholder "${ph}"`
+			});
+			continue;
+		}
+
+		const titleClickMatch = resolvedLine.match(/page\.getByTitle\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
+		if (titleClickMatch) {
+			const tit = titleClickMatch[1] || titleClickMatch[2];
+			steps.push({
+				action: 'click',
+				selector: `[title="${tit}"]`,
+				description: `Mengklik elemen title "${tit}"`
+			});
+			continue;
+		}
+
+		const locatorClickMatch =
+			resolvedLine.match(/page\.click\(\s*['"`]([^'"`]+)['"`]\s*.*\)/) ||
+			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
+		if (locatorClickMatch) {
+			const sel = locatorClickMatch[1];
+			steps.push({
+				action: 'click',
+				selector: sel,
+				description: `Mengklik elemen "${sel}"`
 			});
 			continue;
 		}
 
 		// 4. page.selectOption('selector', 'value')
 		const selectMatch =
-			line.match(/page\.selectOption\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			line.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)\.selectOption\(\s*['"`]([^'"`]*)['"`]\s*\)/);
+			resolvedLine.match(/page\.selectOption\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/) ||
+			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.selectOption\(\s*['"`]([^'"`]*)['"`]\s*\)/);
 		if (selectMatch) {
 			steps.push({
 				action: 'select',
@@ -119,8 +247,8 @@ export function parseScriptToReplaySteps(script: string, fallbackUrl?: string): 
 
 		// 5. page.check('selector') / uncheck
 		const checkMatch =
-			line.match(/page\.(check|uncheck)\(\s*['"`]([^'"`]+)['"`]\s*\)/) ||
-			line.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)\.(check|uncheck)\(/);
+			resolvedLine.match(/page\.(check|uncheck)\(\s*['"`]([^'"`]+)['"`]\s*\)/) ||
+			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.(check|uncheck)\(/);
 		if (checkMatch) {
 			const actionType = (checkMatch[1] || checkMatch[2]) === 'check' ? 'check' : 'uncheck';
 			const selector = checkMatch[1] && checkMatch[2] ? checkMatch[2] : checkMatch[1];
@@ -134,7 +262,7 @@ export function parseScriptToReplaySteps(script: string, fallbackUrl?: string): 
 		}
 
 		// 6. page.waitForTimeout(ms) / page.waitForSelector('...')
-		const waitTimeoutMatch = line.match(/page\.waitForTimeout\(\s*(\d+)\s*\)/);
+		const waitTimeoutMatch = resolvedLine.match(/page\.waitForTimeout\(\s*(\d+)\s*\)/);
 		if (waitTimeoutMatch) {
 			steps.push({
 				action: 'wait',
@@ -143,7 +271,7 @@ export function parseScriptToReplaySteps(script: string, fallbackUrl?: string): 
 			});
 			continue;
 		}
-		const waitSelectorMatch = line.match(/page\.waitForSelector\(\s*['"`]([^'"`]+)['"`]\s*.*\)/);
+		const waitSelectorMatch = resolvedLine.match(/page\.waitForSelector\(\s*['"`]([^'"`]+)['"`]\s*.*\)/);
 		if (waitSelectorMatch) {
 			steps.push({
 				action: 'wait',
@@ -156,8 +284,8 @@ export function parseScriptToReplaySteps(script: string, fallbackUrl?: string): 
 
 		// 7. page.press('selector', 'Enter')
 		const pressMatch =
-			line.match(/page\.press\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]+)['"`]\s*\)/) ||
-			line.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)\.press\(\s*['"`]([^'"`]+)['"`]\s*\)/);
+			resolvedLine.match(/page\.press\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]+)['"`]\s*\)/) ||
+			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.press\(\s*['"`]([^'"`]+)['"`]\s*\)/);
 		if (pressMatch) {
 			steps.push({
 				action: 'press',
@@ -205,6 +333,60 @@ const waitForTabLoaded = (tabId: number, timeoutMs = 15000): Promise<void> =>
 			resolve();
 		}, timeoutMs);
 	});
+
+/**
+ * Pulihkan Cookie & LocalStorage pada tab replay agar autentikasi sesi langsung aktif.
+ */
+async function restoreStorageState(tabId: number, storageState?: any): Promise<void> {
+	if (!storageState || typeof chrome === 'undefined') return;
+
+	// 1. Pulihkan Cookies
+	if (Array.isArray(storageState.cookies) && chrome.cookies?.set) {
+		for (const cookie of storageState.cookies) {
+			try {
+				const cookieUrl = `http${cookie.secure ? 's' : ''}://${(cookie.domain || '').replace(/^\./, '')}${cookie.path || '/'}`;
+				await chrome.cookies.set({
+					url: cookieUrl,
+					name: cookie.name,
+					value: cookie.value,
+					domain: cookie.domain,
+					path: cookie.path,
+					secure: cookie.secure,
+					httpOnly: cookie.httpOnly,
+					sameSite: cookie.sameSite as any,
+					expirationDate: cookie.expires && cookie.expires > 0 ? cookie.expires : undefined
+				}).catch(() => {});
+			} catch {
+				// Abaikan kegagalan cookie individual
+			}
+		}
+	}
+
+	// 2. Pulihkan LocalStorage
+	if (Array.isArray(storageState.origins) && chrome.scripting?.executeScript) {
+		for (const originEntry of storageState.origins) {
+			if (Array.isArray(originEntry.localStorage) && originEntry.localStorage.length > 0) {
+				try {
+					await chrome.scripting.executeScript({
+						target: { tabId },
+						func: (items: Array<{ name: string; value: string }>) => {
+							for (const item of items) {
+								try {
+									localStorage.setItem(item.name, item.value);
+								} catch {
+									// Ignore
+								}
+							}
+						},
+						args: [originEntry.localStorage]
+					}).catch(() => {});
+				} catch {
+					// Ignore
+				}
+			}
+		}
+	}
+}
 
 /**
  * Suntikkan overlay HUD dan spotlight visual interaksi ke dalam halaman tab yang sedang di-replay.
@@ -306,7 +488,7 @@ async function updateReplayOverlay(
 }
 
 /**
- * Eksekusi satu langkah interaksi langsung di dalam DOM browser dengan retry dan spotlight visual.
+ * Eksekusi satu langkah interaksi langsung di dalam DOM browser dengan React Synthetic Events & spotlight visual.
  */
 async function executeStepInTab(
 	tabId: number,
@@ -324,50 +506,90 @@ async function executeStepInTab(
 				const findElement = (sel: string): HTMLElement | null => {
 					if (!sel) return null;
 
-					// 1. Coba exact selector
+					// 1. Format role: "role:button:Kirim" atau "role:button" atau "role:listitem"
+					if (sel.startsWith('role:')) {
+						const parts = sel.split(':');
+						const roleName = parts[1] || '';
+						const targetName = (parts[2] || '').toLowerCase();
+
+						const roleElements = Array.from(document.querySelectorAll(`[role="${roleName}"], ${roleName === 'button' ? 'button, input[type="button"], input[type="submit"]' : roleName === 'link' ? 'a' : roleName === 'listitem' ? 'li, [role="listitem"]' : roleName === 'textbox' ? 'input, textarea' : '*'}`));
+
+						for (const el of roleElements) {
+							if (!targetName) return el as HTMLElement;
+							const text = (el.textContent || '').trim().toLowerCase();
+							const aria = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+							const inpVal = ((el as HTMLInputElement).value || '').trim().toLowerCase();
+							const matches = targetName.includes('|')
+								? targetName.split('|').some((p) => text.includes(p) || aria.includes(p) || inpVal.includes(p))
+								: (text.includes(targetName) || aria.includes(targetName) || inpVal.includes(targetName));
+							if (matches) return el as HTMLElement;
+						}
+						if (!targetName && roleElements.length > 0) return roleElements[0] as HTMLElement;
+					}
+
+					// 2. Format placeholder: "placeholder:Ketik pesan"
+					if (sel.startsWith('placeholder:')) {
+						const phVal = sel.replace(/^placeholder:/, '').toLowerCase();
+						const inputs = Array.from(document.querySelectorAll('input, textarea'));
+						for (const inp of inputs) {
+							const ph = (inp.getAttribute('placeholder') || '').toLowerCase();
+							const matches = phVal.includes('|')
+								? phVal.split('|').some((p) => ph.includes(p))
+								: ph.includes(phVal);
+							if (matches) return inp as HTMLElement;
+						}
+					}
+
+					// 3. Format label: "label:Nama"
+					if (sel.startsWith('label:')) {
+						const lblVal = sel.replace(/^label:/, '').toLowerCase();
+						const labels = Array.from(document.querySelectorAll('label'));
+						for (const lbl of labels) {
+							if ((lbl.textContent || '').toLowerCase().includes(lblVal)) {
+								const htmlFor = lbl.getAttribute('for');
+								if (htmlFor) {
+									const linked = document.getElementById(htmlFor);
+									if (linked) return linked as HTMLElement;
+								}
+								const childInput = lbl.querySelector('input, select, textarea');
+								if (childInput) return childInput as HTMLElement;
+							}
+						}
+					}
+
+					// 4. Format text=...
+					if (sel.startsWith('text=')) {
+						const targetText = sel.replace(/^text=/, '').trim().toLowerCase();
+						const elements = Array.from(document.querySelectorAll('button, a, span, label, div, p, [role="button"], [role="tab"], [role="menuitem"], input[type="submit"], input[type="button"]'));
+						for (const el of elements) {
+							const t = (el.textContent || '').trim().toLowerCase();
+							const aria = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+							const matches = targetText.includes('|')
+								? targetText.split('|').some((p) => t.includes(p) || aria.includes(p))
+								: (t === targetText || t.includes(targetText) || aria.includes(targetText));
+							if (matches) return el as HTMLElement;
+						}
+					}
+
+					// 5. Coba querySelector exact (CSS path / data-testid / id / class)
 					try {
 						const direct = document.querySelector(sel) as HTMLElement | null;
 						if (direct) return direct;
 					} catch {
-						// Selector mungkin format teks atau mengandung Playwright pseudo-selector
+						// Ignore
 					}
 
-					// 2. Format Playwright :has-text("...") atau :text("...")
-					const hasTextMatch = sel.match(/^([a-zA-Z0-9_\-\.#*]*):(?:has-)?text\(\s*['"`]([^'"`]+)['"`]\s*\)$/i);
-					if (hasTextMatch) {
-						const tagSel = hasTextMatch[1] || '*';
-						const textVal = hasTextMatch[2].trim().toLowerCase();
-						const matchedEls = Array.from(document.querySelectorAll(tagSel));
-						for (const el of matchedEls) {
-							if ((el.textContent || '').trim().toLowerCase().includes(textVal)) {
-								return el as HTMLElement;
-							}
-						}
-					}
-
-					// 3. Format text=...
-					if (sel.startsWith('text=')) {
-						const targetText = sel.replace(/^text=/, '').trim().toLowerCase();
-						const elements = Array.from(document.querySelectorAll('button, a, span, label, div, p, [role="button"], input[type="submit"], input[type="button"]'));
-						for (const el of elements) {
-							const t = (el.textContent || '').trim().toLowerCase();
-							if (t === targetText || t.includes(targetText)) {
-								return el as HTMLElement;
-							}
-						}
-					}
-
-					// 4. Coba cari by placeholder, name, id, data-testid, aria-label
+					// 6. Coba cari by placeholder, name, id, data-testid, aria-label
 					try {
 						const byAttr = document.querySelector(
-							`[name="${sel}"], [id="${sel}"], [placeholder="${sel}"], [data-testid="${sel}"], [aria-label="${sel}"]`
+							`[name="${sel}"], [id="${sel}"], [placeholder="${sel}"], [data-testid="${sel}"], [data-test-id="${sel}"], [data-cy="${sel}"], [aria-label="${sel}"]`
 						) as HTMLElement | null;
 						if (byAttr) return byAttr;
 					} catch {
 						// Ignore
 					}
 
-					// 5. Cari input lewat teks label terkait
+					// 7. Cari input lewat teks label terkait
 					const labels = Array.from(document.querySelectorAll('label'));
 					for (const lbl of labels) {
 						if ((lbl.textContent || '').toLowerCase().includes(sel.toLowerCase())) {
@@ -381,15 +603,17 @@ async function executeStepInTab(
 						}
 					}
 
-					// 6. Text partial matching for buttons & links
-					const clickables = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], a, [role="button"], [role="tab"], [role="menuitem"]'));
+					// 8. Text partial matching pada elemen yang dapat diklik
+					const clickables = Array.from(document.querySelectorAll('button, input[type="submit"], input[type="button"], a, [role="button"], [role="tab"], [role="menuitem"], li'));
 					for (const btn of clickables) {
-						if ((btn.textContent || '').toLowerCase().includes(sel.toLowerCase())) {
+						const text = (btn.textContent || '').toLowerCase();
+						const aria = (btn.getAttribute('aria-label') || '').toLowerCase();
+						if (text.includes(sel.toLowerCase()) || aria.includes(sel.toLowerCase())) {
 							return btn as HTMLElement;
 						}
 					}
 
-					// 7. Inputs by placeholder partial match
+					// 9. Inputs by placeholder partial match
 					const inputs = Array.from(document.querySelectorAll('input, textarea, select'));
 					for (const inp of inputs) {
 						const ph = inp.getAttribute('placeholder') || '';
@@ -401,6 +625,20 @@ async function executeStepInTab(
 							(nm && nm.toLowerCase().includes(sel.toLowerCase()))
 						) {
 							return inp as HTMLElement;
+						}
+					}
+
+					// 10. Fallback: jika selector mengarah ke path/svg di dalam button/form, cari button terdekat
+					if (sel.includes('button') || sel.includes('svg') || sel.includes('path') || sel.includes('section')) {
+						const buttons = Array.from(document.querySelectorAll('button, [role="button"], input[type="submit"]'));
+						if (buttons.length > 0) {
+							const sendBtn = buttons.find((b) => {
+								const t = (b.textContent || '').toLowerCase();
+								const a = (b.getAttribute('aria-label') || '').toLowerCase();
+								const tit = (b.getAttribute('title') || '').toLowerCase();
+								return t.includes('kirim') || t.includes('send') || a.includes('kirim') || a.includes('send') || tit.includes('kirim') || tit.includes('send') || Boolean(b.querySelector('svg'));
+							});
+							if (sendBtn) return sendBtn as HTMLElement;
 						}
 					}
 
@@ -434,40 +672,64 @@ async function executeStepInTab(
 					if (actionType === 'fill') {
 						element.focus();
 						const inputEl = element as HTMLInputElement | HTMLTextAreaElement;
-						if ('value' in inputEl) {
+						const prototype = Object.getPrototypeOf(inputEl);
+						const valueSetter = Object.getOwnPropertyDescriptor(prototype, 'value')?.set
+							|| Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+							|| Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+
+						if (valueSetter && ('value' in inputEl)) {
+							valueSetter.call(inputEl, val);
+						} else if ('value' in inputEl) {
 							inputEl.value = val;
 						} else {
 							element.textContent = val;
 						}
+
 						element.dispatchEvent(new Event('focus', { bubbles: true }));
-						element.dispatchEvent(new Event('input', { bubbles: true }));
-						element.dispatchEvent(new Event('change', { bubbles: true }));
+						element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
+						element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
 						element.dispatchEvent(new Event('blur', { bubbles: true }));
 					} else if (actionType === 'click') {
-						element.focus();
-						element.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true }));
-						element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-						element.dispatchEvent(new MouseEvent('pointerup', { bubbles: true, cancelable: true }));
-						element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true }));
-						element.click();
+						const clickable = element.closest('button, a, [role="button"], input[type="submit"], input[type="button"], li') || element;
+						(clickable as HTMLElement).focus();
+						const rect = (clickable as HTMLElement).getBoundingClientRect();
+						const clientX = rect.left + rect.width / 2;
+						const clientY = rect.top + rect.height / 2;
+
+						const eventInit: MouseEventInit = { bubbles: true, cancelable: true, view: window, clientX, clientY };
+						clickable.dispatchEvent(new PointerEvent('pointerdown', eventInit));
+						clickable.dispatchEvent(new MouseEvent('mousedown', eventInit));
+						clickable.dispatchEvent(new PointerEvent('pointerup', eventInit));
+						clickable.dispatchEvent(new MouseEvent('mouseup', eventInit));
+						clickable.dispatchEvent(new MouseEvent('click', eventInit));
+						if (typeof (clickable as any).click === 'function') {
+							(clickable as any).click();
+						}
 					} else if (actionType === 'select') {
 						element.focus();
 						const selectEl = element as HTMLSelectElement;
 						if (selectEl.tagName.toLowerCase() === 'select') {
 							selectEl.value = val;
-							selectEl.dispatchEvent(new Event('change', { bubbles: true }));
+							selectEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
 						}
 					} else if (actionType === 'check') {
 						const checkEl = element as HTMLInputElement;
 						if (checkEl.type === 'checkbox' || checkEl.type === 'radio') {
 							checkEl.checked = val === 'true';
-							checkEl.dispatchEvent(new Event('change', { bubbles: true }));
+							checkEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
 						}
 					} else if (actionType === 'press') {
 						element.focus();
-						element.dispatchEvent(new KeyboardEvent('keydown', { key: keyName, bubbles: true }));
-						element.dispatchEvent(new KeyboardEvent('keypress', { key: keyName, bubbles: true }));
-						element.dispatchEvent(new KeyboardEvent('keyup', { key: keyName, bubbles: true }));
+						const key = keyName || 'Enter';
+						const code = key === 'Enter' ? 'Enter' : key === 'Tab' ? 'Tab' : key === 'Escape' ? 'Escape' : key;
+						const keyCode = key === 'Enter' ? 13 : key === 'Tab' ? 9 : key === 'Escape' ? 27 : 0;
+						const keyInit: KeyboardEventInit = { key, code, keyCode, which: keyCode, bubbles: true, cancelable: true, view: window };
+						element.dispatchEvent(new KeyboardEvent('keydown', keyInit));
+						element.dispatchEvent(new KeyboardEvent('keypress', keyInit));
+						element.dispatchEvent(new KeyboardEvent('keyup', keyInit));
+						if (key === 'Enter' && (element as HTMLInputElement).form) {
+							(element as HTMLInputElement).form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+						}
 					}
 				}
 
@@ -537,8 +799,11 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 			};
 		}
 
-		// Fokuskan window browser
+		// Pastikan tab aktif dan window terfokus ke depan
 		try {
+			if (typeof chrome !== 'undefined' && chrome.tabs?.update) {
+				await chrome.tabs.update(targetTabId, { active: true });
+			}
 			if (typeof chrome !== 'undefined' && chrome.windows?.getCurrent) {
 				const currentWin = await chrome.windows.getCurrent();
 				if (currentWin.id) {
@@ -547,6 +812,11 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 			}
 		} catch {
 			// Ignore
+		}
+
+		// Pulihkan status login / storageState jika ada
+		if (options.storageState && targetTabId) {
+			await restoreStorageState(targetTabId, options.storageState);
 		}
 
 		await waitForTabLoaded(targetTabId);

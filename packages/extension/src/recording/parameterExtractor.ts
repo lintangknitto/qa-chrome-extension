@@ -67,6 +67,7 @@ export function extractParametersFromPlaywrightScript(script: string): ReRunPara
 	const patterns = [
 		/page\.fill\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/g,
 		/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/g,
+		/page\.getByTestId\(\s*['"`]([^'"`]+)['"`]\s*\)\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/g,
 		/page\.getByLabel\(\s*['"`]([^'"`]+)['"`]\s*\)\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/g,
 		/page\.getByPlaceholder\(\s*['"`]([^'"`]+)['"`]\s*\)\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/g,
 		/page\.type\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/g
