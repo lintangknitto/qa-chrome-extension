@@ -37,9 +37,12 @@ import { ReRunModal } from './ReRunModal';
 import type { RecordingApiClient, RecordingSession, TestCaseItem } from '../../../recording/apiClient';
 import type { PlaywrightStorageState, PlaywrightCookie, StorageEntry } from '../../../recording/storageStateCapture';
 import type { GenerationItem } from './HistoryView';
+import type { StoredUser } from '../../../recording/tokenStore';
+import { canRunTest } from '../fab-permissions';
 import { extensionFetch } from '../../../recording/extensionFetch';
 
 export interface TestCaseResultModalProps {
+	user?: StoredUser | null;
 	isOpen?: boolean;
 	open?: boolean;
 	sessionId: number | null;
@@ -74,6 +77,7 @@ interface CheckpointItem {
 }
 
 export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
+	user,
 	isOpen,
 	open,
 	sessionId,
@@ -606,23 +610,25 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 							>
 								Bagikan Link
 							</Button>
-							<Button
-								type="button"
-								variant="primary"
-								size="sm"
-								disabled={!hasPlaywrightScript || loading || isGenerating}
-								icon={<Repeat size={13} />}
-								onClick={() => setReRunOpen(true)}
-								title={
-									isGenerating
-										? 'Script Playwright sedang diproses di background...'
-										: hasPlaywrightScript
-											? 'Jalankan ulang skenario ini secara visual di browser'
-											: 'Script otomasi belum terbuat. Tunggu proses background selesai untuk menjalankan re-run.'
-								}
-							>
-								Re-run
-							</Button>
+							{canRunTest(user) && (
+								<Button
+									type="button"
+									variant="primary"
+									size="sm"
+									disabled={!hasPlaywrightScript || loading || isGenerating}
+									icon={<Repeat size={13} />}
+									onClick={() => setReRunOpen(true)}
+									title={
+										isGenerating
+											? 'Script Playwright sedang diproses di background...'
+											: hasPlaywrightScript
+												? 'Jalankan ulang skenario ini secara visual di browser'
+												: 'Script otomasi belum terbuat. Tunggu proses background selesai untuk menjalankan re-run.'
+									}
+								>
+									Re-run
+								</Button>
+							)}
 							<Button
 								type="button"
 								variant="ghost"

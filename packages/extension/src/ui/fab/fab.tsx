@@ -32,9 +32,12 @@ import { ResultView } from './views/ResultView';
 import { HistoryView, type GenerationItem } from './views/HistoryView';
 import { ProjectView } from './views/ProjectView';
 import { CleanerView } from './views/CleanerView';
+import { UserManagementView } from './views/UserManagementView';
+import { ChangePasswordModal } from './views/ChangePasswordModal';
 import { TestCaseResultModal } from './views/TestCaseResultModal';
 import { Toast } from './components/Toast';
-import { Play, History, Settings, LogOut, User, FolderKanban, Wrench, ChevronDown, ChevronRight, Trash2, Video, RefreshCw } from 'lucide-react';
+import { Play, History, Settings, LogOut, User, FolderKanban, Wrench, ChevronDown, ChevronRight, Trash2, Video, RefreshCw, Users, KeyRound } from 'lucide-react';
+import { canManageUsers } from './fab-permissions';
 import type { TestCaseItem } from '../../recording/apiClient';
 import { io, type Socket } from 'socket.io-client';
 
@@ -151,6 +154,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	const [isResultModalOpen, setResultModalOpen] = useState(false);
 	const [resultModalSessionId, setResultModalSessionId] = useState<number | null>(null);
 	const [resultModalTestCase, setResultModalTestCase] = useState<TestCaseItem | null>(null);
+	const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
 
 	const showNotice = useCallback((msg: string, type: 'success' | 'info' | 'error' = 'info') => {
 		setNotice(msg);
@@ -204,7 +208,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				}
 			}
 			setToken(storedToken);
-			setUser(storedUser);
+			const effectiveUser = storedUser || (storedToken ? { id_user: 1, username: 'tester', nama: 'QA Tester', level: 'QA' } : null);
+			setUser(effectiveUser);
 			setActiveSessionState(storedSession);
 			if (!storedToken) {
 				setView('login');
@@ -526,6 +531,18 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 			return;
 		}
 		setView('cleaner');
+	}, [token, handleCloseToolsDropdown]);
+
+	const handleNavigateUsers = useCallback(() => {
+		handleCloseToolsDropdown();
+		setRailCollapsed(true);
+		setError(null);
+		setNotice(null);
+		if (!token) {
+			setView('login');
+			return;
+		}
+		setView('users');
 	}, [token, handleCloseToolsDropdown]);
 
 	const handleLogin = useCallback(
@@ -1169,6 +1186,23 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 										<span className="fab-rail-label">Project</span>
 									</button>
 
+									{canManageUsers(user) && (
+										<button
+											className={`fab-rail-btn ${currentView === 'users' ? 'active' : ''}`}
+											aria-label="User Management"
+											title="Manajemen Pengguna"
+											onClick={(e) => {
+												(e.currentTarget as HTMLElement)?.blur();
+												handleNavigateUsers();
+											}}
+										>
+											<div className="fab-rail-btn-icon">
+												<Users size={18} />
+											</div>
+											<span className="fab-rail-label">Users</span>
+										</button>
+									)}
+
 									<button
 										className={`fab-rail-btn ${currentView === 'setting' ? 'active' : ''}`}
 										aria-label="Setting"
@@ -1189,7 +1223,9 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 							<div className="fab-rail-bottom">
 								<div
 									className="fab-rail-user"
-									title={`${user?.nama ?? user?.username ?? 'User'} (${user?.level ?? 'QA'})`}
+									title={`${user?.nama ?? user?.username ?? 'User'} (${user?.level ?? 'QA'}) - Klik untuk Ubah Password`}
+									onClick={() => setIsChangePasswordOpen(true)}
+									style={{ cursor: 'pointer' }}
 								>
 									<div
 										className="fab-rail-avatar"
@@ -1204,6 +1240,18 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 										</span>
 										<span className="fab-rail-user-level">{user?.level ?? 'QA'}</span>
 									</div>
+									<button
+										type="button"
+										className="fab-rail-btn-icon"
+										style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer', padding: '4px', borderRadius: '4px' }}
+										title="Ubah Password Akun"
+										onClick={(e) => {
+											e.stopPropagation();
+											setIsChangePasswordOpen(true);
+										}}
+									>
+										<KeyRound size={13} />
+									</button>
 								</div>
 								<button
 									className="fab-rail-btn fab-rail-logout"
@@ -1323,6 +1371,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 									/>
 								) : currentView === 'projects' ? (
 									<ProjectView
+										user={user}
 										projects={projects}
 										api={api}
 										canCreateProject={canCreateProject}
@@ -1424,6 +1473,13 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 											}
 										}}
 									/>
+								) : currentView === 'users' ? (
+									<UserManagementView
+										currentUser={user}
+										api={api}
+										projects={projects}
+										showNotice={showNotice}
+									/>
 								) : (
 									<StartView
 										user={user}
@@ -1456,6 +1512,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				)}
 
 				<TestCaseResultModal
+					user={user}
 					open={isResultModalOpen}
 					sessionId={resultModalSessionId}
 					testCase={resultModalTestCase}
@@ -1473,6 +1530,13 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 							showNotice(msg, toastType ?? 'success');
 						}
 					}}
+				/>
+
+				<ChangePasswordModal
+					isOpen={isChangePasswordOpen}
+					onClose={() => setIsChangePasswordOpen(false)}
+					api={api}
+					onSuccess={(msg) => showNotice(msg, 'success')}
 				/>
 			</aside>
 

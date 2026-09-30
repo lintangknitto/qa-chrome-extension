@@ -5,6 +5,7 @@ export interface RecordingProject {
 	is_active: boolean;
 	base_url?: string | null;
 	description?: string | null;
+	created_by_user_id?: number | null;
 }
 
 export interface RecordingSession {
@@ -70,6 +71,33 @@ export interface LoginResult {
 	user: { id_user: number; username: string; nama: string; level?: string };
 }
 
+export interface UserItem {
+	id_user: number;
+	nama: string;
+	username: string;
+	level: string;
+	is_active: boolean;
+	created_at?: string | null;
+	updated_at?: string | null;
+	assigned_project_ids?: number[];
+}
+
+export interface ListUsersParams {
+	page?: number;
+	perPage?: number;
+	search?: string;
+	level?: string;
+	is_active?: 'all' | 'true' | 'false';
+}
+
+export interface ListUsersResult {
+	list: UserItem[];
+	total: number;
+	page: number;
+	perPage: number;
+	totalPages: number;
+}
+
 export class ApiError extends Error {
 	constructor(
 		message: string,
@@ -121,6 +149,28 @@ export class RecordingApiClient {
 		code?: string;
 	}): Promise<RecordingProject> {
 		return this._request<RecordingProject>('POST', '/projects', input);
+	}
+
+	updateProject(
+		idProject: number,
+		input: {
+			name?: string;
+			base_url?: string;
+			description?: string;
+			is_active?: boolean;
+		}
+	): Promise<RecordingProject> {
+		return this._request<RecordingProject>('PUT', `/projects/${idProject}`, input);
+	}
+
+	deleteProject(idProject: number): Promise<{
+		id_project?: number;
+		success: boolean;
+		deleted?: boolean;
+		deactivated?: boolean;
+		message?: string;
+	}> {
+		return this._request('DELETE', `/projects/${idProject}`);
 	}
 
 	listProjects(params: { page?: number; perPage?: number; search?: string } = {}): Promise<{
@@ -365,6 +415,79 @@ export class RecordingApiClient {
 			body
 		});
 		if (!response.ok) throw new ApiError(`Upload artifact gagal (HTTP ${response.status}).`, response.status);
+	}
+
+	async listUsers(params: ListUsersParams = {}): Promise<ListUsersResult> {
+		const searchParams = new URLSearchParams();
+		if (params.page !== undefined) searchParams.set('page', String(params.page));
+		if (params.perPage !== undefined) searchParams.set('perPage', String(params.perPage));
+		if (params.search) searchParams.set('search', params.search);
+		if (params.level && params.level !== 'all') searchParams.set('level', params.level);
+		if (params.is_active && params.is_active !== 'all') searchParams.set('is_active', params.is_active);
+
+		const query = searchParams.toString();
+		return this._request<ListUsersResult>('GET', `/api/v1/users${query ? `?${query}` : ''}`);
+	}
+
+	async getUserDetail(idUser: number): Promise<UserItem> {
+		return this._request<UserItem>('GET', `/api/v1/users/${idUser}`);
+	}
+
+	async createUser(payload: {
+		nama: string;
+		username: string;
+		password: string;
+		level: string;
+		is_active?: boolean;
+		project_ids?: number[];
+	}): Promise<UserItem> {
+		return this._request<UserItem>('POST', '/api/v1/users', payload);
+	}
+
+	async updateUser(
+		idUser: number,
+		payload: {
+			nama?: string;
+			level?: string;
+			is_active?: boolean;
+			project_ids?: number[];
+		}
+	): Promise<UserItem> {
+		return this._request<UserItem>('PUT', `/api/v1/users/${idUser}`, payload);
+	}
+
+	async resetUserPassword(
+		idUser: number,
+		password: string
+	): Promise<{ success: boolean; message: string }> {
+		return this._request<{ success: boolean; message: string }>(
+			'PATCH',
+			`/api/v1/users/${idUser}/reset-password`,
+			{ password }
+		);
+	}
+
+	async deleteUser(
+		idUser: number
+	): Promise<{ success: boolean; mode: 'deleted' | 'deactivated'; message: string }> {
+		return this._request<{ success: boolean; mode: 'deleted' | 'deactivated'; message: string }>(
+			'DELETE',
+			`/api/v1/users/${idUser}`
+		);
+	}
+
+	async changePassword(
+		oldPassword: string,
+		newPassword: string
+	): Promise<{ success: boolean; message: string }> {
+		return this._request<{ success: boolean; message: string }>(
+			'POST',
+			'/api/v1/auth/change-password',
+			{
+				old_password: oldPassword,
+				new_password: newPassword
+			}
+		);
 	}
 
 	private async _request<T>(

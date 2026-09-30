@@ -1,6 +1,6 @@
 export type FabUiState = 'idle' | 'recording';
 
-export type FabView = 'root' | 'login' | 'start' | 'active' | 'result' | 'history' | 'setting' | 'projects' | 'cleaner';
+export type FabView = 'root' | 'login' | 'start' | 'active' | 'result' | 'history' | 'setting' | 'projects' | 'cleaner' | 'users';
 
 export const fabViewTitles: Record<FabView, string> = {
 	root: 'Knitto QA Tools',
@@ -11,7 +11,8 @@ export const fabViewTitles: Record<FabView, string> = {
 	history: 'Riwayat Session',
 	setting: 'Pengaturan',
 	projects: 'Manajemen Project & Test Case',
-	cleaner: 'QA Cleaner & Cache'
+	cleaner: 'QA Cleaner & Cache',
+	users: 'Manajemen Pengguna'
 };
 
 export interface FabState {

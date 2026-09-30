@@ -34,11 +34,16 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { ImportTestCaseModal } from './ImportTestCaseModal';
 import { CreateEditTestCaseModal } from './CreateEditTestCaseModal';
+import { CreateEditProjectModal } from './CreateEditProjectModal';
+import { DeleteProjectModal } from './DeleteProjectModal';
 import { EmptyStateTestCase } from './EmptyStateTestCase';
 import { TestCaseResultModal } from './TestCaseResultModal';
 import type { ParsedImportTestCase } from '../../../recording/spreadsheetParser';
+import type { StoredUser } from '../../../recording/tokenStore';
+import { canManageTestCases, canRecord, canRunTest, canEditProject, canDeleteProject } from '../fab-permissions';
 
 export interface ProjectViewProps {
+	user?: StoredUser | null;
 	projects: RecordingProject[];
 	api: RecordingApiClient;
 	canCreateProject: boolean;
@@ -58,6 +63,7 @@ const SYSTEM_TEMPLATE_URL =
 	'https://docs.google.com/spreadsheets/d/1k_08EdNZUBGBhLNU-FIPxqm06PpCfn4Dyprc4sDYCsI/edit?gid=603972469#gid=603972469';
 
 export const ProjectView: React.FC<ProjectViewProps> = ({
+	user,
 	projects,
 	api,
 	canCreateProject,
@@ -68,6 +74,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	onActiveProjectChange,
 	activeGenerations
 }) => {
+	const allowManageTc = canManageTestCases(user);
+	const allowRecord = canRecord(user);
+	const allowRunTest = canRunTest(user);
+
 	const [selectedProject, setSelectedProject] = useState<RecordingProject | null>(null);
 
 	const handleSetSelectedProject = useCallback(
@@ -88,19 +98,27 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	const [tcStatusFilter, setTcStatusFilter] = useState('');
 	const [activeDropdownTcId, setActiveDropdownTcId] = useState<number | null>(null);
 
-	// Click outside listener for action dropdown
+	// Project Modal & Dropdown states
+	const [isCreateEditProjectModalOpen, setCreateEditProjectModalOpen] = useState(false);
+	const [editingProject, setEditingProject] = useState<RecordingProject | null>(null);
+	const [isDeleteProjectModalOpen, setDeleteProjectModalOpen] = useState(false);
+	const [deletingProject, setDeletingProject] = useState<RecordingProject | null>(null);
+	const [activeDropdownProjectId, setActiveDropdownProjectId] = useState<number | null>(null);
+
+	// Click outside listener for action dropdowns
 	useEffect(() => {
 		const handleGlobalClick = (e: MouseEvent) => {
-			if (activeDropdownTcId !== null) {
-				const target = e.target as HTMLElement | null;
-				if (!target?.closest('.tc-action-dropdown-container')) {
-					setActiveDropdownTcId(null);
-				}
+			const target = e.target as HTMLElement | null;
+			if (activeDropdownTcId !== null && !target?.closest('.tc-action-dropdown-container')) {
+				setActiveDropdownTcId(null);
+			}
+			if (activeDropdownProjectId !== null && !target?.closest('.proj-action-dropdown-container')) {
+				setActiveDropdownProjectId(null);
 			}
 		};
 		window.addEventListener('click', handleGlobalClick);
 		return () => window.removeEventListener('click', handleGlobalClick);
-	}, [activeDropdownTcId]);
+	}, [activeDropdownTcId, activeDropdownProjectId]);
 
 	// Modal states
 	const [isImportModalOpen, setImportModalOpen] = useState(false);
@@ -119,13 +137,57 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	const [loadingProjectSessions, setLoadingProjectSessions] = useState(false);
 	const [sessionSearch, setSessionSearch] = useState('');
 
-	// New Project modal states
-	const [isNewProjectModalOpen, setNewProjectModalOpen] = useState(false);
-	const [newProjName, setNewProjName] = useState('');
-	const [newProjUrl, setNewProjUrl] = useState('');
-	const [newProjDesc, setNewProjDesc] = useState('');
-	const [newProjBusy, setNewProjBusy] = useState(false);
-	const [newProjError, setNewProjError] = useState<string | null>(null);
+	const handleOpenCreateProject = () => {
+		setEditingProject(null);
+		setCreateEditProjectModalOpen(true);
+	};
+
+	const handleOpenEditProject = (proj: RecordingProject) => {
+		setEditingProject(proj);
+		setCreateEditProjectModalOpen(true);
+	};
+
+	const handleOpenDeleteProject = (proj: RecordingProject) => {
+		setDeletingProject(proj);
+		setDeleteProjectModalOpen(true);
+	};
+
+	const handleSaveProject = async (data: {
+		name: string;
+		base_url?: string;
+		description?: string;
+		is_active?: boolean;
+	}) => {
+		if (editingProject) {
+			const updated = await api.updateProject(editingProject.id_project, data);
+			onShowToast('Project berhasil diperbarui.', 'success');
+			if (selectedProject?.id_project === updated.id_project) {
+				handleSetSelectedProject(updated);
+			}
+			await onRefreshProjects();
+		} else {
+			const newId = await onCreateProject(data);
+			onShowToast('Project baru berhasil ditambahkan.', 'success');
+			await onRefreshProjects();
+			if (newId) {
+				const found = projects.find((p) => p.id_project === newId);
+				if (found) handleSetSelectedProject(found);
+			}
+		}
+	};
+
+	const handleConfirmDeleteProject = async (proj: RecordingProject) => {
+		const res = await api.deleteProject(proj.id_project);
+		if (res.deactivated) {
+			onShowToast('Project memiliki riwayat data sehingga dinonaktifkan.', 'info');
+		} else {
+			onShowToast('Project berhasil dihapus secara permanen.', 'success');
+		}
+		if (selectedProject?.id_project === proj.id_project) {
+			handleSetSelectedProject(null);
+		}
+		await onRefreshProjects();
+	};
 
 	const loadTestCases = useCallback(
 		async (idProject: number) => {
@@ -173,34 +235,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 			void loadProjectSessions(selectedProject.id_project);
 		}
 	}, [selectedProject, activeProjectTab, loadProjectSessions]);
-
-	const handleSaveNewProject = async (e: React.FormEvent) => {
-		e.preventDefault();
-		if (!newProjName.trim() || newProjBusy) return;
-		setNewProjBusy(true);
-		setNewProjError(null);
-		try {
-			const newId = await onCreateProject({
-				name: newProjName.trim(),
-				base_url: newProjUrl.trim() || undefined,
-				description: newProjDesc.trim() || undefined
-			});
-			setNewProjectModalOpen(false);
-			setNewProjName('');
-			setNewProjUrl('');
-			setNewProjDesc('');
-			await onRefreshProjects();
-			onShowToast('Project baru berhasil ditambahkan.', 'success');
-			if (newId) {
-				const found = projects.find((p) => p.id_project === newId);
-				if (found) handleSetSelectedProject(found);
-			}
-		} catch (err) {
-			setNewProjError((err as Error).message || 'Gagal membuat project.');
-		} finally {
-			setNewProjBusy(false);
-		}
-	};
 
 	const handleImportTestCases = async (items: ParsedImportTestCase[]) => {
 		if (!selectedProject) return;
@@ -315,7 +349,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 									variant="primary"
 									size="sm"
 									icon={<Plus size={14} />}
-									onClick={() => setNewProjectModalOpen(true)}
+									onClick={handleOpenCreateProject}
 								>
 									Project Baru
 								</Button>
@@ -343,133 +377,214 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 									Project tidak ditemukan. Buat project baru untuk memulai.
 								</div>
 							) : (
-								filteredProjects.map((p) => (
-									<div
-										key={p.id_project}
-										onClick={() => handleSetSelectedProject(p)}
-										style={{
-											padding: '14px 16px',
-											borderRadius: '10px',
-											border: '1px solid #cbd5e1',
-											background: '#ffffff',
-											cursor: 'pointer',
-											display: 'flex',
-											justifyContent: 'space-between',
-											alignItems: 'center',
-											transition: 'all 0.15s ease',
-											boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)'
-										}}
-										onMouseEnter={(e) => {
-											e.currentTarget.style.borderColor = '#2F3574';
-											e.currentTarget.style.boxShadow = '0 4px 12px rgba(47, 53, 116, 0.08)';
-										}}
-										onMouseLeave={(e) => {
-											e.currentTarget.style.borderColor = '#cbd5e1';
-											e.currentTarget.style.boxShadow = '0 1px 3px rgba(15, 23, 42, 0.04)';
-										}}
-									>
-										<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-											<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-												<span style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{p.name}</span>
-												<span
-													style={{
-														padding: '2px 8px',
-														borderRadius: '6px',
-														fontSize: '11px',
-														fontWeight: 600,
-														background: '#f1f5f9',
-														color: '#334155',
-														border: '1px solid #e2e8f0'
-													}}
-												>
-													{p.code}
-												</span>
-											</div>
-											{p.base_url && (
-												<div
-													style={{
-														fontSize: '12px',
-														color: '#64748b',
-														display: 'flex',
-														alignItems: 'center',
-														gap: '5px'
-													}}
-												>
-													<Globe size={13} color="#94a3b8" />
-													<span>{p.base_url}</span>
-												</div>
-											)}
-										</div>
-										<Button
-											type="button"
-											variant="secondary"
-											size="xs"
+								filteredProjects.map((p) => {
+									const userCanEdit = canEditProject(user, p);
+									const userCanDelete = canDeleteProject(user, p);
+									const hasAction = userCanEdit || userCanDelete;
+
+									return (
+										<div
+											key={p.id_project}
+											onClick={() => handleSetSelectedProject(p)}
+											style={{
+												padding: '14px 16px',
+												borderRadius: '10px',
+												border: p.is_active === false ? '1px dashed #cbd5e1' : '1px solid #cbd5e1',
+												background: p.is_active === false ? '#f8fafc' : '#ffffff',
+												cursor: 'pointer',
+												display: 'flex',
+												justifyContent: 'space-between',
+												alignItems: 'center',
+												transition: 'all 0.15s ease',
+												boxShadow: '0 1px 3px rgba(15, 23, 42, 0.04)',
+												opacity: p.is_active === false ? 0.75 : 1
+											}}
+											onMouseEnter={(e) => {
+												e.currentTarget.style.borderColor = '#2F3574';
+												e.currentTarget.style.boxShadow = '0 4px 12px rgba(47, 53, 116, 0.08)';
+											}}
+											onMouseLeave={(e) => {
+												e.currentTarget.style.borderColor = '#cbd5e1';
+												e.currentTarget.style.boxShadow = '0 1px 3px rgba(15, 23, 42, 0.04)';
+											}}
 										>
-											Kelola Test Case →
-										</Button>
-									</div>
-								))
+											<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+												<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+													<span style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{p.name}</span>
+													<span
+														style={{
+															padding: '2px 8px',
+															borderRadius: '6px',
+															fontSize: '11px',
+															fontWeight: 600,
+															background: '#f1f5f9',
+															color: '#334155',
+															border: '1px solid #e2e8f0'
+														}}
+													>
+														{p.code}
+													</span>
+													{p.is_active === false && (
+														<span
+															style={{
+																padding: '2px 6px',
+																borderRadius: '4px',
+																fontSize: '10px',
+																fontWeight: 600,
+																background: '#fee2e2',
+																color: '#991b1b',
+																border: '1px solid #fecdd3'
+															}}
+														>
+															Inactive
+														</span>
+													)}
+												</div>
+												{p.base_url && (
+													<div
+														style={{
+															fontSize: '12px',
+															color: '#64748b',
+															display: 'flex',
+															alignItems: 'center',
+															gap: '5px'
+														}}
+													>
+														<Globe size={13} color="#94a3b8" />
+														<span>{p.base_url}</span>
+													</div>
+												)}
+											</div>
+											<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+												<Button
+													type="button"
+													variant="secondary"
+													size="xs"
+													onClick={(e) => {
+														e.stopPropagation();
+														handleSetSelectedProject(p);
+													}}
+												>
+													Kelola Test Case →
+												</Button>
+
+												{hasAction && (
+													<div className="proj-action-dropdown-container" style={{ position: 'relative' }}>
+														<button
+															type="button"
+															style={{
+																background: 'transparent',
+																border: '1px solid #e2e8f0',
+																borderRadius: '6px',
+																padding: '5px',
+																cursor: 'pointer',
+																display: 'flex',
+																alignItems: 'center',
+																justifyContent: 'center',
+																color: '#64748b'
+															}}
+															onClick={(e) => {
+																e.stopPropagation();
+																setActiveDropdownProjectId(
+																	activeDropdownProjectId === p.id_project ? null : p.id_project
+																);
+															}}
+															title="Menu Opsi Project"
+														>
+															<MoreVertical size={14} />
+														</button>
+
+														{activeDropdownProjectId === p.id_project && (
+															<div
+																style={{
+																	position: 'absolute',
+																	right: 0,
+																	top: '100%',
+																	marginTop: '4px',
+																	background: '#ffffff',
+																	border: '1px solid #cbd5e1',
+																	borderRadius: '8px',
+																	boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
+																	zIndex: 50,
+																	minWidth: '130px',
+																	padding: '4px',
+																	display: 'flex',
+																	flexDirection: 'column',
+																	gap: '2px'
+																}}
+															>
+																{userCanEdit && (
+																	<button
+																		type="button"
+																		style={{
+																			display: 'flex',
+																			alignItems: 'center',
+																			gap: 8,
+																			padding: '6px 8px',
+																			fontSize: '11.5px',
+																			fontWeight: 500,
+																			color: '#334155',
+																			background: 'transparent',
+																			border: 'none',
+																			borderRadius: 4,
+																			cursor: 'pointer',
+																			width: '100%',
+																			textAlign: 'left'
+																		}}
+																		onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+																		onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+																		onClick={(e) => {
+																			e.stopPropagation();
+																			setActiveDropdownProjectId(null);
+																			handleOpenEditProject(p);
+																		}}
+																	>
+																		<Edit size={13} color="#2563eb" />
+																		<span>Edit Project</span>
+																	</button>
+																)}
+																{userCanDelete && (
+																	<button
+																		type="button"
+																		style={{
+																			display: 'flex',
+																			alignItems: 'center',
+																			gap: 8,
+																			padding: '6px 8px',
+																			fontSize: '11.5px',
+																			fontWeight: 500,
+																			color: '#b91c1c',
+																			background: 'transparent',
+																			border: 'none',
+																			borderRadius: 4,
+																			cursor: 'pointer',
+																			width: '100%',
+																			textAlign: 'left'
+																		}}
+																		onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
+																		onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+																		onClick={(e) => {
+																			e.stopPropagation();
+																			setActiveDropdownProjectId(null);
+																			handleOpenDeleteProject(p);
+																		}}
+																	>
+																		<Trash2 size={13} />
+																		<span>Hapus Project</span>
+																	</button>
+																)}
+															</div>
+														)}
+													</div>
+												)}
+											</div>
+										</div>
+									);
+								})
 							)}
 						</div>
 					</CardContent>
 				</Card>
-
-				{/* Modal Tambah Project Baru */}
-				<Modal
-					isOpen={isNewProjectModalOpen}
-					onClose={() => setNewProjectModalOpen(false)}
-					title="Tambah Project Baru"
-				>
-					<form onSubmit={handleSaveNewProject} style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-						{newProjError && <div className="sp-error">{newProjError}</div>}
-						<div
-							style={{
-								border: '1px solid #cbd5e1',
-								borderRadius: '10px',
-								padding: '14px',
-								background: '#ffffff',
-								display: 'flex',
-								flexDirection: 'column',
-								gap: '12px',
-								boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)'
-							}}
-						>
-							<Input
-								label="Nama Project"
-								required
-								placeholder="Contoh: Portal Knitto"
-								value={newProjName}
-								onChange={(e) => setNewProjName(e.target.value)}
-							/>
-							<Input
-								label="Base URL (Opsional)"
-								placeholder="https://portal.knitto.org"
-								value={newProjUrl}
-								onChange={(e) => setNewProjUrl(e.target.value)}
-							/>
-							<Input
-								label="Deskripsi (Opsional)"
-								placeholder="Keterangan singkat project"
-								value={newProjDesc}
-								onChange={(e) => setNewProjDesc(e.target.value)}
-							/>
-						</div>
-						<div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '4px' }}>
-							<Button
-								type="button"
-								variant="ghost"
-								size="sm"
-								onClick={() => setNewProjectModalOpen(false)}
-								disabled={newProjBusy}
-							>
-								Batal
-							</Button>
-							<Button type="submit" variant="primary" size="sm" loading={newProjBusy} disabled={newProjBusy || !newProjName.trim()}>
-								{newProjBusy ? 'Menyimpan...' : 'Simpan Project'}
-							</Button>
-						</div>
-					</form>
-				</Modal>
 			</div>
 		);
 	}
@@ -489,28 +604,32 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 					Semua Project
 				</Button>
 				<div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-					<Button
-						type="button"
-						variant="secondary"
-						size="sm"
-						icon={<Upload size={14} />}
-						onClick={() => setImportModalOpen(true)}
-						title="Import dari Excel / CSV Google Sheets Knitto"
-					>
-						Import Excel / CSV
-					</Button>
-					<Button
-						type="button"
-						variant="primary"
-						size="sm"
-						icon={<Plus size={14} />}
-						onClick={() => {
-							setEditingTestCase(null);
-							setCreateTcModalOpen(true);
-						}}
-					>
-						Test Case Baru
-					</Button>
+					{allowManageTc && (
+						<>
+							<Button
+								type="button"
+								variant="secondary"
+								size="sm"
+								icon={<Upload size={14} />}
+								onClick={() => setImportModalOpen(true)}
+								title="Import dari Excel / CSV Google Sheets Knitto"
+							>
+								Import Excel / CSV
+							</Button>
+							<Button
+								type="button"
+								variant="primary"
+								size="sm"
+								icon={<Plus size={14} />}
+								onClick={() => {
+									setEditingTestCase(null);
+									setCreateTcModalOpen(true);
+								}}
+							>
+								Test Case Baru
+							</Button>
+						</>
+					)}
 				</div>
 			</div>
 
@@ -534,11 +653,52 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 								>
 									{selectedProject.code}
 								</span>
+								{selectedProject.is_active === false && (
+									<span
+										style={{
+											padding: '1px 6px',
+											borderRadius: '4px',
+											fontSize: '11px',
+											fontWeight: 600,
+											background: '#fee2e2',
+											color: '#991b1b'
+										}}
+									>
+										Inactive
+									</span>
+								)}
 							</div>
 							{selectedProject.base_url && (
 								<div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
 									{selectedProject.base_url}
 								</div>
+							)}
+						</div>
+						<div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
+							{canEditProject(user, selectedProject) && (
+								<Button
+									type="button"
+									variant="ghost"
+									size="xs"
+									icon={<Edit size={13} />}
+									onClick={() => handleOpenEditProject(selectedProject)}
+									title="Edit Project"
+								>
+									Edit
+								</Button>
+							)}
+							{canDeleteProject(user, selectedProject) && (
+								<Button
+									type="button"
+									variant="ghost"
+									size="xs"
+									style={{ color: '#b91c1c' }}
+									icon={<Trash2 size={13} />}
+									onClick={() => handleOpenDeleteProject(selectedProject)}
+									title="Hapus / Nonaktifkan Project"
+								>
+									Hapus
+								</Button>
 							)}
 						</div>
 					</div>
@@ -797,14 +957,20 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 													setResultModalSessionId(tc.last_session_id);
 													setResultModalTestCase(tc);
 													setResultModalOpen(true);
-												} else {
+												} else if (allowManageTc) {
 													setEditingTestCase(tc);
 													setCreateTcModalOpen(true);
 												}
 											}}
 											onMouseEnter={(e) => (e.currentTarget.style.background = '#f8fafc')}
 											onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-											title={tc.last_session_id ? 'Klik baris untuk membuka hasil pengujian' : 'Klik baris untuk mengedit test case'}
+											title={
+												tc.last_session_id
+													? 'Klik baris untuk membuka hasil pengujian'
+													: allowManageTc
+													? 'Klik baris untuk mengedit test case'
+													: undefined
+											}
 										>
 											<td style={{ padding: '10px 12px', textAlign: 'center', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' }}>
 												<span
@@ -882,33 +1048,35 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 															}}
 															onClick={(e) => e.stopPropagation()}
 														>
-															<button
-																type="button"
-																style={{
-																	display: 'flex',
-																	alignItems: 'center',
-																	gap: 8,
-																	padding: '7px 10px',
-																	fontSize: 11.5,
-																	fontWeight: 600,
-																	color: '#15803d',
-																	background: 'transparent',
-																	border: 'none',
-																	borderRadius: 6,
-																	cursor: 'pointer',
-																	width: '100%',
-																	textAlign: 'left'
-																}}
-																onMouseEnter={(e) => (e.currentTarget.style.background = '#f0fdf4')}
-																onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-																onClick={() => {
-																	setActiveDropdownTcId(null);
-																	onSelectTestCaseForRecording(selectedProject, tc);
-																}}
-															>
-																<Play size={13} fill="#15803d" />
-																<span>Mulai Rekam</span>
-															</button>
+															{allowRecord && (
+																<button
+																	type="button"
+																	style={{
+																		display: 'flex',
+																		alignItems: 'center',
+																		gap: 8,
+																		padding: '7px 10px',
+																		fontSize: 11.5,
+																		fontWeight: 600,
+																		color: '#15803d',
+																		background: 'transparent',
+																		border: 'none',
+																		borderRadius: 6,
+																		cursor: 'pointer',
+																		width: '100%',
+																		textAlign: 'left'
+																	}}
+																	onMouseEnter={(e) => (e.currentTarget.style.background = '#f0fdf4')}
+																	onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+																	onClick={() => {
+																		setActiveDropdownTcId(null);
+																		onSelectTestCaseForRecording(selectedProject, tc);
+																	}}
+																>
+																	<Play size={13} fill="#15803d" />
+																	<span>Mulai Rekam</span>
+																</button>
+															)}
 
 															{Boolean(tc.last_session_id) && (
 																<button
@@ -942,64 +1110,68 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 																</button>
 															)}
 
-															<button
-																type="button"
-																style={{
-																	display: 'flex',
-																	alignItems: 'center',
-																	gap: 8,
-																	padding: '7px 10px',
-																	fontSize: 11.5,
-																	fontWeight: 500,
-																	color: '#334155',
-																	background: 'transparent',
-																	border: 'none',
-																	borderRadius: 6,
-																	cursor: 'pointer',
-																	width: '100%',
-																	textAlign: 'left'
-																}}
-																onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-																onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-																onClick={() => {
-																	setActiveDropdownTcId(null);
-																	setEditingTestCase(tc);
-																	setCreateTcModalOpen(true);
-																}}
-															>
-																<Edit size={13} />
-																<span>Edit Test Case</span>
-															</button>
+															{allowManageTc && (
+																<>
+																	<button
+																		type="button"
+																		style={{
+																			display: 'flex',
+																			alignItems: 'center',
+																			gap: 8,
+																			padding: '7px 10px',
+																			fontSize: 11.5,
+																			fontWeight: 500,
+																			color: '#334155',
+																			background: 'transparent',
+																			border: 'none',
+																			borderRadius: 6,
+																			cursor: 'pointer',
+																			width: '100%',
+																			textAlign: 'left'
+																		}}
+																		onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+																		onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+																		onClick={() => {
+																			setActiveDropdownTcId(null);
+																			setEditingTestCase(tc);
+																			setCreateTcModalOpen(true);
+																		}}
+																	>
+																		<Edit size={13} />
+																		<span>Edit Test Case</span>
+																	</button>
 
-															<div style={{ height: 1, background: '#f1f5f9', margin: '2px 0' }} />
+																	<div style={{ height: 1, background: '#f1f5f9', margin: '2px 0' }} />
 
-															<button
-																type="button"
-																style={{
-																	display: 'flex',
-																	alignItems: 'center',
-																	gap: 8,
-																	padding: '7px 10px',
-																	fontSize: 11.5,
-																	fontWeight: 500,
-																	color: '#b91c1c',
-																	background: 'transparent',
-																	border: 'none',
-																	borderRadius: 6,
-																	cursor: 'pointer',
-																	width: '100%',
-																	textAlign: 'left'
-																}}
-																onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
-																onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-																onClick={() => {
-																	setActiveDropdownTcId(null);
-																	handleDeleteTestCase(tc);
-																}}
-															>
-																<Trash2 size={13} />
-																<span>Hapus Test Case</span>
-															</button>
+																	<button
+																		type="button"
+																		style={{
+																			display: 'flex',
+																			alignItems: 'center',
+																			gap: 8,
+																			padding: '7px 10px',
+																			fontSize: 11.5,
+																			fontWeight: 500,
+																			color: '#b91c1c',
+																			background: 'transparent',
+																			border: 'none',
+																			borderRadius: 6,
+																			cursor: 'pointer',
+																			width: '100%',
+																			textAlign: 'left'
+																		}}
+																		onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
+																		onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+																		onClick={() => {
+																			setActiveDropdownTcId(null);
+																			handleDeleteTestCase(tc);
+																		}}
+																	>
+																		<Trash2 size={13} />
+																		<span>Hapus Test Case</span>
+																	</button>
+																</>
+															)}
 														</div>
 													)}
 												</div>
@@ -1162,6 +1334,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
 			{/* Modal Hasil Rekaman Test Case */}
 			<TestCaseResultModal
+				user={user}
 				open={isResultModalOpen}
 				sessionId={resultModalSessionId}
 				testCase={resultModalTestCase}
@@ -1173,6 +1346,28 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 					setResultModalTestCase(null);
 				}}
 				onShowToast={onShowToast}
+			/>
+
+			{/* Modal Tambah / Edit Project */}
+			<CreateEditProjectModal
+				isOpen={isCreateEditProjectModalOpen}
+				onClose={() => {
+					setCreateEditProjectModalOpen(false);
+					setEditingProject(null);
+				}}
+				project={editingProject}
+				onSave={handleSaveProject}
+			/>
+
+			{/* Modal Konfirmasi Hapus Project */}
+			<DeleteProjectModal
+				isOpen={isDeleteProjectModalOpen}
+				onClose={() => {
+					setDeleteProjectModalOpen(false);
+					setDeletingProject(null);
+				}}
+				project={deletingProject}
+				onConfirmDelete={handleConfirmDeleteProject}
 			/>
 		</div>
 	);

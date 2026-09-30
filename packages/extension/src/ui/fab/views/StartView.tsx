@@ -19,6 +19,8 @@ export interface PrefilledTestCase {
 	expected_result?: string;
 }
 
+import { canRecord, canManageProjects } from '../fab-permissions';
+
 export interface StartViewProps {
 	user: StoredUser | null;
 	projects: RecordingProject[];
@@ -91,14 +93,9 @@ export const StartView: React.FC<StartViewProps> = ({
 	const [createProjectBusy, setCreateProjectBusy] = useState(false);
 	const [createProjectError, setCreateProjectError] = useState<string | null>(null);
 
-	// Akses Tambah Project
-	const userLevel = (user?.level ?? '').toUpperCase();
-	const username = (user?.username ?? '').toLowerCase();
-	const canCreateProject =
-		Boolean(user) &&
-		(!user?.level ||
-			['QA', 'ADMIN', 'SUPERADMIN', 'IMPLEMENTOR'].includes(userLevel) ||
-			username === 'qatester');
+	// Akses Tambah Project & Recording
+	const userCanRecord = canRecord(user);
+	const canCreateProject = canManageProjects(user);
 
 	// Menangani prefilled test case jika dipanggil dari ProjectView
 	useEffect(() => {
@@ -260,8 +257,8 @@ export const StartView: React.FC<StartViewProps> = ({
 		}
 	};
 
-	// Tombol submit aktif jika testCaseNo & title terisi (Project bersifat opsional untuk mode rekam langsung)
-	const canSubmit = testCaseNo.trim().length > 0 && title.trim().length > 0 && !busy;
+	// Tombol submit aktif jika testCaseNo & title terisi dan user berhak merekam
+	const canSubmit = userCanRecord && testCaseNo.trim().length > 0 && title.trim().length > 0 && !busy;
 
 	const handleSubmitForm = (event: React.FormEvent) => {
 		event.preventDefault();
@@ -310,6 +307,11 @@ export const StartView: React.FC<StartViewProps> = ({
 					</div>
 				</CardHeader>
 				<CardContent>
+					{!userCanRecord && (
+						<div className="sp-error" style={{ marginBottom: '12px' }}>
+							Role Anda ({user?.level ?? 'VIEWER'}) tidak memiliki izin untuk memulai rekaman pengujian baru.
+						</div>
+					)}
 					{error && <div className="sp-error">{error}</div>}
 
 					{/* Selector Project */}

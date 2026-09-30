@@ -1,8 +1,10 @@
 export interface StoredUser {
 	id_user: number;
 	username: string;
-	nama: string;
+	nama?: string;
 	level?: string;
+	role?: string;
+	is_active?: number | boolean;
 }
 
 export interface StoredActiveSession {
