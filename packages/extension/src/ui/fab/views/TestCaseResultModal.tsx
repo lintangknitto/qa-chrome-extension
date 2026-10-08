@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
 	CheckCircle,
 	XCircle,
@@ -16,6 +17,8 @@ import {
 	Repeat,
 	Video,
 	VideoOff,
+	Maximize2,
+	X,
 	Play,
 	ExternalLink,
 	History,
@@ -115,6 +118,9 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 	const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
 	const [videoRetryCount, setVideoRetryCount] = useState(0);
 	const videoRef = useRef<HTMLVideoElement | null>(null);
+	// Overlay "Perbesar": tidak memakai Fullscreen API (bisa diblokir Permissions-Policy situs tempat FAB dibuka).
+	const [expandedVideo, setExpandedVideo] = useState<{ target: Element | DocumentFragment; time: number } | null>(null);
+	const expandedVideoRef = useRef<HTMLVideoElement | null>(null);
 	const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	const activeRun = runs.find((r) => r.id === activeRunId) || runs[0];
@@ -123,6 +129,14 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 	const currentResult = activeRun?.result ?? sessionDetail?.result ?? testCase?.status;
 	const currentActualResult = activeRun?.actualResult ?? sessionDetail?.actual_result ?? testCase?.actual_result;
 	const currentVideoUrl = activeRun?.videoUrl ?? sessionDetail?.video_url;
+	// URL presigned MinIO menunjuk host internal (mis. 127.0.0.1:9000) sehingga tidak bisa dibuka dari
+	// komputer lain: tab baru memakai endpoint stream API untuk video sesi (tab penuh = fullscreen asli diizinkan).
+	const videoSessionId = activeRun?.sessionId || sessionId;
+	const isSessionVideo = Boolean(currentVideoUrl) && currentVideoUrl === sessionDetail?.video_url;
+	const videoTabUrl =
+		isSessionVideo && videoSessionId && api.baseUrl
+			? `${api.baseUrl.replace(/\/+$/, '')}/sessions/${videoSessionId}/video/stream`
+			: currentVideoUrl ?? undefined;
 	const checkpoints = (activeRun?.checkpoints && activeRun.checkpoints.length > 0) ? activeRun.checkpoints : (sessionDetail?.checkpoints || []);
 
 	const handlePlaybackRateChange = (rate: number) => {
@@ -131,6 +145,34 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 			videoRef.current.playbackRate = rate;
 		}
 	};
+
+	const openExpandedVideo = () => {
+		const inline = videoRef.current;
+		// Portal ke akar shadow root FAB: ancestor modal memakai transform/backdrop-filter yang
+		// membuat position:fixed tidak lagi relatif ke viewport.
+		const root = inline?.getRootNode();
+		const target = root instanceof ShadowRoot ? root : document.body;
+		inline?.pause();
+		setExpandedVideo({ target, time: inline?.currentTime ?? 0 });
+	};
+
+	const closeExpandedVideo = useCallback(() => {
+		const expanded = expandedVideoRef.current;
+		if (expanded && videoRef.current) videoRef.current.currentTime = expanded.currentTime;
+		setExpandedVideo(null);
+	}, []);
+
+	useEffect(() => {
+		if (!expandedVideo) return;
+		const onKeyDown = (event: KeyboardEvent) => {
+			if (event.key === 'Escape') {
+				event.stopPropagation();
+				closeExpandedVideo();
+			}
+		};
+		window.addEventListener('keydown', onKeyDown, true);
+		return () => window.removeEventListener('keydown', onKeyDown, true);
+	}, [expandedVideo, closeExpandedVideo]);
 
 	const handleShare = async () => {
 		if (!sessionId || sharing) return;
@@ -1023,7 +1065,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 										</div>
 										{currentVideoUrl && (
 											<a
-												href={currentVideoUrl}
+												href={videoTabUrl}
 												target="_blank"
 												rel="noreferrer"
 												style={{ fontSize: 11, color: '#2F3574', textDecoration: 'none', display: 'inline-flex', alignItems: 'center', gap: 4, fontWeight: 600 }}
@@ -1060,7 +1102,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 															Coba Lagi
 														</Button>
 														<a
-															href={currentVideoUrl}
+															href={videoTabUrl}
 															target="_blank"
 															rel="noreferrer"
 															style={{ textDecoration: 'none' }}
@@ -1084,6 +1126,55 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 													style={{ width: '100%', maxHeight: 250, display: 'block', outline: 'none' }}
 												/>
 											)}
+											{expandedVideo &&
+												createPortal(
+													<div
+														role="dialog"
+														aria-modal="true"
+														aria-label="Video rekaman diperbesar"
+														data-testid="expanded-video-overlay"
+														style={{
+															position: 'fixed',
+															inset: 0,
+															zIndex: 2147483647,
+															background: 'rgba(2, 6, 23, 0.94)',
+															display: 'flex',
+															flexDirection: 'column'
+														}}
+													>
+														<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, padding: '8px 12px', color: '#e2e8f0', fontSize: 12, fontWeight: 600 }}>
+															<span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{testCaseNo} — {title}</span>
+															<div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+																{videoTabUrl && (
+																	<a href={videoTabUrl} target="_blank" rel="noreferrer" style={{ color: '#c7d2fe', fontSize: 11, display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
+																		<span>Buka di Tab Baru</span>
+																		<ExternalLink size={11} />
+																	</a>
+																)}
+																<button
+																	type="button"
+																	aria-label="Tutup video diperbesar"
+																	onClick={closeExpandedVideo}
+																	style={{ background: 'transparent', border: '1px solid #475569', borderRadius: 6, color: '#e2e8f0', padding: '3px 8px', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 11 }}
+																>
+																	<X size={13} /> Tutup (Esc)
+																</button>
+															</div>
+														</div>
+														<video
+															ref={expandedVideoRef}
+															controls
+															autoPlay
+															src={playableVideoSrc || currentVideoUrl}
+															onLoadedMetadata={(e) => {
+																e.currentTarget.currentTime = expandedVideo.time;
+																e.currentTarget.playbackRate = videoPlaybackRate;
+															}}
+															style={{ flex: 1, minHeight: 0, width: '100%', objectFit: 'contain', background: '#000', outline: 'none' }}
+														/>
+													</div>,
+													expandedVideo.target
+												)}
 											{/* Video toolbar: Speed Controls & Download */}
 											<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#0f172a', padding: '6px 12px', borderTop: '1px solid #1e293b', flexWrap: 'wrap', gap: 6 }}>
 												<div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
@@ -1109,6 +1200,18 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 													))}
 												</div>
 												<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+													{!videoLoading && !videoLoadError && (
+														<Button
+															type="button"
+															variant="outline"
+															size="xs"
+															icon={<Maximize2 size={11} />}
+															onClick={openExpandedVideo}
+															title="Perbesar video ke seluruh layar (Esc untuk menutup)"
+														>
+															Perbesar
+														</Button>
+													)}
 													<a
 														href={playableVideoSrc || currentVideoUrl}
 														download={`session-${sessionId}-${activeRun?.label || 'run'}.webm`}

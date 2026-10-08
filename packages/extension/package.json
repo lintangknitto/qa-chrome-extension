@@ -17,7 +17,7 @@
   },
   "license": "Apache-2.0",
   "scripts": {
-    "build": "vite build --config vite.config.mts",
+    "build": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true})\" && vite build --config vite.config.mts",
     "watch": "vite build --watch --config vite.config.mts",
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.ui.json",
     "test": "vitest run"
