@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import React from 'react';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { TestCaseResultModal } from '../views/TestCaseResultModal';
 import { SimpleMarkdown } from '../components/SimpleMarkdown';
@@ -99,5 +99,47 @@ describe('TestCaseResultModal tab Investigasi', () => {
 		fireEvent.click(screen.getByRole('button', { name: 'Patch AI' }));
 		expect(await screen.findByText('PLAYWRIGHT_AI')).toBeTruthy();
 		expect(screen.queryByText('PLAYWRIGHT')).toBeNull();
+	});
+});
+
+describe('TestCaseResultModal video: Perbesar & Buka di Tab Baru', () => {
+	beforeEach(() => {
+		(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+		// jsdom tidak mengimplementasikan media playback.
+		vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+	});
+	afterEach(() => {
+		cleanup();
+		vi.restoreAllMocks();
+	});
+
+	const MINIO_URL = 'http://127.0.0.1:9000/qa-recording-artifacts/sessions/1/9-video-1.webm?X-Amz-Signature=abc';
+	const makeApi = () =>
+		({
+			baseUrl: 'http://192.168.20.2:8010',
+			getSession: vi.fn().mockResolvedValue({ id_session: 9, test_case_no: 'TC-9', title: 'Kirim pesan', status: 'completed', result: 'PASS', video_url: MINIO_URL, checkpoints: [] }),
+			getSessionVideo: vi.fn().mockResolvedValue({ video_url: MINIO_URL }),
+			listGenerations: vi.fn().mockResolvedValue({ items: [] }),
+			generateOutputs: vi.fn().mockResolvedValue({}),
+			generateShareUrl: vi.fn()
+		}) as unknown as RecordingApiClient;
+
+	it('"Buka di Tab Baru" memakai endpoint stream API, bukan URL MinIO 127.0.0.1', async () => {
+		render(<TestCaseResultModal open sessionId={9} testCase={null} api={makeApi()} onClose={vi.fn()} />);
+		const link = await screen.findByRole('link', { name: /Buka di Tab Baru/ });
+		expect(link.getAttribute('href')).toBe('http://192.168.20.2:8010/sessions/9/video/stream');
+	});
+
+	it('"Perbesar" membuka overlay layar penuh tanpa Fullscreen API dan Esc menutupnya', async () => {
+		render(<TestCaseResultModal open sessionId={9} testCase={null} api={makeApi()} onClose={vi.fn()} />);
+		fireEvent.click(await screen.findByRole('button', { name: /Perbesar/ }));
+
+		const overlay = await screen.findByTestId('expanded-video-overlay');
+		expect(overlay.style.position).toBe('fixed');
+		expect(overlay.querySelector('video')?.getAttribute('src')).toBe(MINIO_URL);
+		expect(within(overlay).getByRole('link', { name: /Buka di Tab Baru/ }).getAttribute('href')).toBe('http://192.168.20.2:8010/sessions/9/video/stream');
+
+		fireEvent.keyDown(window, { key: 'Escape' });
+		await waitFor(() => expect(screen.queryByTestId('expanded-video-overlay')).toBeNull());
 	});
 });
