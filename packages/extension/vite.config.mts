@@ -81,7 +81,7 @@ export default defineConfig({
         minify: false,
         lib: {
           entry: resolve(__dirname, 'src/background.ts'),
-          fileName: 'lib/background',
+          fileName: () => 'lib/background.js',
           formats: ['es']
         }
       }
