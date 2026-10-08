@@ -2,14 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { Modal } from '../components/Modal';
 import { Input } from '../components/Input';
 import { Textarea } from '../components/Textarea';
-import { Select } from '../components/Select';
+import { Combobox } from '../components/Combobox';
 import { Button } from '../components/Button';
-import type { TestCaseItem } from '../../../recording/apiClient';
+import type { TestCaseItem, ProgramItem } from '../../../recording/apiClient';
 
 export interface CreateEditTestCaseModalProps {
 	isOpen: boolean;
 	initialData?: TestCaseItem | null;
 	projectName: string;
+	programs?: ProgramItem[];
 	onClose: () => void;
 	onSave: (data: Partial<TestCaseItem> & { test_case_id: string; title: string }) => Promise<void>;
 }
@@ -18,9 +19,11 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 	isOpen,
 	initialData,
 	projectName,
+	programs = [],
 	onClose,
 	onSave
 }) => {
+	const [idProgram, setIdProgram] = useState<number | ''>('');
 	const [testCaseId, setTestCaseId] = useState('');
 	const [title, setTitle] = useState('');
 	const [feature, setFeature] = useState('');
@@ -33,6 +36,7 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 
 	useEffect(() => {
 		if (initialData) {
+			setIdProgram(initialData.id_program ?? '');
 			setTestCaseId(initialData.test_case_id ?? '');
 			setTitle(initialData.title ?? '');
 			setFeature(initialData.feature ?? '');
@@ -41,6 +45,7 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 			setExpectedResult(initialData.expected_result ?? '');
 			setStatus(initialData.status ?? 'Progress');
 		} else {
+			setIdProgram('');
 			setTestCaseId('');
 			setTitle('');
 			setFeature('');
@@ -60,6 +65,7 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 		setError(null);
 		try {
 			await onSave({
+				id_program: typeof idProgram === 'number' && idProgram > 0 ? idProgram : null,
 				test_case_id: testCaseId.trim(),
 				title: title.trim(),
 				feature: feature.trim() || undefined,
@@ -75,6 +81,16 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 			setBusy(false);
 		}
 	};
+
+	const programOptions = [
+		{ value: '', label: '-- Tanpa Program Spesifik / Umum --' },
+		...programs.map((prog) => ({
+			value: prog.id_program,
+			label: `${prog.name} (${prog.code})`,
+			code: prog.type || 'FRONTEND',
+			sublabel: prog.base_url || undefined
+		}))
+	];
 
 	return (
 		<Modal
@@ -94,7 +110,7 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 						background: '#ffffff',
 						display: 'flex',
 						flexDirection: 'column',
-						gap: '10px',
+						gap: '12px',
 						boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)'
 					}}
 				>
@@ -113,17 +129,71 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 						Identifikasi Test Case
 					</div>
 
-					<div style={{ display: 'flex', gap: '10px' }}>
-						<div style={{ flex: '0 0 120px' }}>
-							<Select
-								label="Tipe Test"
-								value={testType}
-								onChange={(e) => setTestType(e.target.value as '+' | '-')}
-								options={[
-									{ value: '+', label: '+ (Positive)' },
-									{ value: '-', label: '- (Negative)' }
-								]}
-							/>
+					{programs.length > 0 && (
+						<Combobox
+							label="Master Program Target (Opsional)"
+							placeholder="-- Tanpa Program Spesifik / Umum --"
+							searchPlaceholder="Cari program..."
+							value={idProgram}
+							onChange={(val) => setIdProgram(val ? Number(val) : '')}
+							options={programOptions}
+							disabled={busy}
+						/>
+					)}
+
+					<div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
+						<div style={{ width: '140px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+							<label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>
+								Tipe Test <span style={{ color: '#ef4444' }}>*</span>
+							</label>
+							<div
+								style={{
+									display: 'grid',
+									gridTemplateColumns: '1fr 1fr',
+									gap: '3px',
+									background: '#f1f5f9',
+									padding: '3px',
+									borderRadius: '8px',
+									border: '1px solid #e2e8f0'
+								}}
+							>
+								<button
+									type="button"
+									onClick={() => setTestType('+')}
+									style={{
+										padding: '6px 0',
+										borderRadius: '6px',
+										border: 'none',
+										fontSize: '11px',
+										fontWeight: testType === '+' ? 700 : 500,
+										background: testType === '+' ? '#16a34a' : 'transparent',
+										color: testType === '+' ? '#ffffff' : '#64748b',
+										cursor: 'pointer',
+										boxShadow: testType === '+' ? '0 1px 2px rgba(22,163,74,0.3)' : 'none',
+										transition: 'all 0.15s ease'
+									}}
+								>
+									+ Positif
+								</button>
+								<button
+									type="button"
+									onClick={() => setTestType('-')}
+									style={{
+										padding: '6px 0',
+										borderRadius: '6px',
+										border: 'none',
+										fontSize: '11px',
+										fontWeight: testType === '-' ? 700 : 500,
+										background: testType === '-' ? '#dc2626' : 'transparent',
+										color: testType === '-' ? '#ffffff' : '#64748b',
+										cursor: 'pointer',
+										boxShadow: testType === '-' ? '0 1px 2px rgba(220,38,38,0.3)' : 'none',
+										transition: 'all 0.15s ease'
+									}}
+								>
+									- Negatif
+								</button>
+							</div>
 						</div>
 						<div style={{ flex: 1 }}>
 							<Input
@@ -132,6 +202,7 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 								placeholder="Contoh: TC-ORDER-01"
 								value={testCaseId}
 								onChange={(e) => setTestCaseId(e.target.value)}
+								disabled={busy}
 							/>
 						</div>
 					</div>
@@ -141,6 +212,7 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 						placeholder="Contoh: Order Kain, Checkout, Auth"
 						value={feature}
 						onChange={(e) => setFeature(e.target.value)}
+						disabled={busy}
 					/>
 
 					<Input
@@ -149,6 +221,7 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 						placeholder="Contoh: User dapat melakukan order kain sampai checkout"
 						value={title}
 						onChange={(e) => setTitle(e.target.value)}
+						disabled={busy}
 					/>
 				</div>
 
@@ -161,7 +234,7 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 						background: '#f8fafc',
 						display: 'flex',
 						flexDirection: 'column',
-						gap: '10px',
+						gap: '12px',
 						boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)'
 					}}
 				>
@@ -186,6 +259,7 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 						value={preCondition}
 						onChange={(e) => setPreCondition(e.target.value)}
 						rows={2}
+						disabled={busy}
 					/>
 
 					<Textarea
@@ -194,20 +268,59 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 						value={expectedResult}
 						onChange={(e) => setExpectedResult(e.target.value)}
 						rows={2}
+						disabled={busy}
 					/>
 
-					<Select
-						label="Status"
-						value={status}
-						onChange={(e) => setStatus(e.target.value)}
-						options={[
-							{ value: 'Progress', label: 'Progress' },
-							{ value: 'Passed', label: 'Passed' },
-							{ value: 'Failed', label: 'Failed' },
-							{ value: 'Re-Test', label: 'Re-Test' },
-							{ value: 'Skip', label: 'Skip' }
-						]}
-					/>
+					{/* Modern Status Selector */}
+					<div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+						<label style={{ fontSize: '12px', fontWeight: 600, color: '#475569' }}>
+							Status Test Case <span style={{ color: '#ef4444' }}>*</span>
+						</label>
+						<div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+							{[
+								{ key: 'Progress', label: 'Progress', color: '#2563eb', bg: '#eff6ff', border: '#bfdbfe' },
+								{ key: 'Passed', label: 'Passed', color: '#16a34a', bg: '#f0fdf4', border: '#bbf7d0' },
+								{ key: 'Failed', label: 'Failed', color: '#dc2626', bg: '#fef2f2', border: '#fecaca' },
+								{ key: 'Re-Test', label: 'Re-Test', color: '#d97706', bg: '#fffbeb', border: '#fde68a' },
+								{ key: 'Skip', label: 'Skip', color: '#64748b', bg: '#f8fafc', border: '#e2e8f0' }
+							].map((st) => {
+								const isSelected = status.toLowerCase() === st.key.toLowerCase();
+								return (
+									<button
+										key={st.key}
+										type="button"
+										onClick={() => setStatus(st.key)}
+										disabled={busy}
+										style={{
+											display: 'inline-flex',
+											alignItems: 'center',
+											gap: '6px',
+											padding: '6px 12px',
+											borderRadius: '8px',
+											fontSize: '12px',
+											fontWeight: isSelected ? 700 : 500,
+											cursor: 'pointer',
+											background: isSelected ? st.bg : '#ffffff',
+											border: `1.5px solid ${isSelected ? st.color : '#cbd5e1'}`,
+											color: isSelected ? st.color : '#475569',
+											boxShadow: isSelected ? `0 1px 3px ${st.color}25` : 'none',
+											transition: 'all 0.15s ease'
+										}}
+									>
+										<span
+											style={{
+												width: '8px',
+												height: '8px',
+												borderRadius: '50%',
+												background: isSelected ? st.color : '#94a3b8'
+											}}
+										/>
+										<span>{st.label}</span>
+									</button>
+								);
+							})}
+						</div>
+					</div>
 				</div>
 
 				<div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '6px' }}>

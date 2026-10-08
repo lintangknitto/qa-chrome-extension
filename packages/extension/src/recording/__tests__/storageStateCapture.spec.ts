@@ -15,7 +15,7 @@ describe('storageStateCapture', () => {
 		expect(normalizeSameSite(undefined)).toBe('None');
 	});
 
-	it('captureCookiesForUrl maps Chrome cookies to Playwright cookie format', async () => {
+	it('captureCookiesForUrl preserves cookie values for local QA inspection and replay', async () => {
 		const mockCookies = [
 			{
 				name: 'auth_token',
@@ -45,11 +45,15 @@ describe('storageStateCapture', () => {
 		expect(cookies[0].sameSite).toBe('Lax');
 	});
 
-	it('captureStorageForTab extracts localStorage and sessionStorage using sendCommand', async () => {
+	it('captureStorageForTab preserves storage values for local QA inspection and replay', async () => {
 		const mockSendCommand = vi.fn().mockResolvedValue({
 			result: {
 				value: JSON.stringify({
-					localStorage: [{ name: 'user_theme', value: 'dark' }],
+					localStorage: [
+						{ name: 'user_theme', value: 'dark' },
+						{ name: 'access_token', value: 'token-value' },
+						{ name: 'persisted-state', value: '{"auth":{"refresh_token":"refresh-secret"},"theme":"dark"}' }
+					],
 					sessionStorage: [{ name: 'current_step', value: '2' }]
 				})
 			}
@@ -57,7 +61,11 @@ describe('storageStateCapture', () => {
 
 		const storage = await captureStorageForTab(123, 'https://example.com', mockSendCommand);
 		expect(storage.origin).toBe('https://example.com');
-		expect(storage.localStorage).toEqual([{ name: 'user_theme', value: 'dark' }]);
+		expect(storage.localStorage).toEqual([
+			{ name: 'user_theme', value: 'dark' },
+			{ name: 'access_token', value: 'token-value' },
+			{ name: 'persisted-state', value: '{"auth":{"refresh_token":"refresh-secret"},"theme":"dark"}' }
+		]);
 		expect(storage.sessionStorage).toEqual([{ name: 'current_step', value: '2' }]);
 	});
 
@@ -99,8 +107,10 @@ describe('storageStateCapture', () => {
 		expect(state.phase).toBe('initial');
 		expect(state.cookies.length).toBe(1);
 		expect(state.cookies[0].name).toBe('session_id');
+		expect(state.cookies[0].value).toBe('abc999');
 		expect(state.origins.length).toBe(1);
 		expect(state.origins[0].origin).toBe('https://knitto.test');
 		expect(state.origins[0].localStorage).toEqual([{ name: 'cart_count', value: '5' }]);
 	});
+
 });

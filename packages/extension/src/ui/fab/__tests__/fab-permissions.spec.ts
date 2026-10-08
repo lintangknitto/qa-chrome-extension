@@ -88,6 +88,20 @@ describe('fab-permissions RBAC Matrix', () => {
 			expect(canGenerateAiScript(qaUser)).toBe(true);
 			expect(isReadOnlyViewer(qaUser)).toBe(false);
 		});
+
+		it('denies edit and delete when project ownership is missing or unknown', () => {
+			const unknownOwnerProjects = [
+				{},
+				{ created_by_user_id: null },
+				{ created_by_user_id: undefined }
+			];
+			for (const project of unknownOwnerProjects) {
+				expect(canEditProject(qaUser, project)).toBe(false);
+				expect(canDeleteProject(qaUser, project)).toBe(false);
+			}
+			expect(canEditProject(qaUser)).toBe(false);
+			expect(canDeleteProject(qaUser)).toBe(false);
+		});
 	});
 
 	describe('IMPLEMENTOR & DEV Permissions', () => {

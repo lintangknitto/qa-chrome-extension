@@ -61,7 +61,10 @@ describe('Project Management UI & Modals', () => {
 			await waitFor(() => {
 				expect(onSave).toHaveBeenCalledWith({
 					name: 'New Mobile App',
+					id_program: null,
+					program_ids: [],
 					base_url: undefined,
+					repo_url: undefined,
 					description: undefined,
 					is_active: true
 				});
@@ -96,8 +99,58 @@ describe('Project Management UI & Modals', () => {
 			await waitFor(() => {
 				expect(onSave).toHaveBeenCalledWith({
 					name: 'Knitto Portal Updated',
+					id_program: null,
+					program_ids: [],
 					base_url: 'https://knitto.co.id',
+					repo_url: undefined,
 					description: 'Katalog kain online',
+					is_active: true
+				});
+				expect(onClose).toHaveBeenCalled();
+			});
+		});
+
+		it('allows selecting multiple master programs and submits program_ids', async () => {
+			const onSave = vi.fn().mockResolvedValue(undefined);
+			const onClose = vi.fn();
+
+			const programs = [
+				{ id_program: 1, name: 'Knitto Portal', code: 'knitto-portal', base_url: 'https://portal.knitto.co.id', is_active: true },
+				{ id_program: 2, name: 'Knitto ERP', code: 'knitto-erp', base_url: 'https://erp.knitto.co.id', is_active: true }
+			];
+
+			render(
+				<CreateEditProjectModal
+					isOpen={true}
+					onClose={onClose}
+					project={null}
+					programs={programs}
+					onSave={onSave}
+				/>
+			);
+
+			const nameInput = screen.getByLabelText(/Nama Project/i);
+			fireEvent.change(nameInput, { target: { value: 'Sprint 10 Cross Program' } });
+
+			// Check first program
+			const prog1Checkbox = screen.getByLabelText(/Knitto Portal/i);
+			fireEvent.click(prog1Checkbox);
+
+			// Check second program
+			const prog2Checkbox = screen.getByLabelText(/Knitto ERP/i);
+			fireEvent.click(prog2Checkbox);
+
+			const submitBtn = screen.getByRole('button', { name: /Tambah Project/i });
+			fireEvent.click(submitBtn);
+
+			await waitFor(() => {
+				expect(onSave).toHaveBeenCalledWith({
+					name: 'Sprint 10 Cross Program',
+					id_program: 1,
+					program_ids: [1, 2],
+					base_url: 'https://portal.knitto.co.id',
+					repo_url: undefined,
+					description: undefined,
 					is_active: true
 				});
 				expect(onClose).toHaveBeenCalled();

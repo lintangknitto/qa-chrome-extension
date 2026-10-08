@@ -18,17 +18,20 @@ import {
 	FileText,
 	Share2,
 	MoreVertical,
-	Repeat
+	Repeat,
+	Layers
 } from 'lucide-react';
 import type {
 	RecordingApiClient,
 	RecordingProject,
 	RecordingSession,
 	TestCaseItem,
-	TestCaseSummary
+	TestCaseSummary,
+	ProgramItem
 } from '../../../recording/apiClient';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/Card';
 import { Input } from '../components/Input';
+import { Combobox } from '../components/Combobox';
 import { Select } from '../components/Select';
 import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
@@ -50,7 +53,9 @@ export interface ProjectViewProps {
 	onRefreshProjects: () => Promise<void>;
 	onCreateProject: (input: {
 		name: string;
+		id_program?: number | null;
 		base_url?: string;
+		repo_url?: string;
 		description?: string;
 	}) => Promise<number | undefined>;
 	onSelectTestCaseForRecording: (project: RecordingProject, testCase: TestCaseItem) => void;
@@ -97,6 +102,11 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	const [tcSearch, setTcSearch] = useState('');
 	const [tcStatusFilter, setTcStatusFilter] = useState('');
 	const [activeDropdownTcId, setActiveDropdownTcId] = useState<number | null>(null);
+	const [dropdownCoords, setDropdownCoords] = useState<{
+		top?: number;
+		bottom?: number;
+		right: number;
+	} | null>(null);
 
 	// Project Modal & Dropdown states
 	const [isCreateEditProjectModalOpen, setCreateEditProjectModalOpen] = useState(false);
@@ -105,19 +115,30 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	const [deletingProject, setDeletingProject] = useState<RecordingProject | null>(null);
 	const [activeDropdownProjectId, setActiveDropdownProjectId] = useState<number | null>(null);
 
-	// Click outside listener for action dropdowns
+	// Click outside and scroll listener for action dropdowns
 	useEffect(() => {
 		const handleGlobalClick = (e: MouseEvent) => {
 			const target = e.target as HTMLElement | null;
 			if (activeDropdownTcId !== null && !target?.closest('.tc-action-dropdown-container')) {
 				setActiveDropdownTcId(null);
+				setDropdownCoords(null);
 			}
 			if (activeDropdownProjectId !== null && !target?.closest('.proj-action-dropdown-container')) {
 				setActiveDropdownProjectId(null);
 			}
 		};
+		const handleScroll = () => {
+			if (activeDropdownTcId !== null) {
+				setActiveDropdownTcId(null);
+				setDropdownCoords(null);
+			}
+		};
 		window.addEventListener('click', handleGlobalClick);
-		return () => window.removeEventListener('click', handleGlobalClick);
+		window.addEventListener('scroll', handleScroll, true);
+		return () => {
+			window.removeEventListener('click', handleGlobalClick);
+			window.removeEventListener('scroll', handleScroll, true);
+		};
 	}, [activeDropdownTcId, activeDropdownProjectId]);
 
 	// Modal states
@@ -137,6 +158,23 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	const [loadingProjectSessions, setLoadingProjectSessions] = useState(false);
 	const [sessionSearch, setSessionSearch] = useState('');
 
+	// Master Program states
+	const [activePrograms, setActivePrograms] = useState<ProgramItem[]>([]);
+	const [selectedProgramFilter, setSelectedProgramFilter] = useState<number | ''>('');
+
+	const loadActivePrograms = useCallback(async () => {
+		try {
+			const res = await api.listActivePrograms();
+			setActivePrograms(res.items || []);
+		} catch {
+			// non-blocking
+		}
+	}, [api]);
+
+	useEffect(() => {
+		void loadActivePrograms();
+	}, [loadActivePrograms]);
+
 	const handleOpenCreateProject = () => {
 		setEditingProject(null);
 		setCreateEditProjectModalOpen(true);
@@ -154,7 +192,9 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 
 	const handleSaveProject = async (data: {
 		name: string;
+		id_program?: number | null;
 		base_url?: string;
+		repo_url?: string;
 		description?: string;
 		is_active?: boolean;
 	}) => {
@@ -177,16 +217,21 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	};
 
 	const handleConfirmDeleteProject = async (proj: RecordingProject) => {
-		const res = await api.deleteProject(proj.id_project);
-		if (res.deactivated) {
-			onShowToast('Project memiliki riwayat data sehingga dinonaktifkan.', 'info');
-		} else {
-			onShowToast('Project berhasil dihapus secara permanen.', 'success');
+		try {
+			const res = await api.deleteProject(proj.id_project);
+			if (res?.deactivated) {
+				onShowToast('Project memiliki riwayat data sehingga dinonaktifkan.', 'info');
+			} else {
+				onShowToast('Project berhasil dihapus secara permanen.', 'success');
+			}
+			if (selectedProject?.id_project === proj.id_project) {
+				handleSetSelectedProject(null);
+			}
+			await onRefreshProjects();
+		} catch (err) {
+			onShowToast((err as Error).message || 'Gagal menghapus project.', 'error');
+			throw err;
 		}
-		if (selectedProject?.id_project === proj.id_project) {
-			handleSetSelectedProject(null);
-		}
-		await onRefreshProjects();
 	};
 
 	const loadTestCases = useCallback(
@@ -201,7 +246,12 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 				setTestCases(res.items);
 				setSummary(res.summary);
 			} catch (err) {
-				onShowToast((err as Error).message || 'Gagal memuat test cases.', 'error');
+				const isAuthErr =
+					(err as any)?.status === 401 ||
+					(err as Error)?.message?.toLowerCase().includes('login');
+				if (!isAuthErr) {
+					onShowToast((err as Error).message || 'Gagal memuat test cases.', 'error');
+				}
 			} finally {
 				setLoadingTestCases(false);
 			}
@@ -216,7 +266,12 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 				const res = await api.listSessions({ id_project: idProject, perPage: 100 });
 				setProjectSessions(res.items);
 			} catch (err) {
-				onShowToast((err as Error).message || 'Gagal memuat riwayat sesi project.', 'error');
+				const isAuthErr =
+					(err as any)?.status === 401 ||
+					(err as Error)?.message?.toLowerCase().includes('login');
+				if (!isAuthErr) {
+					onShowToast((err as Error).message || 'Gagal memuat riwayat sesi project.', 'error');
+				}
 			} finally {
 				setLoadingProjectSessions(false);
 			}
@@ -273,10 +328,23 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 		}
 	};
 
-	const filteredProjects = projects.filter((p) => {
-		const s = projectSearch.toLowerCase();
-		return p.name.toLowerCase().includes(s) || (p.code && p.code.toLowerCase().includes(s));
-	});
+	const filteredProjects = useMemo(() => {
+		const s = projectSearch.toLowerCase().trim();
+		return projects.filter((p) => {
+			const matchSearch =
+				!s ||
+				p.name.toLowerCase().includes(s) ||
+				(p.code && p.code.toLowerCase().includes(s)) ||
+				(p.program_name && p.program_name.toLowerCase().includes(s)) ||
+				(p.programs && p.programs.some((prog) => prog.name.toLowerCase().includes(s) || prog.code.toLowerCase().includes(s)));
+			const matchProg =
+				selectedProgramFilter === '' ||
+				p.id_program === selectedProgramFilter ||
+				(p.program_ids && p.program_ids.includes(selectedProgramFilter as number)) ||
+				(p.programs && p.programs.some((prog) => prog.id_program === selectedProgramFilter));
+			return matchSearch && matchProg;
+		});
+	}, [projects, projectSearch, selectedProgramFilter]);
 
 	const filteredProjectSessions = useMemo(() => {
 		const s = sessionSearch.toLowerCase().trim();
@@ -338,10 +406,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 			<div style={{ display: 'flex', flexDirection: 'column', gap: '12px', width: '100%' }}>
 				<Card>
 					<CardHeader>
-						<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+						<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', flexWrap: 'wrap', gap: '8px' }}>
 							<div>
-								<CardTitle style={{ fontSize: '15px', fontWeight: 600 }}>Manajemen Project</CardTitle>
-								<CardDescription>Pilih project untuk mengelola skenario dan test case</CardDescription>
+								<CardTitle style={{ fontSize: '15px', fontWeight: 600 }}>Daftar Project & Skenario</CardTitle>
+								<CardDescription>Pilih project untuk mengelola skenario spreadsheet dan riwayat sesi</CardDescription>
 							</div>
 							{canCreateProject && (
 								<Button
@@ -351,18 +419,40 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 									icon={<Plus size={14} />}
 									onClick={handleOpenCreateProject}
 								>
-									Project Baru
+									Tambah Project
 								</Button>
 							)}
 						</div>
 					</CardHeader>
 					<CardContent>
-						<Input
-							placeholder="Cari nama atau kode project..."
-							icon={<Search size={14} />}
-							value={projectSearch}
-							onChange={(e) => setProjectSearch(e.target.value)}
-						/>
+						<div style={{ display: 'flex', gap: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
+							<div style={{ flex: 1, minWidth: '200px' }}>
+								<Input
+									placeholder="Cari nama project, kode, atau program..."
+									icon={<Search size={14} />}
+									value={projectSearch}
+									onChange={(e) => setProjectSearch(e.target.value)}
+								/>
+							</div>
+							{activePrograms.length > 0 && (
+								<div style={{ minWidth: '180px' }}>
+									<Combobox
+										placeholder="Semua Master Program"
+										searchPlaceholder="Cari program..."
+										value={selectedProgramFilter}
+										onChange={(val) => setSelectedProgramFilter(val ? Number(val) : '')}
+										options={[
+											{ value: '', label: 'Semua Master Program' },
+											...activePrograms.map((prog) => ({
+												value: prog.id_program,
+												label: `${prog.name} (${prog.code})`,
+												code: prog.type || 'FRONTEND'
+											}))
+										]}
+									/>
+								</div>
+							)}
+						</div>
 
 						<div style={{ display: 'flex', flexDirection: 'column', gap: '8px', marginTop: '12px' }}>
 							{filteredProjects.length === 0 ? (
@@ -409,7 +499,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 											}}
 										>
 											<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
-												<div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+												<div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
 													<span style={{ fontWeight: 600, fontSize: '14px', color: '#0f172a' }}>{p.name}</span>
 													<span
 														style={{
@@ -424,6 +514,52 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 													>
 														{p.code}
 													</span>
+													{p.programs && p.programs.length > 0 ? (
+														p.programs.map((prog) => {
+															const isFrontend = prog.type === 'FRONTEND';
+															return (
+																<span
+																	key={prog.id_program}
+																	style={{
+																		padding: '2px 8px',
+																		borderRadius: '6px',
+																		fontSize: '11px',
+																		fontWeight: 600,
+																		background: isFrontend ? '#ecfdf5' : '#fdf4ff',
+																		color: isFrontend ? '#059669' : '#9333ea',
+																		border: `1px solid ${isFrontend ? '#a7f3d0' : '#f0abfc'}`,
+																		display: 'inline-flex',
+																		alignItems: 'center',
+																		gap: '4px'
+																	}}
+																	title={`Master Program: ${prog.name} (${prog.type || 'FRONTEND'})`}
+																>
+																	<Layers size={11} />
+																	{prog.name}
+																	<span style={{ fontSize: '9px', opacity: 0.85 }}>({isFrontend ? 'FE' : 'SVC'})</span>
+																</span>
+															);
+														})
+													) : p.program_name ? (
+														<span
+															style={{
+																padding: '2px 8px',
+																borderRadius: '6px',
+																fontSize: '11px',
+																fontWeight: 600,
+																background: '#eff6ff',
+																color: '#2563eb',
+																border: '1px solid #bfdbfe',
+																display: 'inline-flex',
+																alignItems: 'center',
+																gap: '4px'
+															}}
+															title={`Master Program: ${p.program_name}`}
+														>
+															<Layers size={11} />
+															{p.program_name}
+														</span>
+													) : null}
 													{p.is_active === false && (
 														<span
 															style={{
@@ -444,14 +580,29 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 													<div
 														style={{
 															fontSize: '12px',
+															color: '#475569',
+															display: 'flex',
+															alignItems: 'center',
+															gap: '5px'
+														}}
+													>
+														<Globe size={13} color="#2563eb" />
+														<span style={{ fontWeight: 500, color: '#64748b' }}>Target UI:</span>
+														<span style={{ color: '#0f172a' }}>{p.base_url}</span>
+													</div>
+												)}
+												{p.repo_url && (
+													<div
+														style={{
+															fontSize: '12px',
 															color: '#64748b',
 															display: 'flex',
 															alignItems: 'center',
 															gap: '5px'
 														}}
 													>
-														<Globe size={13} color="#94a3b8" />
-														<span>{p.base_url}</span>
+														<FolderKanban size={13} color="#94a3b8" />
+														<span style={{ fontFamily: 'monospace', fontSize: '11px', color: '#475569' }}>{p.repo_url}</span>
 													</div>
 												)}
 											</div>
@@ -585,6 +736,29 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 						</div>
 					</CardContent>
 				</Card>
+
+				{/* Modal Tambah / Edit Project */}
+				<CreateEditProjectModal
+					isOpen={isCreateEditProjectModalOpen}
+					onClose={() => {
+						setCreateEditProjectModalOpen(false);
+						setEditingProject(null);
+					}}
+					project={editingProject}
+					programs={activePrograms}
+					onSave={handleSaveProject}
+				/>
+
+				{/* Modal Konfirmasi Hapus Project */}
+				<DeleteProjectModal
+					isOpen={isDeleteProjectModalOpen}
+					onClose={() => {
+						setDeleteProjectModalOpen(false);
+						setDeletingProject(null);
+					}}
+					project={deletingProject}
+					onConfirmDelete={handleConfirmDeleteProject}
+				/>
 			</div>
 		);
 	}
@@ -653,6 +827,52 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 								>
 									{selectedProject.code}
 								</span>
+								{selectedProject.programs && selectedProject.programs.length > 0 ? (
+									selectedProject.programs.map((prog) => {
+										const isFrontend = prog.type === 'FRONTEND';
+										return (
+											<span
+												key={prog.id_program}
+												style={{
+													padding: '1px 6px',
+													borderRadius: '4px',
+													fontSize: '11px',
+													fontWeight: 600,
+													background: isFrontend ? '#ecfdf5' : '#fdf4ff',
+													color: isFrontend ? '#059669' : '#9333ea',
+													border: `1px solid ${isFrontend ? '#a7f3d0' : '#f0abfc'}`,
+													display: 'inline-flex',
+													alignItems: 'center',
+													gap: '4px'
+												}}
+												title={`Master Program: ${prog.name} (${prog.type || 'FRONTEND'})`}
+											>
+												<Layers size={11} />
+												{prog.name}
+												<span style={{ fontSize: '9px', opacity: 0.85 }}>({isFrontend ? 'FE' : 'SVC'})</span>
+											</span>
+										);
+									})
+								) : selectedProject.program_name ? (
+									<span
+										style={{
+											padding: '1px 6px',
+											borderRadius: '4px',
+											fontSize: '11px',
+											fontWeight: 600,
+											background: '#eff6ff',
+											color: '#2563eb',
+											border: '1px solid #bfdbfe',
+											display: 'inline-flex',
+											alignItems: 'center',
+											gap: '4px'
+										}}
+										title={`Master Program: ${selectedProject.program_name}`}
+									>
+										<Layers size={11} />
+										{selectedProject.program_name}
+									</span>
+								) : null}
 								{selectedProject.is_active === false && (
 									<span
 										style={{
@@ -669,8 +889,10 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 								)}
 							</div>
 							{selectedProject.base_url && (
-								<div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px' }}>
-									{selectedProject.base_url}
+								<div style={{ fontSize: '12px', color: '#475569', marginTop: '3px', display: 'flex', alignItems: 'center', gap: '5px' }}>
+									<Globe size={13} color="#2563eb" />
+									<span style={{ color: '#64748b', fontWeight: 500 }}>Target UI:</span>
+									<span style={{ color: '#0f172a' }}>{selectedProject.base_url}</span>
 								</div>
 							)}
 						</div>
@@ -868,17 +1090,19 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 								onChange={(e) => setTcSearch(e.target.value)}
 							/>
 						</div>
-						<div style={{ width: '130px' }}>
-							<Select
+						<div style={{ width: '150px' }}>
+							<Combobox
+								placeholder="Semua Status"
+								searchPlaceholder="Cari status..."
 								value={tcStatusFilter}
-								onChange={(e) => setTcStatusFilter(e.target.value)}
+								onChange={(val) => setTcStatusFilter(String(val))}
 								options={[
 									{ value: '', label: 'Semua Status' },
-									{ value: 'Progress', label: 'Progress' },
-									{ value: 'Passed', label: 'Passed' },
-									{ value: 'Failed', label: 'Failed' },
-									{ value: 'Re-Test', label: 'Re-Test' },
-									{ value: 'Skip', label: 'Skip' }
+									{ value: 'Progress', label: 'Progress', code: 'PROG' },
+									{ value: 'Passed', label: 'Passed', code: 'PASS' },
+									{ value: 'Failed', label: 'Failed', code: 'FAIL' },
+									{ value: 'Re-Test', label: 'Re-Test', code: 'RETRY' },
+									{ value: 'Skip', label: 'Skip', code: 'SKIP' }
 								]}
 							/>
 						</div>
@@ -989,7 +1213,25 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 												</span>
 											</td>
 											<td style={{ padding: '10px 12px', fontWeight: 600, color: '#0f172a', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' }}>
-												{tc.test_case_id}
+												<div>{tc.test_case_id}</div>
+												{tc.program_name && (
+													<span
+														style={{
+															display: 'inline-block',
+															marginTop: '3px',
+															padding: '1px 6px',
+															borderRadius: '4px',
+															fontSize: '10px',
+															fontWeight: 600,
+															background: '#eff6ff',
+															color: '#2563eb',
+															border: '1px solid #bfdbfe'
+														}}
+														title={`Master Program: ${tc.program_name}`}
+													>
+														{tc.program_code || tc.program_name}
+													</span>
+												)}
 											</td>
 											<td style={{ padding: '10px 12px', color: '#475569', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' }}>{tc.feature || '-'}</td>
 											<td style={{ padding: '10px 12px', color: '#1e293b', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', verticalAlign: 'top' }}>
@@ -1018,7 +1260,20 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 														title="Pilihan Aksi"
 														onClick={(e) => {
 															e.stopPropagation();
-															setActiveDropdownTcId(activeDropdownTcId === tc.id_test_case ? null : tc.id_test_case);
+															if (activeDropdownTcId === tc.id_test_case) {
+																setActiveDropdownTcId(null);
+																setDropdownCoords(null);
+															} else {
+																const rect = e.currentTarget.getBoundingClientRect();
+																const spaceBelow = window.innerHeight - rect.bottom;
+																const openUp = spaceBelow < 190;
+																setDropdownCoords({
+																	top: openUp ? undefined : rect.bottom + 4,
+																	bottom: openUp ? window.innerHeight - rect.top + 4 : undefined,
+																	right: Math.max(8, window.innerWidth - rect.right)
+																});
+																setActiveDropdownTcId(tc.id_test_case);
+															}
 														}}
 														style={{
 															padding: '4px 6px',
@@ -1026,154 +1281,6 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 															background: activeDropdownTcId === tc.id_test_case ? '#e2e8f0' : 'transparent'
 														}}
 													/>
-
-													{activeDropdownTcId === tc.id_test_case && (
-														<div
-															style={{
-																position: 'absolute',
-																right: 0,
-																top: '100%',
-																marginTop: 4,
-																background: '#ffffff',
-																border: '1px solid #cbd5e1',
-																borderRadius: 8,
-																boxShadow: '0 10px 25px rgba(15, 23, 42, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05)',
-																zIndex: 50,
-																minWidth: 160,
-																padding: '4px',
-																display: 'flex',
-																flexDirection: 'column',
-																gap: 2,
-																textAlign: 'left'
-															}}
-															onClick={(e) => e.stopPropagation()}
-														>
-															{allowRecord && (
-																<button
-																	type="button"
-																	style={{
-																		display: 'flex',
-																		alignItems: 'center',
-																		gap: 8,
-																		padding: '7px 10px',
-																		fontSize: 11.5,
-																		fontWeight: 600,
-																		color: '#15803d',
-																		background: 'transparent',
-																		border: 'none',
-																		borderRadius: 6,
-																		cursor: 'pointer',
-																		width: '100%',
-																		textAlign: 'left'
-																	}}
-																	onMouseEnter={(e) => (e.currentTarget.style.background = '#f0fdf4')}
-																	onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-																	onClick={() => {
-																		setActiveDropdownTcId(null);
-																		onSelectTestCaseForRecording(selectedProject, tc);
-																	}}
-																>
-																	<Play size={13} fill="#15803d" />
-																	<span>Mulai Rekam</span>
-																</button>
-															)}
-
-															{Boolean(tc.last_session_id) && (
-																<button
-																	type="button"
-																	style={{
-																		display: 'flex',
-																		alignItems: 'center',
-																		gap: 8,
-																		padding: '7px 10px',
-																		fontSize: 11.5,
-																		fontWeight: 600,
-																		color: '#2F3574',
-																		background: 'transparent',
-																		border: 'none',
-																		borderRadius: 6,
-																		cursor: 'pointer',
-																		width: '100%',
-																		textAlign: 'left'
-																	}}
-																	onMouseEnter={(e) => (e.currentTarget.style.background = '#eef2ff')}
-																	onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-																	onClick={() => {
-																		setActiveDropdownTcId(null);
-																		setResultModalSessionId(tc.last_session_id!);
-																		setResultModalTestCase(tc);
-																		setResultModalOpen(true);
-																	}}
-																>
-																	<Eye size={13} />
-																	<span>Lihat Hasil & Video</span>
-																</button>
-															)}
-
-															{allowManageTc && (
-																<>
-																	<button
-																		type="button"
-																		style={{
-																			display: 'flex',
-																			alignItems: 'center',
-																			gap: 8,
-																			padding: '7px 10px',
-																			fontSize: 11.5,
-																			fontWeight: 500,
-																			color: '#334155',
-																			background: 'transparent',
-																			border: 'none',
-																			borderRadius: 6,
-																			cursor: 'pointer',
-																			width: '100%',
-																			textAlign: 'left'
-																		}}
-																		onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
-																		onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-																		onClick={() => {
-																			setActiveDropdownTcId(null);
-																			setEditingTestCase(tc);
-																			setCreateTcModalOpen(true);
-																		}}
-																	>
-																		<Edit size={13} />
-																		<span>Edit Test Case</span>
-																	</button>
-
-																	<div style={{ height: 1, background: '#f1f5f9', margin: '2px 0' }} />
-
-																	<button
-																		type="button"
-																		style={{
-																			display: 'flex',
-																			alignItems: 'center',
-																			gap: 8,
-																			padding: '7px 10px',
-																			fontSize: 11.5,
-																			fontWeight: 500,
-																			color: '#b91c1c',
-																			background: 'transparent',
-																			border: 'none',
-																			borderRadius: 6,
-																			cursor: 'pointer',
-																			width: '100%',
-																			textAlign: 'left'
-																		}}
-																		onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
-																		onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
-																		onClick={() => {
-																			setActiveDropdownTcId(null);
-																			handleDeleteTestCase(tc);
-																		}}
-																	>
-																		<Trash2 size={13} />
-																		<span>Hapus Test Case</span>
-																	</button>
-																</>
-															)}
-														</div>
-													)}
 												</div>
 											</td>
 										</tr>
@@ -1182,6 +1289,165 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 							</tbody>
 						</table>
 					</div>
+
+					{/* Floating Dropdown Menu (Position Fixed to prevent table overflow clipping) */}
+					{Boolean(activeDropdownTcId && dropdownCoords) && (() => {
+						const activeTc = testCases.find((t) => t.id_test_case === activeDropdownTcId);
+						const coords = dropdownCoords;
+						if (!activeTc || !coords) return null;
+						return (
+							<div
+								className="tc-action-dropdown-container tc-action-dropdown-menu"
+								style={{
+									position: 'fixed',
+									top: coords.top !== undefined ? `${coords.top}px` : undefined,
+									bottom: coords.bottom !== undefined ? `${coords.bottom}px` : undefined,
+									right: `${coords.right}px`,
+									background: '#ffffff',
+									border: '1px solid #cbd5e1',
+									borderRadius: 8,
+									boxShadow: '0 10px 25px rgba(15, 23, 42, 0.18), 0 0 0 1px rgba(0, 0, 0, 0.05)',
+									zIndex: 99999,
+									minWidth: 165,
+									padding: '4px',
+									display: 'flex',
+									flexDirection: 'column',
+									gap: 2,
+									textAlign: 'left'
+								}}
+								onClick={(e) => e.stopPropagation()}
+							>
+								{allowRecord && (
+									<button
+										type="button"
+										style={{
+											display: 'flex',
+											alignItems: 'center',
+											gap: 8,
+											padding: '7px 10px',
+											fontSize: 11.5,
+											fontWeight: 600,
+											color: '#15803d',
+											background: 'transparent',
+											border: 'none',
+											borderRadius: 6,
+											cursor: 'pointer',
+											width: '100%',
+											textAlign: 'left'
+										}}
+										onMouseEnter={(e) => (e.currentTarget.style.background = '#f0fdf4')}
+										onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+										onClick={() => {
+											setActiveDropdownTcId(null);
+											setDropdownCoords(null);
+											onSelectTestCaseForRecording(selectedProject, activeTc);
+										}}
+									>
+										<Play size={13} fill="#15803d" />
+										<span>Mulai Rekam</span>
+									</button>
+								)}
+
+								{Boolean(activeTc.last_session_id) && (
+									<button
+										type="button"
+										style={{
+											display: 'flex',
+											alignItems: 'center',
+											gap: 8,
+											padding: '7px 10px',
+											fontSize: 11.5,
+											fontWeight: 600,
+											color: '#2F3574',
+											background: 'transparent',
+											border: 'none',
+											borderRadius: 6,
+											cursor: 'pointer',
+											width: '100%',
+											textAlign: 'left'
+										}}
+										onMouseEnter={(e) => (e.currentTarget.style.background = '#eef2ff')}
+										onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+										onClick={() => {
+											setActiveDropdownTcId(null);
+											setDropdownCoords(null);
+											setResultModalSessionId(activeTc.last_session_id!);
+											setResultModalTestCase(activeTc);
+											setResultModalOpen(true);
+										}}
+									>
+										<Eye size={13} />
+										<span>Lihat Hasil & Video</span>
+									</button>
+								)}
+
+								{allowManageTc && (
+									<>
+										<button
+											type="button"
+											style={{
+												display: 'flex',
+												alignItems: 'center',
+												gap: 8,
+												padding: '7px 10px',
+												fontSize: 11.5,
+												fontWeight: 500,
+												color: '#334155',
+												background: 'transparent',
+												border: 'none',
+												borderRadius: 6,
+												cursor: 'pointer',
+												width: '100%',
+												textAlign: 'left'
+											}}
+											onMouseEnter={(e) => (e.currentTarget.style.background = '#f1f5f9')}
+											onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+											onClick={() => {
+												setActiveDropdownTcId(null);
+												setDropdownCoords(null);
+												setEditingTestCase(activeTc);
+												setCreateTcModalOpen(true);
+											}}
+										>
+											<Edit size={13} />
+											<span>Edit Test Case</span>
+										</button>
+
+										<div style={{ height: 1, background: '#f1f5f9', margin: '2px 0' }} />
+
+										<button
+											type="button"
+											style={{
+												display: 'flex',
+												alignItems: 'center',
+												gap: 8,
+												padding: '7px 10px',
+												fontSize: 11.5,
+												fontWeight: 500,
+												color: '#b91c1c',
+												background: 'transparent',
+												border: 'none',
+												borderRadius: 6,
+												cursor: 'pointer',
+												width: '100%',
+												textAlign: 'left'
+											}}
+											onMouseEnter={(e) => (e.currentTarget.style.background = '#fee2e2')}
+											onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+											onClick={() => {
+												setActiveDropdownTcId(null);
+												setDropdownCoords(null);
+												handleDeleteTestCase(activeTc);
+											}}
+										>
+											<Trash2 size={13} />
+											<span>Hapus Test Case</span>
+										</button>
+									</>
+								)}
+							</div>
+						);
+					})()}
 						</>
 					) : (
 						<div>
@@ -1325,6 +1591,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 				isOpen={isCreateTcModalOpen}
 				initialData={editingTestCase}
 				projectName={selectedProject.name}
+				programs={selectedProject?.programs || []}
 				onClose={() => {
 					setCreateTcModalOpen(false);
 					setEditingTestCase(null);
@@ -1356,6 +1623,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 					setEditingProject(null);
 				}}
 				project={editingProject}
+				programs={activePrograms}
 				onSave={handleSaveProject}
 			/>
 

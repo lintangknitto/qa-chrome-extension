@@ -1,11 +1,35 @@
+export interface ProgramItem {
+	id_program: number;
+	name: string;
+	code: string;
+	type?: 'FRONTEND' | 'SERVICE';
+	grafana_dashboard_url?: string | null;
+	description?: string | null;
+	base_url?: string | null;
+	repo_url?: string | null;
+	project_count?: number;
+	is_active: boolean;
+	created_by_user_id?: number | null;
+	created_at?: string | null;
+	updated_at?: string | null;
+}
+
 export interface RecordingProject {
 	id_project: number;
+	id_program?: number | null;
+	program_name?: string | null;
+	program_code?: string | null;
+	program_ids?: number[];
+	programs?: Array<ProgramItem>;
 	name: string;
 	code: string;
 	is_active: boolean;
 	base_url?: string | null;
+	repo_url?: string | null;
 	description?: string | null;
 	created_by_user_id?: number | null;
+	created_at?: string | null;
+	updated_at?: string | null;
 }
 
 export interface RecordingSession {
@@ -24,11 +48,19 @@ export interface RecordingSession {
 	video_url?: string | null;
 	record_video?: number | boolean | null;
 	target_url?: string | null;
+	created_at?: string | null;
+	updated_at?: string | null;
 }
 
 export interface TestCaseItem {
 	id_test_case: number;
 	id_project: number;
+	id_program?: number | null;
+	program_name?: string | null;
+	program_code?: string | null;
+	program_type?: 'FRONTEND' | 'SERVICE' | string | null;
+	program_base_url?: string | null;
+	program_repo_url?: string | null;
 	group_no?: string | null;
 	feature?: string | null;
 	process_no?: string | null;
@@ -144,7 +176,10 @@ export class RecordingApiClient {
 
 	createProject(input: {
 		name: string;
+		id_program?: number | null;
+		program_ids?: number[];
 		base_url?: string;
+		repo_url?: string;
 		description?: string;
 		code?: string;
 	}): Promise<RecordingProject> {
@@ -155,7 +190,10 @@ export class RecordingApiClient {
 		idProject: number,
 		input: {
 			name?: string;
+			id_program?: number | null;
+			program_ids?: number[];
 			base_url?: string;
+			repo_url?: string;
 			description?: string;
 			is_active?: boolean;
 		}
@@ -173,7 +211,7 @@ export class RecordingApiClient {
 		return this._request('DELETE', `/projects/${idProject}`);
 	}
 
-	listProjects(params: { page?: number; perPage?: number; search?: string } = {}): Promise<{
+	listProjects(params: { page?: number; perPage?: number; search?: string; id_program?: number } = {}): Promise<{
 		items: RecordingProject[];
 		total?: number;
 	}> {
@@ -181,8 +219,71 @@ export class RecordingApiClient {
 		if (params.page !== undefined) query.set('page', String(params.page));
 		if (params.perPage !== undefined) query.set('perPage', String(params.perPage));
 		if (params.search) query.set('search', params.search);
+		if (params.id_program !== undefined) query.set('id_program', String(params.id_program));
 		const suffix = query.toString() ? `?${query.toString()}` : '';
 		return this._request('GET', `/projects${suffix}`);
+	}
+
+	listPrograms(params: { page?: number; perPage?: number; search?: string; is_active?: string } = {}): Promise<{
+		items: ProgramItem[];
+		total?: number;
+		page?: number;
+		perPage?: number;
+	}> {
+		const query = new URLSearchParams();
+		if (params.page !== undefined) query.set('page', String(params.page));
+		if (params.perPage !== undefined) query.set('perPage', String(params.perPage));
+		if (params.search) query.set('search', params.search);
+		if (params.is_active) query.set('is_active', params.is_active);
+		const suffix = query.toString() ? `?${query.toString()}` : '';
+		return this._request('GET', `/programs${suffix}`);
+	}
+
+	listActivePrograms(params: { search?: string } = {}): Promise<{ items: ProgramItem[]; total?: number }> {
+		const query = new URLSearchParams();
+		if (params.search) query.set('search', params.search);
+		const suffix = query.toString() ? `?${query.toString()}` : '';
+		return this._request('GET', `/programs/active${suffix}`);
+	}
+
+	getProgram(idProgram: number): Promise<ProgramItem> {
+		return this._request<ProgramItem>('GET', `/programs/${idProgram}`);
+	}
+
+	createProgram(input: {
+		name: string;
+		code?: string;
+		type?: 'FRONTEND' | 'SERVICE';
+		grafana_dashboard_url?: string;
+		base_url?: string;
+		repo_url?: string;
+		description?: string;
+	}): Promise<ProgramItem> {
+		return this._request<ProgramItem>('POST', '/programs', input);
+	}
+
+	updateProgram(
+		idProgram: number,
+		input: {
+			name?: string;
+			code?: string;
+			type?: 'FRONTEND' | 'SERVICE';
+			grafana_dashboard_url?: string;
+			base_url?: string;
+			repo_url?: string;
+			description?: string;
+			is_active?: boolean;
+		}
+	): Promise<ProgramItem> {
+		return this._request<ProgramItem>('PUT', `/programs/${idProgram}`, input);
+	}
+
+	deleteProgram(idProgram: number): Promise<{
+		success: boolean;
+		action: string;
+		message: string;
+	}> {
+		return this._request('DELETE', `/programs/${idProgram}`);
 	}
 
 	createSession(input: {
@@ -192,6 +293,7 @@ export class RecordingApiClient {
 		title: string;
 		description?: string | null;
 		target_url?: string | null;
+		force_end_previous?: boolean;
 	}): Promise<RecordingSession> {
 		const payload: Record<string, unknown> = {
 			test_case_no: input.test_case_no,
@@ -209,7 +311,18 @@ export class RecordingApiClient {
 		if (input.target_url) {
 			payload.target_url = input.target_url;
 		}
+		if (input.force_end_previous) {
+			payload.force_end_previous = true;
+		}
 		return this._request<RecordingSession>('POST', '/sessions', payload);
+	}
+
+	getActiveSession(): Promise<RecordingSession | null> {
+		return this._request<RecordingSession | null>('GET', '/sessions/active');
+	}
+
+	discardActiveSession(): Promise<{ success: boolean; count: number }> {
+		return this._request<{ success: boolean; count: number }>('POST', '/sessions/active/discard');
 	}
 
 	listTestCases(
@@ -219,6 +332,7 @@ export class RecordingApiClient {
 			status?: string;
 			feature?: string;
 			test_type?: string;
+			id_program?: number;
 			page?: number;
 			limit?: number;
 		} = {}
@@ -234,6 +348,7 @@ export class RecordingApiClient {
 		if (params.status) query.set('status', params.status);
 		if (params.feature) query.set('feature', params.feature);
 		if (params.test_type) query.set('test_type', params.test_type);
+		if (params.id_program !== undefined) query.set('id_program', String(params.id_program));
 		if (params.page !== undefined) query.set('page', String(params.page));
 		if (params.limit !== undefined) query.set('limit', String(params.limit));
 		const suffix = query.toString() ? `?${query.toString()}` : '';
@@ -426,11 +541,11 @@ export class RecordingApiClient {
 		if (params.is_active && params.is_active !== 'all') searchParams.set('is_active', params.is_active);
 
 		const query = searchParams.toString();
-		return this._request<ListUsersResult>('GET', `/api/v1/users${query ? `?${query}` : ''}`);
+		return this._request<ListUsersResult>('GET', `/users${query ? `?${query}` : ''}`);
 	}
 
 	async getUserDetail(idUser: number): Promise<UserItem> {
-		return this._request<UserItem>('GET', `/api/v1/users/${idUser}`);
+		return this._request<UserItem>('GET', `/users/${idUser}`);
 	}
 
 	async createUser(payload: {
@@ -441,7 +556,7 @@ export class RecordingApiClient {
 		is_active?: boolean;
 		project_ids?: number[];
 	}): Promise<UserItem> {
-		return this._request<UserItem>('POST', '/api/v1/users', payload);
+		return this._request<UserItem>('POST', '/users', payload);
 	}
 
 	async updateUser(
@@ -453,7 +568,7 @@ export class RecordingApiClient {
 			project_ids?: number[];
 		}
 	): Promise<UserItem> {
-		return this._request<UserItem>('PUT', `/api/v1/users/${idUser}`, payload);
+		return this._request<UserItem>('PUT', `/users/${idUser}`, payload);
 	}
 
 	async resetUserPassword(
@@ -462,7 +577,7 @@ export class RecordingApiClient {
 	): Promise<{ success: boolean; message: string }> {
 		return this._request<{ success: boolean; message: string }>(
 			'PATCH',
-			`/api/v1/users/${idUser}/reset-password`,
+			`/users/${idUser}/reset-password`,
 			{ password }
 		);
 	}
@@ -472,7 +587,7 @@ export class RecordingApiClient {
 	): Promise<{ success: boolean; mode: 'deleted' | 'deactivated'; message: string }> {
 		return this._request<{ success: boolean; mode: 'deleted' | 'deactivated'; message: string }>(
 			'DELETE',
-			`/api/v1/users/${idUser}`
+			`/users/${idUser}`
 		);
 	}
 
@@ -482,7 +597,7 @@ export class RecordingApiClient {
 	): Promise<{ success: boolean; message: string }> {
 		return this._request<{ success: boolean; message: string }>(
 			'POST',
-			'/api/v1/auth/change-password',
+			'/auth/change-password',
 			{
 				old_password: oldPassword,
 				new_password: newPassword
@@ -501,7 +616,10 @@ export class RecordingApiClient {
 
 		if (!options.skipAuth) {
 			const token = await this._getToken();
-			if (!token) throw new ApiError('Belum login.', 401);
+			if (!token) {
+				this._onUnauthorized?.();
+				throw new ApiError('Belum login.', 401);
+			}
 			headers.Authorization = `Bearer ${token}`;
 		}
 
@@ -525,7 +643,8 @@ export class RecordingApiClient {
 			throw new ApiError(message, response.status);
 		}
 
-		const payload = (parsed as { result?: unknown } | null)?.result ?? parsed;
+		const isWrapped = parsed !== null && typeof parsed === 'object' && 'result' in (parsed as Record<string, unknown>);
+		const payload = isWrapped ? (parsed as { result?: unknown }).result : parsed;
 		return payload as T;
 	}
 }

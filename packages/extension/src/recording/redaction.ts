@@ -22,6 +22,7 @@ const SENSITIVE_URL_PARAMS = [
 
 const EMAIL_PATTERN = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 const CARD_LIKE_PATTERN = /\b(?:\d[ -]?){13,19}\b/g;
+const JWT_PATTERN = /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g;
 // Prefix kredensial umum + nilai panjang, supaya token yang tertanam di teks
 // bebas (mis. catatan tester) ikut disamarkan.
 const TOKEN_LIKE_PATTERN = /\b(?:sk|pk|tok|ghp|gho|ghs|glpat|xox[baprs]|AKIA)[-_][A-Za-z0-9_-]{8,}\b/g;
@@ -37,6 +38,7 @@ export const redactStringValue = (value: string): string =>
 	value
 		.replace(EMAIL_PATTERN, REDACTED)
 		.replace(CARD_LIKE_PATTERN, REDACTED)
+		.replace(JWT_PATTERN, REDACTED)
 		.replace(TOKEN_LIKE_PATTERN, REDACTED);
 
 export const redactUrl = (url: string): string =>

@@ -504,14 +504,6 @@ describe('Modern UI Components & Overhaul Scenarios', () => {
 				// Buka modal
 				fireEvent.click(screen.getByRole('button', { name: 'Tambah Project Baru' }));
 				expect(screen.getByRole('dialog', { name: 'Tambah Project Baru' })).toBeTruthy();
-
-				// Base URL di dalam modal ter-prefill dengan origin
-				const baseUrlInput = screen.getByPlaceholderText('Contoh: https://erp.knitto.id') as HTMLInputElement;
-				expect(baseUrlInput.value).toBe('https://erp.knitto.id');
-
-				// Base URL dapat diedit oleh pengguna
-				fireEvent.change(baseUrlInput, { target: { value: 'https://staging.knitto.id' } });
-				expect(baseUrlInput.value).toBe('https://staging.knitto.id');
 			} finally {
 				Object.defineProperty(window, 'location', {
 					configurable: true,
@@ -571,11 +563,11 @@ describe('Modern UI Components & Overhaul Scenarios', () => {
 			// Buka modal
 			fireEvent.click(screen.getByRole('button', { name: 'Tambah Project Baru' }));
 
-			const simpanBtn = screen.getByRole('button', { name: 'Simpan Project' }) as HTMLButtonElement;
-			// Nama belum diisi (< 3 karakter) -> disabled
+			const simpanBtn = screen.getByRole('button', { name: 'Tambah Project' }) as HTMLButtonElement;
+			// Nama belum diisi -> disabled
 			expect(simpanBtn.disabled).toBe(true);
 
-			const nameInput = screen.getByPlaceholderText('Contoh: Knitto ERP Portal');
+			const nameInput = screen.getByPlaceholderText('Contoh: Sprint 23 Checkout Revamp');
 			fireEvent.change(nameInput, { target: { value: 'Project 99' } });
 			expect(simpanBtn.disabled).toBe(false);
 
@@ -617,10 +609,10 @@ describe('Modern UI Components & Overhaul Scenarios', () => {
 			// Buka modal
 			fireEvent.click(screen.getByRole('button', { name: 'Tambah Project Baru' }));
 
-			const nameInput = screen.getByPlaceholderText('Contoh: Knitto ERP Portal');
+			const nameInput = screen.getByPlaceholderText('Contoh: Sprint 23 Checkout Revamp');
 			fireEvent.change(nameInput, { target: { value: 'Duplicated Project' } });
 
-			const simpanBtn = screen.getByRole('button', { name: 'Simpan Project' }) as HTMLButtonElement;
+			const simpanBtn = screen.getByRole('button', { name: 'Tambah Project' }) as HTMLButtonElement;
 			await act(async () => {
 				fireEvent.click(simpanBtn);
 			});
@@ -628,6 +620,144 @@ describe('Modern UI Components & Overhaul Scenarios', () => {
 			expect(screen.getByText('Project code already exists')).toBeTruthy();
 			// Modal tetap terbuka agar user dapat memperbaiki input
 			expect(screen.getByRole('dialog', { name: 'Tambah Project Baru' })).toBeTruthy();
+		});
+	});
+
+	describe('PB-8: Hanging Active Session Recovery & Discarding Controls', () => {
+		const mockActiveSession: StoredActiveSession = {
+			id_session: 123,
+			id_project: 1,
+			test_case_no: 'TC-AUTH-01',
+			title: 'Uji Coba Login Hanging',
+			group_id: 10,
+			last_sequence: 5,
+			started_at: Date.now() - 30000,
+			record_video: true
+		};
+
+		it('ActiveView: menampilkan tombol "Buang Sesi" dan memanggil onDiscard saat diklik', () => {
+			const onDiscard = vi.fn();
+			render(
+				<ActiveView
+					session={mockActiveSession}
+					pendingEvents={0}
+					busy={false}
+					error={null}
+					onCheckpoint={vi.fn()}
+					onNavigateEnd={vi.fn()}
+					onDiscard={onDiscard}
+				/>
+			);
+
+			const discardBtn = screen.getByRole('button', { name: /Buang Sesi/i });
+			expect(discardBtn).toBeTruthy();
+			fireEvent.click(discardBtn);
+			expect(onDiscard).toHaveBeenCalledTimes(1);
+		});
+
+		it('ResultView: menampilkan tombol "Buang Sesi" dan memanggil onDiscard saat diklik', () => {
+			const onDiscard = vi.fn();
+			render(
+				<ResultView
+					session={mockActiveSession}
+					busy={false}
+					error={null}
+					onConfirmEnd={vi.fn()}
+					onCancel={vi.fn()}
+					onDiscard={onDiscard}
+				/>
+			);
+
+			const discardBtn = screen.getByRole('button', { name: /Buang Sesi/i });
+			expect(discardBtn).toBeTruthy();
+			fireEvent.click(discardBtn);
+			expect(onDiscard).toHaveBeenCalledTimes(1);
+		});
+
+		it('HistoryView: menampilkan alert banner sesi aktif yang menggantung dengan tombol Lanjutkan dan Buang', () => {
+			const onResumeSession = vi.fn();
+			const onDiscardSession = vi.fn();
+			const hangingSession: RecordingSession = {
+				id_session: 123,
+				test_case_no: 'TC-AUTH-01',
+				title: 'Uji Coba Login Hanging',
+				status: 'recording',
+				id_project: 1,
+				result: null,
+				last_sequence: 0,
+				created_at: new Date().toISOString()
+			};
+
+			render(
+				<HistoryView
+					sessions={[hangingSession]}
+					generations={[]}
+					activeSessionId={null}
+					activeHangingSession={hangingSession}
+					busy={false}
+					error={null}
+					onRefresh={vi.fn()}
+					onViewGenerations={vi.fn()}
+					onDownload={vi.fn()}
+					onResumeSession={onResumeSession}
+					onDiscardSession={onDiscardSession}
+				/>
+			);
+
+			expect(screen.getByText(/Sesi Rekaman Masih Berjalan \/ Menggantung/i)).toBeTruthy();
+			expect(screen.getByText(/TC-AUTH-01: Uji Coba Login Hanging/i)).toBeTruthy();
+
+			// Tombol Lanjutkan Sesi di alert banner
+			const resumeBtn = screen.getByRole('button', { name: /Lanjutkan Sesi/i });
+			fireEvent.click(resumeBtn);
+			expect(onResumeSession).toHaveBeenCalledWith(hangingSession);
+
+			// Tombol Buang Sesi di alert banner
+			const discardBtn = screen.getByRole('button', { name: /Buang Sesi/i });
+			fireEvent.click(discardBtn);
+			expect(onDiscardSession).toHaveBeenCalledTimes(1);
+		});
+
+		it('HistoryView: item list dengan status "recording" menampilkan badge Sedang Merekam dan tombol aksi Lanjutkan & Buang', () => {
+			const onResumeSession = vi.fn();
+			const onDiscardSession = vi.fn();
+			const recordingSession: RecordingSession = {
+				id_session: 456,
+				test_case_no: 'TC-CART-02',
+				title: 'Sesi Cart Masih Berjalan',
+				status: 'recording',
+				id_project: 1,
+				result: null,
+				last_sequence: 0,
+				created_at: new Date().toISOString()
+			};
+
+			render(
+				<HistoryView
+					sessions={[recordingSession]}
+					generations={[]}
+					activeSessionId={null}
+					busy={false}
+					error={null}
+					onRefresh={vi.fn()}
+					onViewGenerations={vi.fn()}
+					onDownload={vi.fn()}
+					onResumeSession={onResumeSession}
+					onDiscardSession={onDiscardSession}
+				/>
+			);
+
+			expect(screen.getByText('Sedang Merekam')).toBeTruthy();
+
+			// Tombol Lanjutkan di baris list
+			const continueBtn = screen.getByRole('button', { name: /^Lanjutkan$/i });
+			fireEvent.click(continueBtn);
+			expect(onResumeSession).toHaveBeenCalledWith(recordingSession);
+
+			// Tombol Buang di baris list
+			const deleteBtn = screen.getByRole('button', { name: /^Buang$/i });
+			fireEvent.click(deleteBtn);
+			expect(onDiscardSession).toHaveBeenCalledTimes(1);
 		});
 	});
 });

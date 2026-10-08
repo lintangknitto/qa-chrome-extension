@@ -33,4 +33,10 @@ describe('recording redaction', () => {
 
 		expect(serialized).not.toContain(secret);
 	});
+
+	it('menyamarkan JWT ketika token disimpan di key storage yang tidak sensitif', () => {
+		const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c';
+		expect(redactStringValue(`persisted state: ${jwt}`)).not.toContain(jwt);
+		expect(redactStringValue(`persisted state: ${jwt}`)).toContain(REDACTED);
+	});
 });

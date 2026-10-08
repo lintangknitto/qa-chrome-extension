@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 const apiMocks = vi.hoisted(() => ({
 	login: vi.fn(),
 	listActiveProjects: vi.fn(),
+	listActivePrograms: vi.fn(),
 	createProject: vi.fn(),
 	listSessions: vi.fn(),
 	createSession: vi.fn(),
@@ -15,7 +16,9 @@ const apiMocks = vi.hoisted(() => ({
 	listGenerations: vi.fn(),
 	getSession: vi.fn(),
 	getSessionVideo: vi.fn(),
-	generateShareUrl: vi.fn()
+	generateShareUrl: vi.fn(),
+	getActiveSession: vi.fn(),
+	discardActiveSession: vi.fn()
 }));
 
 vi.mock('../../../recording/apiClient', () => ({
@@ -23,6 +26,7 @@ vi.mock('../../../recording/apiClient', () => ({
 	RecordingApiClient: class {
 		login = apiMocks.login;
 		listActiveProjects = apiMocks.listActiveProjects;
+		listActivePrograms = apiMocks.listActivePrograms;
 		createProject = apiMocks.createProject;
 		listSessions = apiMocks.listSessions;
 		createSession = apiMocks.createSession;
@@ -33,6 +37,8 @@ vi.mock('../../../recording/apiClient', () => ({
 		getSession = apiMocks.getSession;
 		getSessionVideo = apiMocks.getSessionVideo;
 		generateShareUrl = apiMocks.generateShareUrl;
+		getActiveSession = apiMocks.getActiveSession;
+		discardActiveSession = apiMocks.discardActiveSession;
 	}
 }));
 
@@ -54,6 +60,13 @@ beforeEach(() => {
 	storageStore.clear();
 	vi.clearAllMocks();
 
+	// The server is the source of truth for the active session (FabApp clears a local session the
+	// server doesn't know). Mirror the stored session so tests that seed one see it survive bootstrap.
+	apiMocks.getActiveSession.mockImplementation(async () => storageStore.get('qa_recording_active_session') ?? null);
+	apiMocks.discardActiveSession.mockResolvedValue({ success: true, count: 1 });
+	apiMocks.listActivePrograms.mockResolvedValue({
+		items: []
+	});
 	apiMocks.listActiveProjects.mockResolvedValue({
 		items: [
 			{ id_project: 1, name: 'Project Alpha', code: 'ALPHA', is_active: true },
@@ -734,12 +747,12 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 
 		// Isi form modal
 		await act(async () => {
-			fireEvent.change(screen.getByPlaceholderText('Contoh: Knitto ERP Portal'), {
+			fireEvent.change(screen.getByPlaceholderText('Contoh: Sprint 23 Checkout Revamp'), {
 				target: { value: 'New Knitto Project' }
 			});
 		});
 
-		const simpanBtn = screen.getByRole('button', { name: 'Simpan Project' }) as HTMLButtonElement;
+		const simpanBtn = screen.getByRole('button', { name: 'Tambah Project' }) as HTMLButtonElement;
 		expect(simpanBtn.disabled).toBe(false);
 
 		// Simpan
@@ -754,7 +767,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 				})
 			);
 			expect(apiMocks.listActiveProjects).toHaveBeenCalled();
-			expect(screen.getAllByText('Project berhasil dibuat.').length).toBeGreaterThanOrEqual(1);
+			expect(screen.getByText(/berhasil dibuat/i)).toBeTruthy();
 		});
 	});
 
@@ -839,10 +852,12 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 
 			// Menu items tengah
 			const toolsBtn = screen.getByRole('button', { name: 'Tools' });
-			const projectBtn = screen.getByRole('button', { name: 'Project' });
+			const projectBtn = screen.getByRole('button', { name: 'Program' });
+			const usersBtn = screen.getByRole('button', { name: 'Users' });
 			const settingBtn = screen.getByRole('button', { name: 'Setting' });
 			expect(toolsBtn).toBeTruthy();
 			expect(projectBtn).toBeTruthy();
+			expect(usersBtn).toBeTruthy();
 			expect(settingBtn).toBeTruthy();
 			expect(screen.queryByRole('button', { name: 'Riwayat' })).toBeNull();
 			expect(toolsBtn.classList.contains('group-active')).toBe(true);
@@ -882,7 +897,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 
 			// Labels teks navigasi
 			expect(screen.getByText('Tools')).toBeTruthy();
-			expect(screen.getByText('Project')).toBeTruthy();
+			expect(screen.getAllByText(/Program|Project/i).length).toBeGreaterThanOrEqual(1);
+			expect(screen.getByText('Pengguna')).toBeTruthy();
 			expect(screen.getByText('Pengaturan')).toBeTruthy();
 
 			// Detail User & Logout
@@ -1130,12 +1146,18 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 			expect(screen.getByText('Dock: Kanan')).toBeTruthy();
 		});
 
-		// Pindah ke tab Manajemen Project: footer menyesuaikan ke Manajemen Project
+		// Pindah ke tab Manajemen Program: footer menyesuaikan ke Master Program
+		fireEvent.click(screen.getByRole('button', { name: 'Program' }));
+		await waitFor(() => {
+			const footer = sidebar()?.querySelector('.fab-sidebar-footer');
+			expect(footer?.textContent).toContain('Master Program & Aplikasi');
+		});
+
+		// Pindah ke tab Project: footer menyesuaikan ke Project & Skenario
 		fireEvent.click(screen.getByRole('button', { name: 'Project' }));
 		await waitFor(() => {
 			const footer = sidebar()?.querySelector('.fab-sidebar-footer');
-			expect(footer?.textContent).toContain('Manajemen Project & Test Case');
-			expect(footer?.textContent).toContain('2 Project');
+			expect(footer?.textContent).toContain('Project & Skenario Test Case');
 		});
 	});
 

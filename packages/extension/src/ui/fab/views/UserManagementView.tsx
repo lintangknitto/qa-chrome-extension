@@ -84,7 +84,12 @@ export const UserManagementView: React.FC<UserManagementViewProps> = ({
 			setTotal(res?.total ?? 0);
 			setTotalPages(Math.max(1, res?.totalPages || (res as any)?.total_pages || 1));
 		} catch (err) {
-			notify((err as Error).message || 'Gagal memuat daftar pengguna.', 'error');
+			const isAuthErr =
+				(err as any)?.status === 401 ||
+				(err as Error)?.message?.toLowerCase().includes('login');
+			if (!isAuthErr) {
+				notify((err as Error).message || 'Gagal memuat daftar pengguna.', 'error');
+			}
 		} finally {
 			setLoading(false);
 		}

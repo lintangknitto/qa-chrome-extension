@@ -30,13 +30,14 @@ import { StartView, type PrefilledTestCase } from './views/StartView';
 import { ActiveView } from './views/ActiveView';
 import { ResultView } from './views/ResultView';
 import { HistoryView, type GenerationItem } from './views/HistoryView';
+import { ProgramView } from './views/ProgramView';
 import { ProjectView } from './views/ProjectView';
 import { CleanerView } from './views/CleanerView';
 import { UserManagementView } from './views/UserManagementView';
 import { ChangePasswordModal } from './views/ChangePasswordModal';
 import { TestCaseResultModal } from './views/TestCaseResultModal';
 import { Toast } from './components/Toast';
-import { Play, History, Settings, LogOut, User, FolderKanban, Wrench, ChevronDown, ChevronRight, Trash2, Video, RefreshCw, Users, KeyRound } from 'lucide-react';
+import { Play, History, Settings, LogOut, User, FolderKanban, Layers, Wrench, ChevronDown, ChevronRight, Trash2, Video, RefreshCw, Users, KeyRound } from 'lucide-react';
 import { canManageUsers } from './fab-permissions';
 import type { TestCaseItem } from '../../recording/apiClient';
 import { io, type Socket } from 'socket.io-client';
@@ -140,7 +141,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	);
 
 	// Auth & Recording data states
-	const [baseUrl, setBaseUrlState] = useState(DEFAULT_BASE_URL);
+	const [baseUrl, setBaseUrlState] = useState(props.settings.initialBaseUrl || DEFAULT_BASE_URL);
 	const [token, setToken] = useState<string | null>(null);
 	const [user, setUser] = useState<StoredUser | null>(null);
 	const [activeSession, setActiveSessionState] = useState<StoredActiveSession | null>(null);
@@ -185,10 +186,11 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					setState('idle');
 					stateRef.current = 'idle';
 					setView('login');
-					showNotice('Sesi login telah berakhir atau belum login. Silakan login kembali.', 'error');
+					setError(null);
+					setNotice(null);
 				}
 			}),
-		[baseUrl, showNotice]
+		[baseUrl]
 	);
 
 	const loadBootstrap = useCallback(async () => {
@@ -200,12 +202,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				getActiveSession()
 			]);
 			if (storedBaseUrl) {
-				if (storedBaseUrl.includes('localhost') || storedBaseUrl.includes('127.0.0.1')) {
-					setBaseUrlState(DEFAULT_BASE_URL);
-					void setBaseUrl(DEFAULT_BASE_URL).catch(() => {});
-				} else {
-					setBaseUrlState(storedBaseUrl);
-				}
+				setBaseUrlState(storedBaseUrl);
 			}
 			setToken(storedToken);
 			const effectiveUser = storedUser || (storedToken ? { id_user: 1, username: 'tester', nama: 'QA Tester', level: 'QA' } : null);
@@ -213,6 +210,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 			setActiveSessionState(storedSession);
 			if (!storedToken) {
 				setView('login');
+			} else if (storedSession) {
+				setView((curr) => (curr === 'root' || curr === 'start' ? 'active' : curr));
 			}
 		} catch {
 			// Environment without full chrome.storage (e.g. unit tests without mocks)
@@ -250,7 +249,12 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 			setProjects(result.items);
 			return result.items;
 		} catch (caught) {
-			setError((caught as Error).message);
+			const isAuthErr =
+				(caught as any)?.status === 401 ||
+				(caught as Error)?.message?.toLowerCase().includes('login');
+			if (!isAuthErr) {
+				setError((caught as Error).message);
+			}
 			return [];
 		}
 	}, [api]);
@@ -259,20 +263,191 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		try {
 			const result = await api.listSessions();
 			setSessions(result.items);
+			if (result.items && Array.isArray(result.items)) {
+				setActiveSessionState((prev) => {
+					if (prev && stateRef.current !== 'recording') {
+						const match = result.items.find((s) => s.id_session === prev.id_session);
+						if (match && match.status !== 'recording') {
+							void clearActiveSession();
+							return null;
+						}
+					}
+					return prev;
+				});
+			}
 		} catch (caught) {
-			setError((caught as Error).message);
+			const isAuthErr =
+				(caught as any)?.status === 401 ||
+				(caught as Error)?.message?.toLowerCase().includes('login');
+			if (!isAuthErr) {
+				setError((caught as Error).message);
+			}
 		}
 	}, [api]);
+
+	const [activeHangingSession, setActiveHangingSession] = useState<RecordingSession | null>(null);
+
+	const checkActiveHangingSession = useCallback(async () => {
+		if (!token || typeof api.getActiveSession !== 'function') return null;
+		try {
+			const active = await api.getActiveSession();
+			const isValidActive = Boolean(
+				active &&
+				typeof active === 'object' &&
+				typeof active.id_session === 'number' &&
+				!Number.isNaN(active.id_session)
+			);
+			const validActiveSession = isValidActive ? (active as RecordingSession) : null;
+			setActiveHangingSession(validActiveSession);
+			if (validActiveSession) {
+				setActiveSessionState((prev) => {
+					if (prev && prev.id_session === validActiveSession.id_session) return prev;
+					const stored: StoredActiveSession = {
+						id_session: validActiveSession.id_session,
+						id_project: validActiveSession.id_project ?? null,
+						id_test_case: validActiveSession.id_test_case ?? null,
+						test_case_no: validActiveSession.test_case_no,
+						title: validActiveSession.title,
+						expected_result: validActiveSession.expected_result ?? null,
+						group_id: null,
+						last_sequence: validActiveSession.last_sequence ?? 0,
+						started_at: Date.now(),
+						record_video: true
+					};
+					void setActiveSession(stored);
+					return stored;
+				});
+			} else {
+				// Tidak ada active session di server: rekonsiliasi state lokal agar ghost session tidak nyangkut
+				if (stateRef.current !== 'recording') {
+					setActiveSessionState((prev) => {
+						if (prev) {
+							void clearActiveSession();
+						}
+						return null;
+					});
+				}
+			}
+			return validActiveSession;
+		} catch {
+			return null;
+		}
+	}, [api, token]);
+
+	const handleDiscardActiveSession = useCallback(async () => {
+		setBusy(true);
+		setError(null);
+		try {
+			try {
+				if (isExtensionContextValid() && chrome.runtime?.sendMessage) {
+					chrome.runtime.sendMessage({ type: 'recordingStop' });
+				}
+			} catch {
+				// Ignore background error
+			}
+			if (typeof api.discardActiveSession === 'function') {
+				try {
+					await api.discardActiveSession();
+				} catch (discardErr) {
+					console.warn('discardActiveSession api call warning:', discardErr);
+				}
+			}
+			await clearActiveSession();
+			setActiveSessionState(null);
+			setActiveHangingSession(null);
+			setState('idle');
+			stateRef.current = 'idle';
+			setView((curr) => (curr === 'active' || curr === 'result' ? 'start' : curr));
+			showNotice('Sesi rekaman menggantung berhasil diakhiri dan dibuang.', 'success');
+			void loadSessions();
+			void loadProjects();
+		} catch (err) {
+			setError((err as Error).message || 'Gagal mengakhiri sesi.');
+		} finally {
+			setBusy(false);
+		}
+	}, [api, showNotice, loadSessions, loadProjects]);
+
+	const handleResumeActiveSession = useCallback(
+		async (sess: RecordingSession) => {
+			setBusy(true);
+			setError(null);
+			try {
+				const tabIds: number[] = [];
+				try {
+					if (typeof chrome !== 'undefined' && chrome.tabs?.query) {
+						const tabs = await chrome.tabs.query({ active: true, currentWindow: true });
+						if (typeof tabs[0]?.id === 'number') tabIds.push(tabs[0].id);
+					}
+				} catch {
+					// The background sender can fall back to its originating tab.
+				}
+
+				let groupId: number | null = null;
+				if (stateRef.current !== 'recording') {
+					const response = await new Promise<{ success?: boolean; error?: string; groupId?: number }>((resolve) => {
+						if (!isExtensionContextValid() || !chrome.runtime?.sendMessage) {
+							resolve({ success: false, error: 'Koneksi extension terputus. Muat ulang extension lalu coba lagi.' });
+							return;
+						}
+						chrome.runtime.sendMessage(
+							{ type: 'recordingStart', idSession: sess.id_session, apiBaseUrl: baseUrl, tabIds, recordVideo: true },
+							(res) => {
+								const runtimeError = chrome.runtime.lastError?.message;
+								resolve(runtimeError
+									? { success: false, error: runtimeError }
+									: res ?? { success: false, error: 'Tidak ada respon dari Service Worker.' });
+							}
+						);
+					});
+					if (!response.success) throw new Error(response.error || 'Gagal melanjutkan recording.');
+					groupId = response.groupId ?? null;
+				}
+
+				const stored: StoredActiveSession = {
+					id_session: sess.id_session,
+					id_project: sess.id_project ?? null,
+					id_test_case: sess.id_test_case ?? null,
+					test_case_no: sess.test_case_no,
+					title: sess.title,
+					expected_result: sess.expected_result ?? null,
+					group_id: groupId,
+					last_sequence: sess.last_sequence ?? 0,
+					started_at: Date.now(),
+					record_video: true
+				};
+				await setActiveSession(stored);
+				setActiveSessionState(stored);
+				setActiveHangingSession(null);
+				setState('recording');
+				stateRef.current = 'recording';
+				setView('active');
+				showNotice(`Melanjutkan sesi rekaman #${sess.id_session}`);
+			} catch (error) {
+				setError((error as Error).message || 'Gagal melanjutkan sesi recording.');
+			} finally {
+				setBusy(false);
+			}
+		},
+		[baseUrl, showNotice]
+	);
 
 	useEffect(() => {
 		if (!token) return;
 		void loadProjects();
 		void loadSessions();
-	}, [token, loadProjects, loadSessions]);
+		void checkActiveHangingSession();
+	}, [token, loadProjects, loadSessions, checkActiveHangingSession]);
 
 	// Realtime Socket.IO listener untuk background generation status
 	useEffect(() => {
 		if (!token || !baseUrl) return;
+		const isHttpsPage = typeof window !== 'undefined' && window.location?.protocol === 'https:';
+		const isInsecureEndpoint = baseUrl.startsWith('http://') || baseUrl.startsWith('ws://');
+		// Cegah Mixed Content error jika halaman HTTPS mencoba membuka insecure WebSocket ws://
+		if (isHttpsPage && isInsecureEndpoint) {
+			return;
+		}
 		let socket: Socket | null = null;
 		try {
 			socket = io(baseUrl, {
@@ -346,6 +521,44 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		};
 	}, [token, baseUrl, loadSessions, showNotice]);
 
+	// Polling fallback untuk status active generations jika sedang processing
+	useEffect(() => {
+		const processingList = Array.from(activeGenerations.values()).filter((g) => g.status === 'processing');
+		if (processingList.length === 0 || !token) return;
+
+		const timer = setInterval(async () => {
+			for (const proc of processingList) {
+				try {
+					const gens = await api.listGenerations(proc.id_session);
+					const items = (gens?.items || []) as GenerationItem[];
+					if (items.length > 0) {
+						const hasCompleted = items.some((g) => g.status === 'completed');
+						const hasFailed = items.some((g) => g.status === 'failed');
+						if (hasCompleted) {
+							setActiveGenerations((prev) => {
+								const next = new Map(prev);
+								next.set(proc.id_session, { ...proc, status: 'completed' });
+								return next;
+							});
+							showNotice(`Script Playwright untuk Sesi #${proc.id_session} berhasil dibuat!`, 'success');
+							void loadSessions();
+						} else if (hasFailed) {
+							setActiveGenerations((prev) => {
+								const next = new Map(prev);
+								next.set(proc.id_session, { ...proc, status: 'failed' });
+								return next;
+							});
+						}
+					}
+				} catch {
+					// Abaikan error polling
+				}
+			}
+		}, 3000);
+
+		return () => clearInterval(timer);
+	}, [activeGenerations, api, token, loadSessions, showNotice]);
+
 	useEffect(() => {
 		let cancelled = false;
 		void requestFabState()
@@ -355,6 +568,9 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				setState(next);
 				stateRef.current = next;
 				setPending(fabState.pendingEvents);
+				if (fabState.recording) {
+					setView((current) => (current === 'root' || current === 'start' ? 'active' : current));
+				}
 			})
 			.catch(() => {});
 
@@ -483,7 +699,20 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		}
 	}, [state, activeSession, token, handleCloseToolsDropdown]);
 
+	const handleNavigatePrograms = useCallback(() => {
+		handleCloseToolsDropdown();
+		setRailCollapsed(true);
+		setError(null);
+		setNotice(null);
+		if (!token) {
+			setView('login');
+			return;
+		}
+		setView('programs');
+	}, [token, handleCloseToolsDropdown]);
+
 	const handleNavigateProjects = useCallback(() => {
+		handleCloseToolsDropdown();
 		setRailCollapsed(true);
 		setError(null);
 		setNotice(null);
@@ -492,15 +721,22 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 			return;
 		}
 		setView('projects');
-	}, [token]);
+	}, [token, handleCloseToolsDropdown]);
 
 	const handleSelectTestCaseForRecording = useCallback((project: RecordingProject, testCase: TestCaseItem) => {
+		const targetUrl =
+			testCase.program_base_url ||
+			project.programs?.find((p) => p.id_program === testCase.id_program)?.base_url ||
+			project.programs?.find((p) => p.type === 'FRONTEND')?.base_url ||
+			project.base_url ||
+			undefined;
+
 		setPrefilledTestCase({
 			id_project: project.id_project,
 			id_test_case: testCase.id_test_case,
 			test_case_no: testCase.test_case_id,
 			title: testCase.title,
-			target_url: project.base_url || undefined,
+			target_url: targetUrl,
 			pre_condition: testCase.pre_condition || undefined,
 			expected_result: testCase.expected_result || undefined
 		});
@@ -592,14 +828,21 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		setState('idle');
 		stateRef.current = 'idle';
 		setView('login');
+		setError(null);
 		showNotice('Berhasil logout.', 'info');
 	}, [state, showNotice]);
 
 	const handleCreateProject = useCallback(
-		async (input: { name: string; base_url?: string; description?: string }) => {
+		async (input: {
+			name: string;
+			id_program?: number | null;
+			base_url?: string;
+			repo_url?: string;
+			description?: string;
+		}) => {
 			const created = await api.createProject(input);
 			await loadProjects();
-			showNotice('Project berhasil dibuat.', 'success');
+			showNotice(`Project "${input.name}" berhasil dibuat.`, 'success');
 			return created.id_project;
 		},
 		[api, loadProjects, showNotice]
@@ -686,9 +929,12 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				stateRef.current = 'recording';
 				setView('active');
 				setOpen(false);
-				showNotice('Recording berjalan. Tab sudah dimasukkan ke group Knitto QA.', 'info');
 			} catch (caught) {
-				setError((caught as Error).message);
+				const errMsg = (caught as Error).message || 'Gagal memulai recording.';
+				setError(errMsg);
+				if (errMsg.toLowerCase().includes('session recording aktif')) {
+					void checkActiveHangingSession();
+				}
 			} finally {
 				setBusy(false);
 			}
@@ -716,7 +962,22 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 
 	const handleEnd = useCallback(
 		async (input: { result: string; actual_result: string }) => {
-			const currentSession = activeSession;
+			const currentSession =
+				activeSession ||
+				(activeHangingSession
+					? {
+							id_session: activeHangingSession.id_session,
+							id_project: activeHangingSession.id_project ?? null,
+							id_test_case: activeHangingSession.id_test_case ?? null,
+							test_case_no: activeHangingSession.test_case_no,
+							title: activeHangingSession.title,
+							expected_result: activeHangingSession.expected_result ?? null,
+							group_id: null,
+							last_sequence: activeHangingSession.last_sequence ?? 0,
+							started_at: Date.now(),
+							record_video: true
+						}
+					: null);
 			if (!currentSession) return;
 			setBusy(true);
 			setError(null);
@@ -771,6 +1032,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				await api.endSession(currentSession.id_session, input);
 				await clearActiveSession();
 				setActiveSessionState(null);
+				setActiveHangingSession(null);
 				setPrefilledTestCase(null);
 				setState('idle');
 				stateRef.current = 'idle';
@@ -839,7 +1101,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				setBusy(false);
 			}
 		},
-		[api, activeSession, loadSessions, loadProjects]
+		[api, activeSession, activeHangingSession, loadSessions, loadProjects, showNotice]
 	);
 
 	const handleGenerate = useCallback(
@@ -968,6 +1230,13 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					badge: 'Ready',
 					isRecording: false
 				};
+			case 'programs':
+				return {
+					dotClass: 'ready',
+					text: 'Master Program & Aplikasi',
+					badge: 'Master',
+					isRecording: false
+				};
 			case 'projects':
 				if (activeProjectInView) {
 					return {
@@ -979,7 +1248,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 				}
 				return {
 					dotClass: 'ready',
-					text: 'Manajemen Project & Test Case',
+					text: 'Project & Skenario Test Case',
 					badge: `${projects.length} Project`,
 					isRecording: false
 				};
@@ -1172,9 +1441,24 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 									</div>
 
 									<button
+										className={`fab-rail-btn ${currentView === 'programs' ? 'active' : ''}`}
+										aria-label="Program"
+										title="Master Program & Aplikasi"
+										onClick={(e) => {
+											(e.currentTarget as HTMLElement)?.blur();
+											handleNavigatePrograms();
+										}}
+									>
+										<div className="fab-rail-btn-icon">
+											<Layers size={18} />
+										</div>
+										<span className="fab-rail-label">Program</span>
+									</button>
+
+									<button
 										className={`fab-rail-btn ${currentView === 'projects' ? 'active' : ''}`}
 										aria-label="Project"
-										title="Project & Test Cases"
+										title="Project & Skenario Test Case"
 										onClick={(e) => {
 											(e.currentTarget as HTMLElement)?.blur();
 											handleNavigateProjects();
@@ -1186,22 +1470,20 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 										<span className="fab-rail-label">Project</span>
 									</button>
 
-									{canManageUsers(user) && (
-										<button
-											className={`fab-rail-btn ${currentView === 'users' ? 'active' : ''}`}
-											aria-label="User Management"
-											title="Manajemen Pengguna"
-											onClick={(e) => {
-												(e.currentTarget as HTMLElement)?.blur();
-												handleNavigateUsers();
-											}}
-										>
-											<div className="fab-rail-btn-icon">
-												<Users size={18} />
-											</div>
-											<span className="fab-rail-label">Users</span>
-										</button>
-									)}
+									<button
+										className={`fab-rail-btn ${currentView === 'users' ? 'active' : ''}`}
+										aria-label="Users"
+										title="Manajemen Pengguna"
+										onClick={(e) => {
+											(e.currentTarget as HTMLElement)?.blur();
+											handleNavigateUsers();
+										}}
+									>
+										<div className="fab-rail-btn-icon">
+											<Users size={18} />
+										</div>
+										<span className="fab-rail-label">Pengguna</span>
+									</button>
 
 									<button
 										className={`fab-rail-btn ${currentView === 'setting' ? 'active' : ''}`}
@@ -1312,6 +1594,72 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 								</div>
 							)}
 
+							{/* Global Sticky Active / Hanging Recording Session Banner */}
+							{Boolean(
+								(activeSession && typeof activeSession.id_session === 'number') ||
+								(activeHangingSession && typeof activeHangingSession.id_session === 'number') ||
+								state === 'recording'
+							) && (
+								<div
+									className="fab-active-session-banner"
+									style={{
+										background: '#fffbeb',
+										borderBottom: '1.5px solid #fde68a',
+										padding: '7px 12px',
+										display: 'flex',
+										alignItems: 'center',
+										justifyContent: 'space-between',
+										gap: 8,
+										color: '#92400e',
+										fontSize: 11.5,
+										zIndex: 10
+									}}
+								>
+									<div style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+										<span
+											className="k-pulse-dot"
+											style={{
+												background: '#dc2626',
+												width: 7,
+												height: 7,
+												borderRadius: '50%',
+												flexShrink: 0
+											}}
+										/>
+										<span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontWeight: 600 }}>
+											Sesi Rekaman Berjalan: #{activeSession?.id_session ?? activeHangingSession?.id_session ?? '-'} ({activeSession?.title || activeHangingSession?.title || 'Recording'})
+										</span>
+									</div>
+									<div style={{ display: 'flex', alignItems: 'center', gap: 5, flexShrink: 0 }}>
+										{currentView !== 'active' && currentView !== 'result' && (
+											<button
+												type="button"
+												className="k-btn k-btn-xs k-btn-primary"
+												style={{ padding: '2px 7px', fontSize: 10.5 }}
+												onClick={() => {
+													if (activeHangingSession && !activeSession) {
+														void handleResumeActiveSession(activeHangingSession);
+													} else {
+														setView('active');
+													}
+												}}
+											>
+												Kontrol Rekam
+											</button>
+										)}
+										<button
+											type="button"
+											className="k-btn k-btn-xs k-btn-danger"
+											style={{ padding: '2px 7px', fontSize: 10.5 }}
+											onClick={handleDiscardActiveSession}
+											title="Buang/Akhiri sesi ini"
+										>
+											Akhiri / Buang
+										</button>
+									</div>
+								</div>
+							)}
+
 							<div className="fab-panel-body">
 								{isRecorderActive && currentView !== 'result' && (
 									<div className="fab-recorder-tabs" role="tablist" aria-label="Recorder Tab">
@@ -1321,14 +1669,14 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 											aria-selected={currentView !== 'history'}
 											className={`fab-recorder-tab-btn ${currentView !== 'history' ? 'active' : ''}`}
 											onClick={() => {
-												if (state === 'recording' || activeSession) {
+												if (state === 'recording' || activeSession || activeHangingSession) {
 													setView('active');
 												} else {
 													setView('start');
 												}
 											}}
 										>
-											{state === 'recording' ? (
+											{state === 'recording' || activeSession || activeHangingSession ? (
 												<>
 													<span className="fab-recorder-pulse-dot" />
 													<span>Sedang Merekam</span>
@@ -1348,6 +1696,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 											onClick={() => {
 												setView('history');
 												void loadSessions();
+												void checkActiveHangingSession();
 											}}
 										>
 											<History size={13} />
@@ -1366,8 +1715,23 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 										busy={busy}
 										error={error}
 										prefilledTestCase={prefilledTestCase}
+										activeHangingSession={activeHangingSession}
+										onDiscardActiveSession={handleDiscardActiveSession}
+										onResumeActiveSession={handleResumeActiveSession}
 										onSubmit={handleStart}
 										onCreateProject={handleCreateProject}
+									/>
+								) : currentView === 'programs' ? (
+									<ProgramView
+										api={api}
+										user={user}
+										showNotice={(msg, toastType) => {
+											if (toastType === 'error') {
+												setError(msg);
+											} else {
+												showNotice(msg, toastType ?? 'success');
+											}
+										}}
 									/>
 								) : currentView === 'projects' ? (
 									<ProjectView
@@ -1399,10 +1763,35 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 											error={error}
 											onCheckpoint={handleCheckpoint}
 											onNavigateEnd={() => setView('result')}
+											onDiscard={handleDiscardActiveSession}
+										/>
+									) : activeHangingSession ? (
+										<ActiveView
+											session={{
+												id_session: activeHangingSession.id_session,
+												id_project: activeHangingSession.id_project ?? null,
+												id_test_case: activeHangingSession.id_test_case ?? null,
+												test_case_no: activeHangingSession.test_case_no,
+												title: activeHangingSession.title,
+												expected_result: activeHangingSession.expected_result ?? null,
+												group_id: null,
+												last_sequence: activeHangingSession.last_sequence ?? 0,
+												started_at: Date.now(),
+												record_video: true
+											}}
+											pendingEvents={pending}
+											busy={busy}
+											error={error}
+											onCheckpoint={handleCheckpoint}
+											onNavigateEnd={() => setView('result')}
+											onDiscard={handleDiscardActiveSession}
 										/>
 									) : (
-										<div className="sp-card">
-											<div className="sp-muted">Memuat data sesi recording...</div>
+										<div className="sp-card" style={{ textAlign: 'center', padding: '24px 16px' }}>
+											<div className="sp-muted" style={{ marginBottom: 12 }}>Tidak ada sesi rekaman aktif saat ini.</div>
+											<button type="button" className="k-btn k-btn-sm k-btn-primary" onClick={() => setView('start')}>
+												Buka Form Mulai Rekam
+											</button>
 										</div>
 									)
 								) : currentView === 'result' ? (
@@ -1413,10 +1802,34 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 											error={error}
 											onConfirmEnd={handleEnd}
 											onCancel={() => setView('active')}
+											onDiscard={handleDiscardActiveSession}
+										/>
+									) : activeHangingSession ? (
+										<ResultView
+											session={{
+												id_session: activeHangingSession.id_session,
+												id_project: activeHangingSession.id_project ?? null,
+												id_test_case: activeHangingSession.id_test_case ?? null,
+												test_case_no: activeHangingSession.test_case_no,
+												title: activeHangingSession.title,
+												expected_result: activeHangingSession.expected_result ?? null,
+												group_id: null,
+												last_sequence: activeHangingSession.last_sequence ?? 0,
+												started_at: Date.now(),
+												record_video: true
+											}}
+											busy={busy}
+											error={error}
+											onConfirmEnd={handleEnd}
+											onCancel={() => setView('active')}
+											onDiscard={handleDiscardActiveSession}
 										/>
 									) : (
-										<div className="sp-card">
-											<div className="sp-muted">Memuat data sesi recording...</div>
+										<div className="sp-card" style={{ textAlign: 'center', padding: '24px 16px' }}>
+											<div className="sp-muted" style={{ marginBottom: 12 }}>Tidak ada sesi rekaman aktif untuk diselesaikan.</div>
+											<button type="button" className="k-btn k-btn-sm k-btn-primary" onClick={() => setView('start')}>
+												Kembali ke Form Mulai
+											</button>
 										</div>
 									)
 								) : currentView === 'history' ? (
@@ -1425,14 +1838,21 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 										generations={generations}
 										activeSessionId={activeGenSessionId}
 										activeGenerations={activeGenerations}
+										activeHangingSession={activeHangingSession}
+										activeSession={activeSession}
 										busy={busy}
 										error={error}
-										onRefresh={loadSessions}
+										onRefresh={() => {
+											void loadSessions();
+											void checkActiveHangingSession();
+										}}
 										onGenerate={handleGenerate}
 										onViewGenerations={handleViewGenerations}
 										onOpenDetail={handleOpenSessionDetail}
 										onDownload={downloadOutput}
 										onShare={handleShareSession}
+										onResumeSession={handleResumeActiveSession}
+										onDiscardSession={handleDiscardActiveSession}
 									/>
 								) : currentView === 'setting' ? (
 									<div>
@@ -1488,6 +1908,9 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 										busy={busy}
 										error={error}
 										prefilledTestCase={prefilledTestCase}
+										activeHangingSession={activeHangingSession}
+										onDiscardActiveSession={handleDiscardActiveSession}
+										onResumeActiveSession={handleResumeActiveSession}
 										onSubmit={handleStart}
 										onCreateProject={handleCreateProject}
 									/>
@@ -1549,7 +1972,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 					setOpen((value) => {
 						const next = !value;
 						if (next) {
-							if (stateRef.current === 'recording') {
+							void checkActiveHangingSession();
+							if (stateRef.current === 'recording' || activeSession) {
 								setView('active');
 							} else if (!token) {
 								setView('login');

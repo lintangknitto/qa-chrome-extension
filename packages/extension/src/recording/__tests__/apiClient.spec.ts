@@ -183,4 +183,23 @@ describe('recording apiClient fetch binding', () => {
 		expect(calls[2].url).toContain('/sessions/99/video/complete');
 		expect(res.video_url).toBe('http://minio:9000/artifacts/video.webm');
 	});
+
+	it('mengembalikan null ketika endpoint membungkus { result: null } (seperti getActiveSession saat tidak ada sesi aktif)', async () => {
+		const fetchImpl = vi.fn(
+			async () =>
+				new Response(JSON.stringify({ message: 'Success', result: null }), {
+					status: 200,
+					headers: { 'Content-Type': 'application/json' }
+				})
+		);
+		const client = new RecordingApiClient({
+			baseUrl: 'http://127.0.0.1:8010',
+			getToken: async () => 'test-token',
+			fetchImpl: fetchImpl as unknown as typeof fetch
+		});
+
+		const active = await client.getActiveSession();
+		expect(active).toBeNull();
+	});
 });
+
