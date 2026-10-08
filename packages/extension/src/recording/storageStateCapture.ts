@@ -1,6 +1,6 @@
 /**
  * Modul untuk menangkap snapshot browser state (Cookies, LocalStorage, SessionStorage)
- * dalam format standar Playwright StorageState.
+ * dalam format standar Playwright StorageState untuk inspeksi dan replay QA lokal.
  */
 
 export interface PlaywrightCookie {
