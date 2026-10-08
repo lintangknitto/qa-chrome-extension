@@ -37,6 +37,8 @@ import { ReRunModal } from './ReRunModal';
 import type { RecordingApiClient, RecordingSession, TestCaseItem } from '../../../recording/apiClient';
 import type { PlaywrightStorageState, PlaywrightCookie, StorageEntry } from '../../../recording/storageStateCapture';
 import type { GenerationItem } from './HistoryView';
+import { InvestigationPanel } from './InvestigationPanel';
+import { ScriptView, countAmbiguousSteps } from '../components/ScriptView';
 import type { StoredUser } from '../../../recording/tokenStore';
 import { canRunTest } from '../fab-permissions';
 import { extensionFetch } from '../../../recording/extensionFetch';
@@ -96,10 +98,12 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 	const [runs, setRuns] = useState<RunItem[]>([]);
 	const [activeRunId, setActiveRunId] = useState<string>('');
 	const [busyGenerate, setBusyGenerate] = useState(false);
+	const [busyInvestigate, setBusyInvestigate] = useState(false);
+	const [scriptVariant, setScriptVariant] = useState<'playwright' | 'playwright_ai'>('playwright');
 	const [sharing, setSharing] = useState(false);
 	const [isReRunOpen, setReRunOpen] = useState(false);
 	const [copiedId, setCopiedId] = useState<number | null>(null);
-	const [activeTab, setActiveTab] = useState<'overview' | 'checkpoints' | 'script' | 'storage'>('overview');
+	const [activeTab, setActiveTab] = useState<'overview' | 'checkpoints' | 'script' | 'investigation' | 'storage'>('overview');
 	const [storageState, setStorageState] = useState<PlaywrightStorageState | null>(null);
 	const [storageSubTab, setStorageSubTab] = useState<'cookies' | 'local' | 'session'>('cookies');
 	const [storageFilter, setStorageFilter] = useState('');
@@ -392,6 +396,14 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		}
 	}, [isVisible, sessionId, loadData]);
 
+	// Investigasi tampil di tab sendiri; status tab script hanya dari generation script/laporan.
+	const investigationGen = generations.find((g) => g.kind === 'investigation');
+	const scriptGenerations = generations.filter((g) => g.kind !== 'investigation');
+	const hasAiPatch = scriptGenerations.some((g) => g.kind === 'playwright_ai');
+	const visibleScriptGenerations = scriptGenerations.filter((g) =>
+		g.kind === 'playwright' || g.kind === 'playwright_ai' ? !hasAiPatch || g.kind === scriptVariant : true
+	);
+
 	// Deteksi ketersediaan script Playwright
 	const playwrightGen = generations.find((g) => g.kind === 'playwright');
 	const playwrightScript = playwrightGen?.output || null;
@@ -400,15 +412,15 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 	);
 
 	// Deteksi apakah seluruh jenis generation (playwright & markdown) sudah selesai
-	const hasCompletedAll = generations.length > 0 && generations.every(
+	const hasCompletedAll = scriptGenerations.length > 0 && scriptGenerations.every(
 		(g) => g.status === 'completed' || g.status === 'failed'
 	);
-	const hasAnyPending = generations.some(
+	const hasAnyPending = scriptGenerations.some(
 		(g) => g.status === 'processing' || g.status === 'pending'
 	);
 	const hasFailedGeneration = Boolean(
 		(sessionId && activeGenerations?.get(sessionId)?.status === 'failed') ||
-		(!hasCompletedAll && generations.some((g) => g.status === 'failed'))
+		(!hasCompletedAll && scriptGenerations.some((g) => g.status === 'failed'))
 	);
 	const isGenerating = Boolean(
 		!hasCompletedAll &&
@@ -488,7 +500,11 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		if (!item.output) return;
 		try {
 			const kindLower = item.kind.toLowerCase();
-			const extension = kindLower.includes('json') ? 'json' : kindLower.includes('report') ? 'md' : 'ts';
+			const extension = kindLower.includes('json')
+				? 'json'
+				: kindLower.includes('report') || kindLower === 'markdown' || kindLower === 'investigation'
+					? 'md'
+					: 'ts';
 			const rawId = testCase?.test_case_id || sessionDetail?.test_case_no || 'test';
 			const safeId = rawId.replace(/[/\\?%*:|"<>]/g, '-');
 			const filename = `${safeId}-${item.kind}.${extension}`;
@@ -552,6 +568,37 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 			setActiveTab('script');
 		} catch (err) {
 			onShowToast?.((err as Error).message || 'Gagal generate script', 'error');
+		} finally {
+			setBusyGenerate(false);
+		}
+	};
+
+	const handleInvestigate = async () => {
+		if (!sessionId || busyInvestigate) return;
+		setBusyInvestigate(true);
+		try {
+			const res = (await api.investigateSession(sessionId)) as { status?: string; error?: string } | undefined;
+			const genRes = await api.listGenerations(sessionId);
+			setGenerations((genRes.items || []) as GenerationItem[]);
+			if (res?.status === 'failed') onShowToast?.(res.error || 'Investigasi gagal', 'error');
+			else onShowToast?.('Investigasi selesai', 'success');
+		} catch (err) {
+			onShowToast?.((err as Error).message || 'Gagal menjalankan investigasi', 'error');
+		} finally {
+			setBusyInvestigate(false);
+		}
+	};
+
+	const handleGenerateAiPatch = async () => {
+		if (!sessionId || busyGenerate) return;
+		setBusyGenerate(true);
+		try {
+			await api.generateOutputs(sessionId, ['playwright_ai']);
+			const genRes = await api.listGenerations(sessionId);
+			setGenerations((genRes.items || []) as GenerationItem[]);
+			setScriptVariant('playwright_ai');
+		} catch (err) {
+			onShowToast?.((err as Error).message || 'Gagal membuat patch AI', 'error');
 		} finally {
 			setBusyGenerate(false);
 		}
@@ -902,6 +949,38 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 							<button
 								type="button"
 								role="tab"
+								aria-selected={activeTab === 'investigation'}
+								style={{
+									flex: 1,
+									display: 'inline-flex',
+									alignItems: 'center',
+									justifyContent: 'center',
+									gap: 6,
+									padding: '7px 12px',
+									fontSize: 12,
+									fontWeight: activeTab === 'investigation' ? 700 : 500,
+									color: activeTab === 'investigation' ? '#2F3574' : '#64748b',
+									background: activeTab === 'investigation' ? '#ffffff' : 'transparent',
+									border: 'none',
+									borderRadius: 6,
+									cursor: 'pointer',
+									boxShadow: activeTab === 'investigation' ? '0 1px 3px rgba(15, 23, 42, 0.08)' : 'none',
+									transition: 'all 0.15s ease'
+								}}
+								onClick={() => setActiveTab('investigation')}
+							>
+								<Search size={14} />
+								<span>Investigasi</span>
+								{investigationGen?.status === 'completed' && (
+									<span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '1px 5px', borderRadius: 8, fontWeight: 700 }}>
+										Ada
+									</span>
+								)}
+							</button>
+
+							<button
+								type="button"
+								role="tab"
 								aria-selected={activeTab === 'storage'}
 								style={{
 									flex: 1,
@@ -1178,18 +1257,48 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 											Kode Otomasi & Output AI
 										</span>
 									</div>
-									{!isGenerating && generations.length > 0 && (
-										<Button
-											type="button"
-											variant="secondary"
-											size="xs"
-											loading={busyGenerate}
-											disabled={busyGenerate}
-											icon={<Sparkles size={11} />}
-											onClick={handleGenerate}
-										>
-											Generate Ulang
-										</Button>
+									{!isGenerating && scriptGenerations.length > 0 && (
+										<div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+											{hasAiPatch ? (
+												<div role="group" aria-label="Versi script" style={{ display: 'inline-flex', border: '1px solid #cbd5e1', borderRadius: 6, overflow: 'hidden' }}>
+													{(['playwright', 'playwright_ai'] as const).map((variant) => (
+														<button
+															key={variant}
+															type="button"
+															aria-pressed={scriptVariant === variant}
+															onClick={() => setScriptVariant(variant)}
+															style={{
+																fontSize: 11,
+																padding: '3px 8px',
+																border: 'none',
+																cursor: 'pointer',
+																background: scriptVariant === variant ? '#2F3574' : '#ffffff',
+																color: scriptVariant === variant ? '#ffffff' : '#334155'
+															}}
+														>
+															{variant === 'playwright' ? 'Asli (rekaman)' : 'Patch AI'}
+														</button>
+													))}
+												</div>
+											) : (
+												hasPlaywrightScript && (
+													<Button type="button" variant="secondary" size="xs" disabled={busyGenerate} icon={<Sparkles size={11} />} onClick={handleGenerateAiPatch}>
+														Patch AI
+													</Button>
+												)
+											)}
+											<Button
+												type="button"
+												variant="secondary"
+												size="xs"
+												loading={busyGenerate}
+												disabled={busyGenerate}
+												icon={<Sparkles size={11} />}
+												onClick={handleGenerate}
+											>
+												Generate Ulang
+											</Button>
+										</div>
 									)}
 								</div>
 
@@ -1228,14 +1337,19 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 											</Button>
 										</div>
 									</div>
-								) : generations.length > 0 ? (
-									generations.map((item) => (
+								) : scriptGenerations.length > 0 ? (
+									visibleScriptGenerations.map((item) => (
 										<div key={item.id_generation} style={{ border: '1px solid #cbd5e1', borderRadius: 10, overflow: 'hidden', background: '#0f172a' }}>
 											{/* Code Block Header */}
 											<div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#1e293b', padding: '8px 12px', borderBottom: '1px solid #334155' }}>
 												<div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
 													<Badge variant="default">{item.kind.toUpperCase()}</Badge>
 													<span style={{ fontSize: 11, color: '#94a3b8' }}>#{item.id_generation}</span>
+													{item.output && countAmbiguousSteps(item.output) > 0 && (
+														<span style={{ fontSize: 10, background: '#fef3c7', color: '#92400e', padding: '1px 6px', borderRadius: 8, fontWeight: 700 }}>
+															⚠ {countAmbiguousSteps(item.output)} locator tidak unik
+														</span>
+													)}
 												</div>
 												<div style={{ display: 'flex', gap: 6 }}>
 													{item.output && (
@@ -1269,7 +1383,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 																	boxShadow: '0 1px 2px rgba(37, 99, 235, 0.25)'
 																}}
 															>
-																Unduh {item.kind === 'playwright' ? '.spec.ts' : item.kind === 'report' || item.kind === 'markdown' ? '.md' : '.' + item.kind}
+																Unduh {item.kind === 'playwright' || item.kind === 'playwright_ai' ? '.spec.ts' : item.kind === 'report' || item.kind === 'markdown' ? '.md' : '.' + item.kind}
 															</Button>
 														</>
 													)}
@@ -1280,24 +1394,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 													Error: {item.error_message}
 												</div>
 											)}
-											{item.output && (
-												<pre
-													style={{
-														margin: 0,
-														padding: '12px 14px',
-														background: '#0f172a',
-														color: '#f8fafc',
-														fontSize: 11.5,
-														lineHeight: 1.6,
-														maxHeight: 260,
-														overflowY: 'auto',
-														whiteSpace: 'pre-wrap',
-														fontFamily: 'ui-monospace, "SF Mono", Menlo, Consolas, monospace'
-													}}
-												>
-													{item.output}
-												</pre>
-											)}
+											{item.output && <ScriptView script={item.output} />}
 										</div>
 									))
 								) : (
@@ -1327,7 +1424,12 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 							</div>
 						)}
 
-						{/* TAB 4: STORAGE & COOKIES */}
+						{/* TAB 4: INVESTIGASI */}
+						{activeTab === 'investigation' && (
+							<InvestigationPanel generation={investigationGen} busy={busyInvestigate} onInvestigate={() => void handleInvestigate()} />
+						)}
+
+						{/* TAB 5: STORAGE & COOKIES */}
 						{activeTab === 'storage' && (
 							<div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
 								{/* Storage Header Card */}

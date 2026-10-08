@@ -427,7 +427,7 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 				result: 'PASS',
 				actual_result: 'Pass testing auto-gen'
 			});
-			expect(apiMocks.generateOutputs).toHaveBeenCalledWith(450, ['playwright', 'markdown']);
+			expect(apiMocks.generateOutputs).toHaveBeenCalledWith(450);
 		});
 
 		// Memverifikasi banner generasi sedang berjalan

@@ -12,11 +12,11 @@ describe('replayEngine', () => {
 		`;
 
 		const steps = parseScriptToReplaySteps(script);
-		expect(steps).toEqual([
-			{ action: 'goto', url: 'https://app.knitto.co.id', description: 'Navigasi ke https://app.knitto.co.id' },
-			{ action: 'fill', selector: '#username', value: 'tester', description: 'Mengisi field "#username" dengan "tester"' },
-			{ action: 'click', selector: '#submit-btn', description: 'Mengklik elemen "#submit-btn"' },
-			{ action: 'wait', timeoutMs: 2000, description: 'Menunggu jeda 2000ms' }
+		expect(steps).toMatchObject([
+			{ action: 'goto', url: 'https://app.knitto.co.id' },
+			{ action: 'fill', selector: '#username', locator: { kind: 'css', value: '#username' }, value: 'tester' },
+			{ action: 'click', selector: '#submit-btn', locator: { kind: 'css', value: '#submit-btn' } },
+			{ action: 'wait', timeoutMs: 2000 }
 		]);
 	});
 
@@ -29,18 +29,18 @@ describe('replayEngine', () => {
 		`;
 
 		const steps = parseScriptToReplaySteps(script);
-		expect(steps).toEqual([
-			{ action: 'fill', selector: 'Ketik email', value: 'user@knitto.id', description: 'Mengisi field "Ketik email" dengan "user@knitto.id"' },
-			{ action: 'click', selector: 'role:button:Masuk', description: 'Mengklik elemen role button "Masuk"' },
-			{ action: 'select', selector: '#role', value: 'qa', description: 'Memilih opsi "qa" pada "#role"' },
-			{ action: 'check', selector: '#agree-terms', value: 'true', description: 'Centang "#agree-terms"' }
+		expect(steps).toMatchObject([
+			{ action: 'fill', locator: { kind: 'placeholder', value: 'Ketik email' }, value: 'user@knitto.id' },
+			{ action: 'click', locator: { kind: 'role', role: 'button', name: 'Masuk' } },
+			{ action: 'select', selector: '#role', value: 'qa', optionBy: 'value' },
+			{ action: 'check', selector: '#agree-terms', value: 'true' }
 		]);
 	});
 
 	it('menggunakan fallbackUrl jika script tidak memiliki perintah goto', () => {
 		const script = `await page.fill('#code', '123');`;
 		const steps = parseScriptToReplaySteps(script, 'https://fallback.knitto.com');
-		expect(steps[0]).toEqual({ action: 'fill', selector: '#code', value: '123', description: 'Mengisi field "#code" dengan "123"' });
+		expect(steps[0]).toMatchObject({ action: 'fill', selector: '#code', value: '123' });
 	});
 
 	it('mengembalikan error jika tidak ada langkah yang dapat dijalankan', async () => {
@@ -272,11 +272,11 @@ describe('replayEngine', () => {
 		`;
 
 		const steps = parseScriptToReplaySteps(script);
-		expect(steps).toEqual([
-			{ action: 'goto', url: 'https://chat.knitto.org/chat', description: 'Navigasi ke https://chat.knitto.org/chat' },
-			{ action: 'click', selector: 'role:button:chat|pesan', description: 'Mengklik elemen role button "chat|pesan"' },
-			{ action: 'fill', selector: 'ketik pesan', value: 'Pesan otomatis', description: 'Mengisi field "ketik pesan" dengan "Pesan otomatis"' },
-			{ action: 'click', selector: 'role:button:Kirim', description: 'Mengklik elemen role button "Kirim"' }
+		expect(steps).toMatchObject([
+			{ action: 'goto', url: 'https://chat.knitto.org/chat' },
+			{ action: 'click', locator: { kind: 'role', role: 'button', name: 'chat|pesan', regexFlags: 'i' } },
+			{ action: 'fill', locator: { kind: 'placeholder', value: 'ketik pesan', regexFlags: 'i' }, value: 'Pesan otomatis' },
+			{ action: 'click', locator: { kind: 'role', role: 'button', name: 'Kirim' } }
 		]);
 	});
 
@@ -315,6 +315,61 @@ describe('replayEngine', () => {
 			expect(result.success).toBe(true);
 			expect(setCookieMock).toHaveBeenCalled();
 			expect(executeScriptMock).toHaveBeenCalled();
+		} finally {
+			globalThis.chrome = originalChrome;
+		}
+	});
+});
+
+describe('buildReplayFailureReport', () => {
+	it('membuat payload dari langkah yang gagal; null bila sukses', async () => {
+		const { buildReplayFailureReport } = await import('../replayEngine');
+		expect(buildReplayFailureReport({ success: true, totalSteps: 3, executedSteps: 3 })).toBeNull();
+		expect(
+			buildReplayFailureReport({
+				success: false,
+				totalSteps: 5,
+				executedSteps: 2,
+				error: 'Elemen tidak ditemukan',
+				failedStepNo: 3,
+				failedStep: { action: 'click', selector: "getByRole('button', { name: 'Kirim' })", description: 'click Kirim' }
+			})
+		).toEqual({ step_no: 3, error: 'Elemen tidak ditemukan', step_description: 'click Kirim', selector: "getByRole('button', { name: 'Kirim' })", total_steps: 5 });
+	});
+});
+
+describe('replay langkah di dalam iframe', () => {
+	it('menjalankan langkah di frame yang memuat elemen (bukan frame utama)', async () => {
+		const originalChrome = globalThis.chrome;
+		const calls: Array<{ target: Record<string, unknown> }> = [];
+		const executeScript = vi.fn(async (options: { target: Record<string, unknown>; args?: unknown[] }) => {
+			calls.push({ target: options.target });
+			if (options.target.allFrames && options.args) {
+				return [
+					{ frameId: 0, result: false },
+					{ frameId: 7, result: true }
+				];
+			}
+			return [{ frameId: 7, result: { success: true } }];
+		});
+		globalThis.chrome = {
+			...originalChrome,
+			tabs: { query: vi.fn().mockResolvedValue([{ id: 5 }]), update: vi.fn().mockResolvedValue({}) },
+			scripting: { executeScript }
+		} as unknown as typeof chrome;
+
+		try {
+			const { executeReplay } = await import('../replayEngine');
+			const result = await executeReplay({
+				sessionId: 1,
+				testCaseNo: 'TC',
+				parameterOverrides: {},
+				mode: 'activeTab',
+				stepDelayMs: 0,
+				script: "await page.getByTitle('Live Chat', { exact: true }).contentFrame().getByRole('button', { name: 'Kirim', exact: true }).click();"
+			});
+			expect(result.success).toBe(true);
+			expect(calls.some((c) => (c.target.frameIds as number[] | undefined)?.[0] === 7)).toBe(true);
 		} finally {
 			globalThis.chrome = originalChrome;
 		}

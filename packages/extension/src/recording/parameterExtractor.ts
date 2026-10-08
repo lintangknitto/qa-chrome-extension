@@ -1,6 +1,7 @@
 /**
  * Utilitas ekstraksi variabel parameter dari Playwright Script & Actions untuk Re-run interaktif.
  */
+import { parseScript, type ParsedStep } from './scriptParser';
 
 export interface ReRunParameter {
 	id: string;
@@ -59,43 +60,37 @@ export function generateRandomValue(param: ReRunParameter): string {
 	}
 }
 
+const labelFromLocator = (step: ParsedStep): string => {
+	const spec = step.locator;
+	if (!spec) return step.selector ?? '';
+	if (spec.kind === 'role') return spec.name ?? spec.role;
+	if (spec.kind === 'css') {
+		const nameAttr = /\[name="([^"]+)"\]/.exec(spec.value);
+		if (nameAttr) return nameAttr[1];
+		return spec.value.startsWith('#') || spec.value.startsWith('.') ? spec.value.slice(1) : spec.value;
+	}
+	return spec.value;
+};
+
 export function extractParametersFromPlaywrightScript(script: string): ReRunParameter[] {
 	if (!script) return [];
 	const params: ReRunParameter[] = [];
 	const seenSelectors = new Set<string>();
 
-	const patterns = [
-		/page\.fill\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/g,
-		/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/g,
-		/page\.getByTestId\(\s*['"`]([^'"`]+)['"`]\s*\)\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/g,
-		/page\.getByLabel\(\s*['"`]([^'"`]+)['"`]\s*\)\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/g,
-		/page\.getByPlaceholder\(\s*['"`]([^'"`]+)['"`]\s*\)\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/g,
-		/page\.type\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/g
-	];
-
-	for (const regex of patterns) {
-		let match: RegExpExecArray | null;
-		while ((match = regex.exec(script)) !== null) {
-			const selector = match[1].trim();
-			const originalValue = match[2];
-			if (!seenSelectors.has(selector)) {
-				seenSelectors.add(selector);
-				let label = selector;
-				if (selector.startsWith('#') || selector.startsWith('.')) {
-					label = selector.slice(1);
-				}
-				label = label.replace(/[_-]/g, ' ');
-
-				params.push({
-					id: `param_${params.length + 1}`,
-					label: label.charAt(0).toUpperCase() + label.slice(1),
-					selector,
-					originalValue,
-					currentValue: originalValue,
-					type: inferParameterType(selector, originalValue)
-				});
-			}
-		}
+	// Parser yang sama dengan Replay Engine → key override (selector) selalu cocok dengan langkah replay.
+	for (const step of parseScript(script)) {
+		if (step.action !== 'fill' || !step.selector || seenSelectors.has(step.selector)) continue;
+		seenSelectors.add(step.selector);
+		const originalValue = step.value ?? '';
+		const label = labelFromLocator(step).replace(/[_-]/g, ' ');
+		params.push({
+			id: `param_${params.length + 1}`,
+			label: label.charAt(0).toUpperCase() + label.slice(1),
+			selector: step.selector,
+			originalValue,
+			currentValue: originalValue,
+			type: inferParameterType(`${step.selector} ${labelFromLocator(step)}`, originalValue)
+		});
 	}
 
 	return params;

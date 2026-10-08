@@ -2,15 +2,21 @@
  * Script yang dieksekusi di world utama halaman untuk menangkap aksi tester.
  * Hasil dikirim balik lewat CDP binding `__qaRecorderBinding`.
  */
+import { installLocatorEngine } from './locatorEngine';
+
 export const ACTION_BINDING_NAME = '__qaRecorderBinding';
 
 export const actionCaptureScript = (): string => `
 (() => {
   if (window.__qaRecorderInstalled) return;
   window.__qaRecorderInstalled = true;
+  const locatorEngine = (${installLocatorEngine.toString()})(window);
 
   const send = (payload) => {
-    try { window.${ACTION_BINDING_NAME}(JSON.stringify(payload)); } catch (error) {}
+    try {
+      payload.pageUrl = location.href;
+      window.${ACTION_BINDING_NAME}(JSON.stringify(payload));
+    } catch (error) {}
   };
 
   const getAssociatedLabel = (element) => {
@@ -28,41 +34,20 @@ export const actionCaptureScript = (): string => `
     return undefined;
   };
 
-  const computeCssPath = (el) => {
-    if (!(el instanceof Element)) return '';
-    const path = [];
-    while (el && el.nodeType === Node.ELEMENT_NODE) {
-      let selector = el.nodeName.toLowerCase();
-      if (el.id && /^[A-Za-z][\\w-]*$/.test(el.id)) {
-        selector += '#' + el.id;
-        path.unshift(selector);
-        break;
-      } else {
-        let sib = el, nth = 1;
-        while (sib = sib.previousElementSibling) {
-          if (sib.nodeName.toLowerCase() === selector) nth++;
-        }
-        if (nth !== 1) selector += ':nth-of-type(' + nth + ')';
-      }
-      path.unshift(selector);
-      el = el.parentElement;
-    }
-    return path.join(' > ');
-  };
-
   const isExtensionElement = (el) => {
-    if (!el || !(el instanceof Element)) return false;
-    if (el.id === 'qa-knitto-fab-host' || (typeof el.closest === 'function' && el.closest('#qa-knitto-fab-host'))) return true;
-    if (el.hasAttribute && el.hasAttribute('data-qa-knitto-ext')) return true;
-    if (typeof el.closest === 'function' && el.closest('[data-qa-knitto-ext]')) return true;
+    // Naik melewati batas shadow root: target dari composedPath() bisa berada di dalam shadow root FAB.
+    let node = el;
+    while (node && node instanceof Element) {
+      if (typeof node.closest === 'function' && node.closest('#qa-knitto-fab-host, [data-qa-knitto-ext]')) return true;
+      const root = typeof node.getRootNode === 'function' ? node.getRootNode() : null;
+      node = root && root !== document && root.host ? root.host : null;
+    }
     return false;
   };
 
   const descriptor = (element) => {
     if (!element || !element.tagName) return null;
-    const testId = element.getAttribute('data-testid')
-      || element.getAttribute('data-test-id')
-      || element.getAttribute('data-cy');
+    const testId = element.getAttribute('data-testid');
     const text = (element.innerText || element.textContent || '').replace(/\\s+/g, ' ').trim().slice(0, 120);
     const labelText = getAssociatedLabel(element);
     const type = (element.getAttribute('type') || '').toLowerCase();
@@ -74,13 +59,16 @@ export const actionCaptureScript = (): string => `
       if (opt) selectedText = (opt.text || opt.innerText || '').trim();
     }
 
-    const ariaLabel = element.getAttribute('aria-label') || element.getAttribute('title') || undefined;
+    const ariaLabel = element.getAttribute('aria-label') || undefined;
+    let candidates = [];
+    try { candidates = locatorEngine.describeCandidates(element); } catch (e) {}
 
     return {
       tagName: element.tagName,
-      id: element.id || undefined,
+      id: element.id && !locatorEngine.isDynamicId(element.id) ? element.id : undefined,
       testId: testId || undefined,
-      role: element.getAttribute('role') || undefined,
+      role: locatorEngine.roleOf(element) || undefined,
+      accessibleName: locatorEngine.accessibleName(element) || undefined,
       ariaLabel: ariaLabel,
       labelText: labelText || undefined,
       placeholder: element.getAttribute('placeholder') || undefined,
@@ -91,8 +79,9 @@ export const actionCaptureScript = (): string => `
       title: element.getAttribute('title') || undefined,
       alt: element.getAttribute('alt') || undefined,
       text: text || undefined,
-      cssPath: computeCssPath(element) || undefined,
-      classes: Array.from(element.classList || [])
+      cssPath: locatorEngine.cssPath(element) || undefined,
+      classes: Array.from(element.classList || []),
+      candidates: candidates
     };
   };
 
@@ -103,29 +92,27 @@ export const actionCaptureScript = (): string => `
     return type === 'password' || /pass|secret|token|otp/.test(name);
   };
 
+  const INTERACTIVE_SELECTOR = 'button, a[href], input, select, textarea, summary, label, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="menuitemcheckbox"], [role="menuitemradio"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"], [role="treeitem"], [role="combobox"], [contenteditable="true"]';
+
   const getInteractiveTarget = (rawTarget) => {
     if (!rawTarget || !(rawTarget instanceof Element)) return rawTarget;
-    const selector = 'button, a, input, select, textarea, [role="button"], [role="link"], [role="tab"], [role="menuitem"], [role="option"], [role="switch"], [role="checkbox"], [role="radio"], [role="treeitem"], [tabindex], [onclick], [data-action], [aria-label], [title], [class*="btn"], [class*="button"], [class*="submit"], [class*="send"], [class*="action"], [class*="clickable"]';
-    if (typeof rawTarget.closest === 'function') {
-      const found = rawTarget.closest(selector);
-      if (found && !isExtensionElement(found)) return found;
-    }
+    // Elemen yang diklik sendiri sudah interaktif: pakai apa adanya.
+    if (rawTarget.matches && rawTarget.matches(INTERACTIVE_SELECTOR)) return rawTarget;
+    // Naik ke ancestor interaktif terdekat (mis. <svg>/<span> di dalam <button>).
+    const found = typeof rawTarget.closest === 'function' ? rawTarget.closest(INTERACTIVE_SELECTOR) : null;
+    if (found && !isExtensionElement(found)) return found;
+    // Elemen custom tanpa semantik: hanya naik bila ancestor punya onclick/cursor pointer, maksimal 3 level.
     let cur = rawTarget;
-    let depth = 0;
-    while (cur && depth < 5) {
+    for (let depth = 0; cur && depth < 3; depth++) {
       if (isExtensionElement(cur)) break;
-      const tag = (cur.tagName || '').toLowerCase();
-      if (tag === 'button' || tag === 'a' || cur.getAttribute('role') === 'button' || cur.getAttribute('data-testid') || cur.getAttribute('onclick')) {
-        return cur;
-      }
+      if (cur.hasAttribute && (cur.hasAttribute('onclick') || cur.hasAttribute('data-testid'))) return cur;
       try {
+        const parent = cur.parentElement;
         const style = window.getComputedStyle(cur);
-        if (style && style.cursor === 'pointer' && cur.parentElement && cur.parentElement !== document.body) {
-          return cur;
-        }
+        const parentPointer = parent && window.getComputedStyle(parent).cursor === 'pointer';
+        if (style && style.cursor === 'pointer' && !parentPointer) return cur;
       } catch (e) {}
       cur = cur.parentElement;
-      depth++;
     }
     return rawTarget;
   };
@@ -155,9 +142,79 @@ export const actionCaptureScript = (): string => `
     }
   };
 
+  // Target asli event (menembus open shadow DOM; event.target di document sudah di-retarget ke host).
+  const realTarget = (event) => {
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    const first = path.find((node) => node instanceof Element);
+    return first || event.target;
+  };
+
+  // Rantai locator iframe (terluar → terdalam) untuk aksi di dalam frame same-origin.
+  // Frame cross-origin tidak bisa membaca parent: ditandai, recorder melengkapi via CDP.
+  const frameChain = () => {
+    if (window === window.top) return { frames: null, crossOrigin: false };
+    const frames = [];
+    let win = window;
+    try {
+      while (win !== win.top) {
+        const owner = win.frameElement;
+        const parentEngine = win.parent.__knittoLocator;
+        if (!owner || !parentEngine) return { frames: null, crossOrigin: true };
+        frames.unshift(parentEngine.describeCandidates(owner));
+        win = win.parent;
+      }
+    } catch (e) {
+      return { frames: null, crossOrigin: true };
+    }
+    return { frames, crossOrigin: false };
+  };
+
+  const sendAction = (payload) => {
+    const chain = frameChain();
+    if (chain.frames) payload.frames = chain.frames;
+    if (chain.crossOrigin) payload.crossOriginFrame = true;
+    send(payload);
+  };
+
+  // ---- Hover yang membuka menu: dicatat hanya bila elemen yang kemudian diklik
+  // muncul di DOM setelah hover (terdeteksi MutationObserver), agar tidak berisik.
+  const HOVER_WINDOW_MS = 4000;
+  let pendingHover = null;
+  const hoverObserver = new MutationObserver((mutations) => {
+    if (!pendingHover || Date.now() - pendingHover.at > HOVER_WINDOW_MS) return;
+    for (const mutation of mutations) {
+      mutation.addedNodes.forEach((node) => {
+        if (node instanceof Element) pendingHover.added.push(node);
+      });
+    }
+  });
+  try {
+    hoverObserver.observe(document.documentElement, { childList: true, subtree: true });
+  } catch (e) {}
+
+  document.addEventListener('mouseover', (event) => {
+    const raw = realTarget(event);
+    if (!(raw instanceof Element) || isExtensionElement(raw)) return;
+    const host = raw.closest('[aria-haspopup], [aria-expanded], [role="menuitem"], button, a[href], li, nav *');
+    if (!host || (pendingHover && pendingHover.el === host)) return;
+    pendingHover = { el: host, at: Date.now(), added: [], emitted: false };
+  }, true);
+
+  const flushHoverFor = (target) => {
+    const hover = pendingHover;
+    if (!hover || hover.emitted || Date.now() - hover.at > HOVER_WINDOW_MS) return;
+    if (hover.el.contains(target)) return;
+    const revealed = hover.added.some((node) => node === target || node.contains(target));
+    if (!revealed) return;
+    hover.emitted = true;
+    sendAction({ action: 'hover', element: descriptor(hover.el) });
+  };
+
+  // ---- Klik, double-click, klik kanan
   document.addEventListener('click', (event) => {
-    const rawTarget = event.target;
+    const rawTarget = realTarget(event);
     if (!rawTarget || !(rawTarget instanceof Element) || isExtensionElement(rawTarget)) return;
+    if (suppressClickUntil > Date.now()) return;
 
     // Pastikan input tertunda dikirimkan sebelum event click
     flushPendingInput();
@@ -165,16 +222,75 @@ export const actionCaptureScript = (): string => `
     const interactiveTarget = getInteractiveTarget(rawTarget);
     if (isExtensionElement(interactiveTarget)) return;
 
-    send({ action: 'click', element: descriptor(interactiveTarget) });
+    flushHoverFor(interactiveTarget);
+    // event.detail === 2 adalah klik kedua dari double-click; dblclick dicatat terpisah.
+    if (event.detail >= 2) return;
+    sendAction({ action: 'click', element: descriptor(interactiveTarget) });
+  }, true);
+
+  document.addEventListener('dblclick', (event) => {
+    const rawTarget = realTarget(event);
+    if (!(rawTarget instanceof Element) || isExtensionElement(rawTarget)) return;
+    flushPendingInput();
+    sendAction({ action: 'dblclick', element: descriptor(getInteractiveTarget(rawTarget)) });
+  }, true);
+
+  document.addEventListener('contextmenu', (event) => {
+    const rawTarget = realTarget(event);
+    if (!(rawTarget instanceof Element) || isExtensionElement(rawTarget)) return;
+    flushPendingInput();
+    sendAction({ action: 'rightclick', element: descriptor(getInteractiveTarget(rawTarget)) });
+  }, true);
+
+  // ---- Drag & drop: HTML5 (dragstart/drop) atau berbasis pointer (dnd-kit, sortable, dll.)
+  let dragSource = null;
+  let pointerDown = null;
+  let suppressClickUntil = 0;
+  const DRAG_MIN_DISTANCE = 12;
+
+  document.addEventListener('dragstart', (event) => {
+    const raw = realTarget(event);
+    if (raw instanceof Element && !isExtensionElement(raw)) dragSource = getInteractiveTarget(raw.closest('[draggable="true"]') || raw);
+  }, true);
+
+  document.addEventListener('drop', (event) => {
+    const raw = realTarget(event);
+    if (!dragSource || !(raw instanceof Element) || isExtensionElement(raw)) return;
+    sendAction({ action: 'drag', element: descriptor(dragSource), target: descriptor(raw) });
+    dragSource = null;
+    pointerDown = null;
+  }, true);
+
+  document.addEventListener('pointerdown', (event) => {
+    const raw = realTarget(event);
+    if (event.button !== 0 || !(raw instanceof Element) || isExtensionElement(raw)) return;
+    pointerDown = { el: getInteractiveTarget(raw), x: event.clientX, y: event.clientY };
+  }, true);
+
+  document.addEventListener('pointerup', (event) => {
+    const down = pointerDown;
+    pointerDown = null;
+    if (!down || dragSource) return;
+    const distance = Math.hypot(event.clientX - down.x, event.clientY - down.y);
+    if (distance < DRAG_MIN_DISTANCE) return;
+    const dropTarget = document.elementFromPoint(event.clientX, event.clientY);
+    if (!dropTarget || dropTarget === down.el || down.el.contains(dropTarget) || isExtensionElement(dropTarget)) return;
+    // Seleksi teks (geser di dalam input) bukan drag.
+    if (down.el.matches && down.el.matches('input, textarea, [contenteditable="true"]')) return;
+    sendAction({ action: 'drag', element: descriptor(down.el), target: descriptor(dropTarget) });
+    // Klik sintetis setelah drag pointer bukan aksi tester.
+    suppressClickUntil = Date.now() + 300;
   }, true);
 
   // Input listener dengan support input, textarea, dan contenteditable
   document.addEventListener('input', (event) => {
-    const element = event.target;
+    const element = realTarget(event);
     if (!element || !(element instanceof Element) || isExtensionElement(element)) return;
     const isInputOrTextArea = element.tagName === 'INPUT' || element.tagName === 'TEXTAREA';
     const isContentEdit = element.isContentEditable || element.getAttribute('contenteditable') === 'true' || element.getAttribute('role') === 'textbox';
     if (!isInputOrTextArea && !isContentEdit) return;
+    // file/checkbox/radio tidak diketik: dicatat lewat change (upload/check) — event input-nya (value "on") jangan jadi fill.
+    if (element.tagName === 'INPUT' && ['file', 'checkbox', 'radio'].includes((element.getAttribute('type') || '').toLowerCase())) return;
 
     lastInputElement = element;
     if (inputTimer) clearTimeout(inputTimer);
@@ -183,13 +299,19 @@ export const actionCaptureScript = (): string => `
     }, 300);
   }, true);
 
-  document.addEventListener('change', (event) => {
+  const onChange = (event) => {
     flushPendingInput();
-    const element = event.target;
+    const element = realTarget(event);
     if (!element || !(element instanceof Element) || isExtensionElement(element)) return;
-    const sensitive = isSensitive(element);
     const desc = descriptor(element);
-    send({
+    // Upload file: nama file saja (path asli tidak bisa & tidak boleh dibaca).
+    if (element.tagName === 'INPUT' && (element.getAttribute('type') || '').toLowerCase() === 'file') {
+      const files = Array.from(element.files || []).map((file) => file.name).slice(0, 20);
+      sendAction({ action: 'upload', element: desc, files });
+      return;
+    }
+    const sensitive = isSensitive(element);
+    sendAction({
       action: 'change',
       element: desc,
       value: sensitive ? null : (element && typeof element.value === 'string' ? element.value.slice(0, 1000) : null),
@@ -197,14 +319,27 @@ export const actionCaptureScript = (): string => `
       selectedText: desc?.selectedText,
       value_redacted: sensitive
     });
+  };
+  document.addEventListener('change', onChange, true);
+
+  // Event change tidak "composed": pasang listener di setiap open shadow root yang disentuh tester.
+  const instrumentedRoots = new WeakSet();
+  document.addEventListener('focusin', (event) => {
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    for (const node of path) {
+      if (typeof ShadowRoot !== 'undefined' && node instanceof ShadowRoot && !instrumentedRoots.has(node)) {
+        instrumentedRoots.add(node);
+        node.addEventListener('change', onChange, true);
+      }
+    }
   }, true);
 
   document.addEventListener('keydown', (event) => {
     if (event.key !== 'Enter' && event.key !== 'Tab' && event.key !== 'Escape') return;
     flushPendingInput();
-    const element = event.target;
+    const element = realTarget(event);
     if (!element || !(element instanceof Element) || isExtensionElement(element)) return;
-    send({ action: 'keydown', key: event.key, element: descriptor(element) });
+    sendAction({ action: 'keydown', key: event.key, element: descriptor(element) });
   }, true);
 })();
 `;

@@ -5,6 +5,7 @@ import { EventBuffer } from './eventBuffer';
 import { createEventDraft, type RecordingEventType } from './eventTypes';
 import { ListenerRegistry } from './listenerRegistry';
 import { buildLocatorCandidates, type ElementDescriptor } from './locatorCandidates';
+import { rankCandidates, type LocatorCandidate } from './locatorEngine';
 import { prepareNetworkBody } from './networkBody';
 import { redactPayload, redactUrl } from './redaction';
 import { RecordingSocketClient } from './socketClient';
@@ -29,8 +30,22 @@ interface PendingRequest {
 	postData: string | null;
 	status?: number;
 	responseContentType?: string | null;
+	requestId?: string | null;
 	failed?: boolean;
 	tabId: number;
+}
+
+/** Header response yang biasa dipakai backend untuk korelasi log (dicek case-insensitive). */
+const REQUEST_ID_HEADERS = ['x-request-id', 'request-id', 'x-correlation-id', 'x-trace-id', 'traceparent'];
+
+export const extractRequestId = (headers: Record<string, unknown> | undefined): string | null => {
+	if (!headers) return null;
+	const lower = new Map(Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value]));
+	for (const name of REQUEST_ID_HEADERS) {
+		const value = lower.get(name);
+		if (typeof value === 'string' && value.trim()) return value.trim().slice(0, 200);
+	}
+	return null;
 }
 
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
@@ -48,6 +63,8 @@ export class RecordingController {
 	private readonly _listeners = new ListenerRegistry();
 	private readonly _attachedTabs = new Set<number>();
 	private readonly _pendingRequests = new Map<string, PendingRequest>();
+	/** Locator <iframe> pemilik per child session CDP (iframe cross-origin / OOPIF). */
+	private readonly _frameOwnerLocators = new Map<string, string[]>();
 	private _options: RecordingStartOptions | null = null;
 	private _socket: RecordingSocketClient | null = null;
 	private _api: RecordingApiClient | null = null;
@@ -135,6 +152,13 @@ export class RecordingController {
 		const script = actionCaptureScript();
 		await this._sendCommand(tabId, 'Page.addScriptToEvaluateOnNewDocument', { source: script }).catch(() => {});
 		await this._sendCommand(tabId, 'Runtime.evaluate', { expression: script }).catch(() => {});
+		// Iframe cross-origin berjalan di target terpisah: attach otomatis agar aksinya ikut terekam.
+		await this._sendCommand(tabId, 'Target.setAutoAttach', {
+			autoAttach: true,
+			waitForDebuggerOnStart: false,
+			flatten: true,
+			filter: [{ type: 'iframe' }]
+		}).catch(() => {});
 
 		if (this._options?.recordVideo !== false) {
 			await this._sendCommand(tabId, 'Page.startScreencast', {
@@ -192,9 +216,9 @@ export class RecordingController {
 		const onRemoved = (tabId: number) => {
 			void this.detachTab(tabId);
 		};
-		const onDebuggerEvent = (source: chrome.debugger.Debuggee, method: string, params?: object) => {
+		const onDebuggerEvent = (source: chrome.debugger.DebuggerSession, method: string, params?: object) => {
 			if (typeof source.tabId !== 'number' || !this._attachedTabs.has(source.tabId)) return;
-			void this._onDebuggerEvent(source.tabId, method, (params ?? {}) as Record<string, unknown>);
+			void this._onDebuggerEvent(source.tabId, method, (params ?? {}) as Record<string, unknown>, source.sessionId);
 		};
 		const onDebuggerDetach = (source: chrome.debugger.Debuggee) => {
 			if (typeof source.tabId === 'number') this._attachedTabs.delete(source.tabId);
@@ -226,11 +250,22 @@ export class RecordingController {
 	private async _onDebuggerEvent(
 		tabId: number,
 		method: string,
-		params: Record<string, unknown>
+		params: Record<string, unknown>,
+		sessionId?: string
 	): Promise<void> {
+		// requestId hanya unik per target: beri namespace untuk event jaringan dari iframe (child session).
+		if (sessionId && method.startsWith('Network.') && typeof params.requestId === 'string') {
+			params = { ...params, requestId: `${sessionId}:${params.requestId}` };
+		}
 		switch (method) {
+			case 'Target.attachedToTarget':
+				await this._onAttachedToTarget(tabId, params, sessionId);
+				break;
+			case 'Target.detachedFromTarget':
+				if (typeof params.sessionId === 'string') this._frameOwnerLocators.delete(params.sessionId);
+				break;
 			case 'Runtime.bindingCalled':
-				this._onBindingCalled(tabId, params);
+				this._onBindingCalled(tabId, params, sessionId);
 				break;
 			case 'Runtime.consoleAPICalled':
 				this._onConsoleCalled(tabId, params);
@@ -254,13 +289,67 @@ export class RecordingController {
 				this._onLoadingFailed(params);
 				break;
 			case 'Page.frameNavigated':
-				this._onFrameNavigated(tabId, params);
+				// Navigasi di dalam iframe (child session) bukan langkah tester.
+				if (!sessionId) this._onFrameNavigated(tabId, params);
 				break;
 			case 'Page.screencastFrame':
 				this._onScreencastFrame(tabId, params);
 				break;
 			default:
 				break;
+		}
+	}
+
+	/** Pasang capture script & binding di iframe cross-origin, lalu cari locator <iframe> pemiliknya. */
+	private async _onAttachedToTarget(tabId: number, params: Record<string, unknown>, parentSessionId?: string): Promise<void> {
+		const childSessionId = typeof params.sessionId === 'string' ? params.sessionId : '';
+		const targetInfo = (params.targetInfo ?? {}) as { type?: string; targetId?: string };
+		if (!childSessionId || targetInfo.type !== 'iframe') return;
+
+		const send = (method: string, args: Record<string, unknown> = {}) => this._sendCommand(tabId, method, args, childSessionId).catch(() => undefined);
+		const script = actionCaptureScript();
+		await send('Runtime.enable');
+		await send('Network.enable');
+		await send('Runtime.addBinding', { name: ACTION_BINDING_NAME });
+		await send('Page.addScriptToEvaluateOnNewDocument', { source: script });
+		await send('Runtime.evaluate', { expression: script });
+		await send('Target.setAutoAttach', { autoAttach: true, waitForDebuggerOnStart: false, flatten: true, filter: [{ type: 'iframe' }] });
+
+		const ownerLocators = targetInfo.targetId ? await this._resolveFrameOwner(tabId, targetInfo.targetId, parentSessionId) : null;
+		if (ownerLocators) {
+			const parentChain = parentSessionId ? this._frameOwnerLocators.get(parentSessionId) ?? [] : [];
+			this._frameOwnerLocators.set(childSessionId, [...parentChain, ownerLocators]);
+		}
+	}
+
+	/** Locator terbaik elemen <iframe> pemilik frame, dihitung engine di dokumen induk. */
+	private async _resolveFrameOwner(tabId: number, frameId: string, parentSessionId?: string): Promise<string | null> {
+		try {
+			await this._sendCommand(tabId, 'DOM.enable', {}, parentSessionId).catch(() => undefined);
+			const owner = await this._sendCommand<{ backendNodeId?: number }>(tabId, 'DOM.getFrameOwner', { frameId }, parentSessionId);
+			if (!owner?.backendNodeId) return null;
+			const resolved = await this._sendCommand<{ object?: { objectId?: string } }>(
+				tabId,
+				'DOM.resolveNode',
+				{ backendNodeId: owner.backendNodeId },
+				parentSessionId
+			);
+			const objectId = resolved?.object?.objectId;
+			if (!objectId) return null;
+			const described = await this._sendCommand<{ result?: { value?: LocatorCandidate[] } }>(
+				tabId,
+				'Runtime.callFunctionOn',
+				{
+					objectId,
+					functionDeclaration: 'function () { return window.__knittoLocator ? window.__knittoLocator.describeCandidates(this) : []; }',
+					returnByValue: true
+				},
+				parentSessionId
+			);
+			const candidates = described?.result?.value ?? [];
+			return candidates.length > 0 ? rankCandidates(candidates).locators[0] : null;
+		} catch {
+			return null;
 		}
 	}
 
@@ -291,7 +380,7 @@ export class RecordingController {
 		}));
 	}
 
-	private _onBindingCalled(tabId: number, params: Record<string, unknown>): void {
+	private _onBindingCalled(tabId: number, params: Record<string, unknown>, sessionId?: string): void {
 		if (params.name !== ACTION_BINDING_NAME || typeof params.payload !== 'string') return;
 		let parsed: {
 			action?: string;
@@ -301,6 +390,11 @@ export class RecordingController {
 			selectedText?: string;
 			key?: string;
 			value_redacted?: boolean;
+			pageUrl?: string;
+			target?: ElementDescriptor;
+			frames?: LocatorCandidate[][];
+			crossOriginFrame?: boolean;
+			files?: string[];
 		};
 		try {
 			parsed = JSON.parse(params.payload);
@@ -316,23 +410,48 @@ export class RecordingController {
 			return;
 		}
 
-		const locators = parsed.element ? buildLocatorCandidates(parsed.element) : [];
+		const ranked = parsed.element?.candidates?.length ? rankCandidates(parsed.element.candidates) : null;
+		const locators = ranked ? ranked.locators : parsed.element ? buildLocatorCandidates(parsed.element) : [];
 		this._enqueue(
 			'action',
 			{
 				action: parsed.action ?? 'unknown',
 				locators,
+				locator_specs: ranked?.specs ?? null,
+				unique_locator: ranked?.uniqueLocator ?? null,
+				ambiguous: ranked ? ranked.ambiguous : null,
 				element: parsed.element ?? null,
 				value: parsed.value ?? null,
 				checked: parsed.checked,
 				selectedText: parsed.selectedText,
 				key: parsed.key,
-				value_redacted: parsed.value_redacted === true
+				value_redacted: parsed.value_redacted === true,
+				...this._extraActionFields(parsed, sessionId)
 			},
-			{ tabId }
+			// URL halaman saat aksi terjadi → codegen bisa membuat goto awal walau rekaman dimulai di halaman terbuka.
+			{ tabId, url: typeof parsed.pageUrl === 'string' ? parsed.pageUrl : undefined }
 		);
 
 		void this._captureScreenshot(tabId);
+	}
+
+	/** Field tambahan aksi: rantai locator iframe, target drag, dan nama file upload. */
+	private _extraActionFields(
+		parsed: { target?: ElementDescriptor; frames?: LocatorCandidate[][]; files?: string[] },
+		sessionId?: string
+	): Record<string, unknown> {
+		const extra: Record<string, unknown> = {};
+		const sameOriginFrames = parsed.frames?.map((candidates) => rankCandidates(candidates).locators[0]).filter(Boolean) ?? [];
+		const ownerChain = sessionId ? this._frameOwnerLocators.get(sessionId) ?? [] : [];
+		const frameLocators = [...ownerChain, ...sameOriginFrames];
+		if (frameLocators.length > 0) extra.frame_locators = frameLocators;
+		if (parsed.target) {
+			const rankedTarget = parsed.target.candidates?.length ? rankCandidates(parsed.target.candidates) : null;
+			extra.target_locators = rankedTarget ? rankedTarget.locators : buildLocatorCandidates(parsed.target);
+			extra.target_unique_locator = rankedTarget?.uniqueLocator ?? null;
+		}
+		if (Array.isArray(parsed.files)) extra.files = parsed.files.filter((name) => typeof name === 'string').slice(0, 20);
+		return extra;
 	}
 
 	private _onConsoleCalled(tabId: number, params: Record<string, unknown>): void {
@@ -394,7 +513,9 @@ export class RecordingController {
 		const pending = this._pendingRequests.get(requestId);
 		if (!pending) return;
 		pending.status = Number(response.status ?? 0);
-		pending.responseContentType = (response.headers as Record<string, string> | undefined)?.['Content-Type'] ?? null;
+		const responseHeaders = response.headers as Record<string, string> | undefined;
+		pending.responseContentType = responseHeaders?.['Content-Type'] ?? responseHeaders?.['content-type'] ?? null;
+		pending.requestId = extractRequestId(responseHeaders);
 	}
 
 	private async _onLoadingFinished(params: Record<string, unknown>): Promise<void> {
@@ -425,6 +546,7 @@ export class RecordingController {
 				method: pending.method,
 				status: pending.status ?? 0,
 				failed: pending.failed === true,
+				request_id: pending.requestId ?? null,
 				request: {
 					content_type: pending.contentType,
 					body: requestBody.body,
@@ -447,6 +569,8 @@ export class RecordingController {
 
 	private _onFrameNavigated(tabId: number, params: Record<string, unknown>): void {
 		const frame = (params.frame ?? {}) as Record<string, unknown>;
+		// Navigasi iframe (iklan, analytics, about:blank) bukan langkah tester.
+		if (frame.parentId) return;
 		this._enqueue(
 			'action',
 			{ action: 'navigation', locators: [], url: frame.url ?? null },
@@ -499,10 +623,12 @@ export class RecordingController {
 	private _sendCommand<T = unknown>(
 		tabId: number,
 		method: string,
-		params: Record<string, unknown> = {}
+		params: Record<string, unknown> = {},
+		sessionId?: string
 	): Promise<T> {
+		const debuggee: chrome.debugger.DebuggerSession = sessionId ? { tabId, sessionId } : { tabId };
 		return new Promise<T>((resolve, reject) => {
-			chrome.debugger.sendCommand({ tabId }, method, params, (result) => {
+			chrome.debugger.sendCommand(debuggee, method, params, (result) => {
 				if (chrome.runtime.lastError) reject(new Error(chrome.runtime.lastError.message));
 				else resolve(result as T);
 			});
