@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Flag, Square, Send, Layers } from 'lucide-react';
+import { Flag, Square, Send, Layers, Trash2 } from 'lucide-react';
 import type { StoredActiveSession } from '../../../recording/tokenStore';
 import { Card, CardContent } from '../components/Card';
 import { Input } from '../components/Input';
@@ -13,6 +13,7 @@ interface ActiveViewProps {
 	error: string | null;
 	onCheckpoint: (note: string) => void;
 	onNavigateEnd: () => void;
+	onDiscard?: () => void;
 }
 
 export const ActiveView: React.FC<ActiveViewProps> = ({
@@ -21,7 +22,8 @@ export const ActiveView: React.FC<ActiveViewProps> = ({
 	busy,
 	error,
 	onCheckpoint,
-	onNavigateEnd
+	onNavigateEnd,
+	onDiscard
 }) => {
 	const [note, setNote] = useState('');
 	const [seconds, setSeconds] = useState(() => {
@@ -117,18 +119,32 @@ export const ActiveView: React.FC<ActiveViewProps> = ({
 			</div>
 
 			{/* Action Buttons */}
-			<div className="sp-button-row" style={{ marginTop: 12, justifyContent: 'space-between' }}>
-				<Button
-					variant="secondary"
-					disabled={busy || !note.trim()}
-					onClick={() => {
-						onCheckpoint(note.trim());
-						setNote('');
-					}}
-					icon={<Flag size={14} />}
-				>
-					Add Checkpoint
-				</Button>
+			<div className="sp-button-row" style={{ marginTop: 12, justifyContent: 'space-between', gap: 6, flexWrap: 'wrap' }}>
+				<div style={{ display: 'flex', gap: 6 }}>
+					<Button
+						variant="secondary"
+						disabled={busy || !note.trim()}
+						onClick={() => {
+							onCheckpoint(note.trim());
+							setNote('');
+						}}
+						icon={<Flag size={14} />}
+					>
+						Add Checkpoint
+					</Button>
+					{onDiscard && (
+						<Button
+							variant="ghost"
+							disabled={busy}
+							onClick={onDiscard}
+							icon={<Trash2 size={14} />}
+							title="Buang/Batalkan sesi rekaman ini tanpa menyimpan"
+							style={{ color: '#dc2626' }}
+						>
+							Buang Sesi
+						</Button>
+					)}
+				</div>
 				<Button
 					variant="danger"
 					disabled={busy}

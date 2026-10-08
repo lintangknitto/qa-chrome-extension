@@ -44,47 +44,36 @@ export const canManageProjects = (user: StoredUser | null | undefined): boolean 
 
 export const canEditProject = (
 	user: StoredUser | null | undefined,
-	project?: RecordingProject | null
+	project?: { created_by_user_id?: number | null } | null
 ): boolean => {
 	if (user === undefined) return true;
 	if (user === null) return false;
 	const role = normalizeRole(user);
 	if (role === 'SUPERADMIN' || role === 'ADMIN') return true;
 	if (role === 'QA') {
-		if (!project) return true;
-		if (
-			project.created_by_user_id !== undefined &&
-			project.created_by_user_id !== null &&
-			typeof user.id_user === 'number'
-		) {
-			return Number(project.created_by_user_id) === Number(user.id_user);
-		}
-		return false;
+		if (!project || typeof project.created_by_user_id !== 'number' || typeof user.id_user !== 'number') return false;
+		return project.created_by_user_id === user.id_user;
 	}
 	return false;
 };
 
 export const canDeleteProject = (
 	user: StoredUser | null | undefined,
-	project?: RecordingProject | null
+	project?: { created_by_user_id?: number | null } | null
 ): boolean => {
 	if (user === undefined) return true;
 	if (user === null) return false;
 	const role = normalizeRole(user);
 	if (role === 'SUPERADMIN' || role === 'ADMIN') return true;
 	if (role === 'QA') {
-		if (!project) return true;
-		if (
-			project.created_by_user_id !== undefined &&
-			project.created_by_user_id !== null &&
-			typeof user.id_user === 'number'
-		) {
-			return Number(project.created_by_user_id) === Number(user.id_user);
-		}
-		return false;
+		if (!project || typeof project.created_by_user_id !== 'number' || typeof user.id_user !== 'number') return false;
+		return project.created_by_user_id === user.id_user;
 	}
 	return false;
 };
+
+export const canEditProgram = canEditProject;
+export const canDeleteProgram = canDeleteProject;
 
 export const canManageTestCases = (user: StoredUser | null | undefined): boolean => {
 	if (user === undefined) return true;

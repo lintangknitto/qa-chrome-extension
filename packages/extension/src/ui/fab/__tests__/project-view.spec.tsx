@@ -135,7 +135,7 @@ describe('ProjectView & Test Case Spreadsheet Management', () => {
 		expect(screen.getByText('Mobile App')).toBeTruthy();
 
 		// Cari "Portal"
-		const searchInput = screen.getByPlaceholderText('Cari nama atau kode project...');
+		const searchInput = screen.getByPlaceholderText(/Cari nama.*kode/i);
 		fireEvent.change(searchInput, { target: { value: 'Portal' } });
 
 		expect(screen.getByText('Knitto Portal')).toBeTruthy();

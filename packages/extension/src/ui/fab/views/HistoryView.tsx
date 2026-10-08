@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { Search, RefreshCw, Download, Copy, Check, Eye, Code2, AlertTriangle, Share2, Play } from 'lucide-react';
+import { Search, RefreshCw, Download, Copy, Check, Eye, Code2, AlertTriangle, Share2, Play, Trash2 } from 'lucide-react';
 import type { RecordingSession } from '../../../recording/apiClient';
+import type { StoredActiveSession } from '../../../recording/tokenStore';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/Card';
 import { Badge } from '../components/Badge';
 import { Button } from '../components/Button';
@@ -20,6 +21,8 @@ export interface HistoryViewProps {
 	generations: GenerationItem[];
 	activeSessionId: number | null;
 	activeGenerations?: Map<number, { id_session: number; title: string; status: string }>;
+	activeHangingSession?: RecordingSession | null;
+	activeSession?: StoredActiveSession | null;
 	busy: boolean;
 	error: string | null;
 	onRefresh: () => void;
@@ -28,6 +31,8 @@ export interface HistoryViewProps {
 	onOpenDetail?: (session: RecordingSession) => void;
 	onDownload: (item: GenerationItem) => void;
 	onShare?: (idSession: number) => void;
+	onResumeSession?: (session: RecordingSession) => void;
+	onDiscardSession?: () => void;
 }
 
 export const HistoryView: React.FC<HistoryViewProps> = ({
@@ -35,6 +40,8 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 	generations,
 	activeSessionId,
 	activeGenerations,
+	activeHangingSession,
+	activeSession,
 	busy,
 	error,
 	onRefresh,
@@ -42,7 +49,9 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 	onViewGenerations,
 	onOpenDetail,
 	onDownload,
-	onShare
+	onShare,
+	onResumeSession,
+	onDiscardSession
 }) => {
 	const [search, setSearch] = useState('');
 	const [selectedProject, setSelectedProject] = useState<string>('all');
@@ -103,6 +112,21 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 	}, [sessions, search, selectedProject]);
 
 	const renderStatusBadge = (session: RecordingSession) => {
+		const isRecording = session.status === 'recording';
+		if (isRecording) {
+			return (
+				<Badge
+					variant="recording"
+					style={{
+						background: '#fef3c7',
+						color: '#b45309',
+						border: '1px solid #fde68a'
+					}}
+				>
+					Sedang Merekam
+				</Badge>
+			);
+		}
 		const res = session.result?.toUpperCase();
 		if (res === 'PASS') return <Badge variant="success">PASS</Badge>;
 		if (res === 'FAIL') return <Badge variant="danger">FAIL</Badge>;
@@ -111,6 +135,10 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 	};
 
 	const handleSessionClick = (session: RecordingSession) => {
+		if (session.status === 'recording' && onResumeSession) {
+			onResumeSession(session);
+			return;
+		}
 		if (onOpenDetail) {
 			onOpenDetail(session);
 		} else {
@@ -118,9 +146,66 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 		}
 	};
 
+	const hangingSessionTarget =
+		(activeHangingSession && typeof activeHangingSession.id_session === 'number' ? activeHangingSession : null) ||
+		(activeSession && typeof activeSession.id_session === 'number' ? sessions.find((s) => s.id_session === activeSession.id_session && s.status === 'recording') : undefined) ||
+		sessions.find((s) => s.status === 'recording' && typeof s.id_session === 'number');
+
 	return (
 		<>
 			{error && <div className="sp-error">{error}</div>}
+
+			{/* Hanging / Active Session Alert in History */}
+			{hangingSessionTarget && (
+				<div
+					style={{
+						marginBottom: 12,
+						padding: '10px 14px',
+						background: '#fffbeb',
+						border: '1.5px solid #fde68a',
+						borderRadius: '8px',
+						display: 'flex',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+						gap: 8,
+						boxShadow: '0 1px 3px rgba(217, 119, 6, 0.08)'
+					}}
+				>
+					<div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+						<AlertTriangle size={16} color="#d97706" style={{ flexShrink: 0 }} />
+						<div style={{ display: 'flex', flexDirection: 'column' }}>
+							<span style={{ fontSize: 12, fontWeight: 700, color: '#92400e' }}>
+								Sesi Rekaman Masih Berjalan / Menggantung
+							</span>
+							<span style={{ fontSize: 11, color: '#b45309' }}>
+								Sesi #{hangingSessionTarget.id_session} ({hangingSessionTarget.test_case_no}: {hangingSessionTarget.title}) belum diselesaikan.
+							</span>
+						</div>
+					</div>
+					<div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
+						{onResumeSession && (
+							<Button
+								variant="primary"
+								size="xs"
+								onClick={() => onResumeSession(hangingSessionTarget)}
+								icon={<Play size={11} fill="currentColor" />}
+							>
+								Lanjutkan Sesi
+							</Button>
+						)}
+						{onDiscardSession && (
+							<Button
+								variant="danger"
+								size="xs"
+								onClick={onDiscardSession}
+								icon={<Trash2 size={11} />}
+							>
+								Buang Sesi
+							</Button>
+						)}
+					</div>
+				</div>
+			)}
 
 			{/* Modal Code Preview */}
 			<Modal
@@ -291,74 +376,116 @@ export const HistoryView: React.FC<HistoryViewProps> = ({
 							Tidak ada sesi yang cocok dengan &quot;{search}&quot;.
 						</div>
 					) : (
-						filteredSessions.map((session) => (
-							<div
-								className="sp-list-item"
-								key={session.id_session}
-								style={{ cursor: 'pointer', transition: 'background 0.15s ease' }}
-								onClick={() => handleSessionClick(session)}
-							>
-								<div className="sp-button-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
-									<div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
-										<div
-											style={{
-												fontWeight: 600,
-												fontSize: 13,
-												color: '#0f172a',
-												textOverflow: 'ellipsis',
-												overflow: 'hidden',
-												whiteSpace: 'nowrap'
-											}}
-										>
-											{session.title}
+						filteredSessions.map((session) => {
+							const isRecording = session.status === 'recording';
+							return (
+								<div
+									className="sp-list-item"
+									key={session.id_session}
+									style={{
+										cursor: 'pointer',
+										transition: 'background 0.15s ease',
+										background: isRecording ? '#fffdf5' : undefined,
+										border: isRecording ? '1.5px solid #fde68a' : undefined,
+										borderRadius: isRecording ? '8px' : undefined,
+										padding: isRecording ? '8px 10px' : undefined,
+										marginBottom: isRecording ? '6px' : undefined
+									}}
+									onClick={() => handleSessionClick(session)}
+								>
+									<div className="sp-button-row" style={{ justifyContent: 'space-between', alignItems: 'flex-start' }}>
+										<div style={{ flex: 1, minWidth: 0, marginRight: 8 }}>
+											<div
+												style={{
+													fontWeight: 600,
+													fontSize: 13,
+													color: '#0f172a',
+													textOverflow: 'ellipsis',
+													overflow: 'hidden',
+													whiteSpace: 'nowrap'
+												}}
+											>
+												{session.title}
+											</div>
+											<div className="sp-muted" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
+												<span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#2F3574' }}>
+													{session.test_case_no}
+												</span>
+												{!session.id_project && (
+													<span style={{ fontSize: 10, background: '#EEF2FF', color: '#3730A3', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
+														Quick
+													</span>
+												)}
+												<span>·</span>
+												{activeGenerations?.get(session.id_session)?.status === 'processing' ? (
+													<span style={{ fontSize: 10, background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #bfdbfe' }}>
+														<RefreshCw size={10} className="spin" style={{ animation: 'spin 1.2s linear infinite' }} />
+														Generating Script...
+													</span>
+												) : (
+													renderStatusBadge(session)
+												)}
+												<span>·</span>
+												<span style={{ fontSize: 11 }}>#Session {session.id_session}</span>
+											</div>
 										</div>
-										<div className="sp-muted" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, flexWrap: 'wrap' }}>
-											<span style={{ fontFamily: 'monospace', fontWeight: 600, color: '#2F3574' }}>
-												{session.test_case_no}
-											</span>
-											{!session.id_project && (
-												<span style={{ fontSize: 10, background: '#EEF2FF', color: '#3730A3', padding: '1px 6px', borderRadius: 4, fontWeight: 700 }}>
-													Quick
-												</span>
-											)}
-											<span>·</span>
-											{activeGenerations?.get(session.id_session)?.status === 'processing' ? (
-												<span style={{ fontSize: 10, background: '#eff6ff', color: '#1d4ed8', padding: '2px 8px', borderRadius: 12, fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4, border: '1px solid #bfdbfe' }}>
-													<RefreshCw size={10} className="spin" style={{ animation: 'spin 1.2s linear infinite' }} />
-													Generating Script...
-												</span>
+										<div className="sp-button-row" style={{ gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+											{isRecording ? (
+												<>
+													{onResumeSession && (
+														<Button
+															variant="primary"
+															size="xs"
+															disabled={busy}
+															title="Lanjutkan / Buka Kontrol Rekaman"
+															icon={<Play size={11} fill="currentColor" />}
+															onClick={() => onResumeSession(session)}
+														>
+															Lanjutkan
+														</Button>
+													)}
+													{onDiscardSession && (
+														<Button
+															variant="danger"
+															size="xs"
+															disabled={busy}
+															title="Akhiri dan buang sesi menggantung ini"
+															icon={<Trash2 size={11} />}
+															onClick={onDiscardSession}
+														>
+															Buang
+														</Button>
+													)}
+												</>
 											) : (
-												renderStatusBadge(session)
+												<>
+													{onShare && (
+														<Button
+															variant="ghost"
+															size="xs"
+															title="Bagikan Link Debug"
+															aria-label={`Bagikan ${session.test_case_no}`}
+															icon={<Share2 size={12} />}
+															onClick={() => onShare(session.id_session)}
+														/>
+													)}
+													<Button
+														variant="secondary"
+														size="xs"
+														disabled={busy}
+														title="Lihat Rincian Hasil di Ekstensi"
+														icon={<Eye size={11} />}
+														onClick={() => handleSessionClick(session)}
+													>
+														hasil
+													</Button>
+												</>
 											)}
-											<span>·</span>
-											<span style={{ fontSize: 11 }}>#Session {session.id_session}</span>
 										</div>
-									</div>
-									<div className="sp-button-row" style={{ gap: 6, flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
-										{onShare && (
-											<Button
-												variant="ghost"
-												size="xs"
-												title="Bagikan Link Debug"
-												aria-label={`Bagikan ${session.test_case_no}`}
-												icon={<Share2 size={12} />}
-												onClick={() => onShare(session.id_session)}
-											/>
-										)}
-										<Button
-											variant="secondary"
-											size="xs"
-											disabled={busy}
-											title="Lihat Rincian Hasil di Ekstensi"
-											icon={<Eye size={11} />}
-											onClick={() => handleSessionClick(session)}
-										>
-											hasil
-										</Button>
 									</div>
 								</div>
-							</div>
-						))
+							);
+						})
 					)}
 				</CardContent>
 			</Card>

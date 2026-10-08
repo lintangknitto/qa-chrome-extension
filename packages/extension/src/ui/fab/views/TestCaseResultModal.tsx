@@ -278,7 +278,12 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 			setRuns([origRun]);
 			setActiveRunId(origRun.id);
 		} catch (err) {
-			setError((err as Error).message || 'Gagal memuat detail hasil rekaman.');
+			const isAuthErr =
+				(err as any)?.status === 401 ||
+				(err as Error)?.message?.toLowerCase().includes('login');
+			if (!isAuthErr) {
+				setError((err as Error).message || 'Gagal memuat detail hasil rekaman.');
+			}
 		} finally {
 			setLoading(false);
 		}
@@ -1032,7 +1037,19 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 														rel="noreferrer"
 														style={{ textDecoration: 'none' }}
 													>
-														<Button type="button" variant="ghost" size="xs" icon={<Download size={11} />} style={{ color: '#e2e8f0' }}>
+														<Button
+															type="button"
+															variant="primary"
+															size="xs"
+															icon={<Download size={11} color="#ffffff" />}
+															style={{
+																background: '#2563eb',
+																borderColor: '#1d4ed8',
+																color: '#ffffff',
+																fontWeight: 600,
+																boxShadow: '0 1px 2px rgba(37, 99, 235, 0.25)'
+															}}
+														>
 															Unduh .webm
 														</Button>
 													</a>
@@ -1227,17 +1244,30 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 																type="button"
 																variant="secondary"
 																size="xs"
-																icon={copiedId === item.id_generation ? <Check size={12} color="#16a34a" /> : <Copy size={12} />}
+																icon={copiedId === item.id_generation ? <Check size={12} color="#16a34a" /> : <Copy size={12} color="#334155" />}
 																onClick={() => void handleCopy(item.output, item.id_generation)}
+																style={{
+																	background: '#ffffff',
+																	color: '#1e293b',
+																	border: '1px solid #cbd5e1',
+																	fontWeight: 600
+																}}
 															>
 																{copiedId === item.id_generation ? 'Tersalin!' : 'Salin Kode'}
 															</Button>
 															<Button
 																type="button"
-																variant="outline"
+																variant="primary"
 																size="xs"
-																icon={<Download size={12} />}
+																icon={<Download size={12} color="#ffffff" />}
 																onClick={() => handleDownload(item)}
+																style={{
+																	background: '#2563eb',
+																	borderColor: '#1d4ed8',
+																	color: '#ffffff',
+																	fontWeight: 600,
+																	boxShadow: '0 1px 2px rgba(37, 99, 235, 0.25)'
+																}}
 															>
 																Unduh {item.kind === 'playwright' ? '.spec.ts' : item.kind === 'report' || item.kind === 'markdown' ? '.md' : '.' + item.kind}
 															</Button>
@@ -1321,7 +1351,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 												Browser Context State Snapshot
 											</div>
 											<div style={{ fontSize: 11, color: '#64748b' }}>
-												Cookies, LocalStorage, dan SessionStorage tersimpan dalam format Playwright storageState
+												Snapshot menyimpan nilai cookie dan storage lengkap untuk pemantauan/replay lokal. Nilai JWT/cookie dapat memberi akses ke aplikasi.
 											</div>
 										</div>
 									</div>
@@ -1466,57 +1496,57 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 															</tr>
 														</thead>
 														<tbody>
-															{filteredCookies.map((cookie, idx) => {
-																const isValueVisible = showValues[`cookie_${idx}`];
-																return (
-																	<tr key={`${cookie.domain}_${cookie.name}_${idx}`} style={{ borderBottom: '1px solid #f1f5f9', verticalAlign: 'top' }}>
-																		<td style={{ padding: '8px 10px', fontWeight: 600, color: '#0f172a', fontFamily: 'monospace' }}>
-																			{cookie.name}
-																		</td>
-																		<td style={{ padding: '8px 10px', maxWidth: 200, wordBreak: 'break-all' }}>
-																			<div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-																				<span style={{ fontFamily: 'monospace', color: '#334155' }}>
-																					{isValueVisible ? cookie.value : (cookie.value.length > 20 ? cookie.value.slice(0, 8) + '••••••••' : '••••••••')}
+														{filteredCookies.map((cookie, idx) => {
+															const isValueVisible = showValues[`cookie_${idx}`];
+															return (
+																<tr key={`${cookie.domain}_${cookie.name}_${idx}`} style={{ borderBottom: '1px solid #f1f5f9', verticalAlign: 'top' }}>
+																	<td style={{ padding: '8px 10px', fontWeight: 600, color: '#0f172a', fontFamily: 'monospace' }}>
+																		{cookie.name}
+																	</td>
+																	<td style={{ padding: '8px 10px', maxWidth: 200, wordBreak: 'break-all' }}>
+																		<div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+																			<span style={{ fontFamily: 'monospace', color: '#334155' }}>
+																				{isValueVisible ? cookie.value : '********'}
+																			</span>
+																			<button
+																				type="button"
+																				style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: '#94a3b8' }}
+																				onClick={() => setShowValues((p) => ({ ...p, [`cookie_${idx}`]: !p[`cookie_${idx}`] }))}
+																				title={isValueVisible ? 'Sembunyikan nilai' : 'Tampilkan nilai'}
+																			>
+																				{isValueVisible ? <EyeOff size={11} /> : <Eye size={11} />}
+																			</button>
+																		</div>
+																	</td>
+																	<td style={{ padding: '8px 10px', color: '#64748b' }}>
+																		<div>{cookie.domain}</div>
+																		<div style={{ fontSize: 10, color: '#94a3b8' }}>{cookie.path}</div>
+																	</td>
+																	<td style={{ padding: '8px 10px' }}>
+																		<div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
+																			{cookie.httpOnly && (
+																				<span style={{ fontSize: 9, background: '#fef3c7', color: '#92400e', padding: '1px 4px', borderRadius: 4, fontWeight: 700 }}>
+																					HttpOnly
 																				</span>
-																				<button
-																					type="button"
-																					style={{ background: 'transparent', border: 'none', cursor: 'pointer', padding: 2, color: '#94a3b8' }}
-																					onClick={() => setShowValues((p) => ({ ...p, [`cookie_${idx}`]: !p[`cookie_${idx}`] }))}
-																					title={isValueVisible ? 'Sembunyikan nilai' : 'Tampilkan nilai'}
-																				>
-																					{isValueVisible ? <EyeOff size={11} /> : <Eye size={11} />}
-																				</button>
-																			</div>
-																		</td>
-																		<td style={{ padding: '8px 10px', color: '#64748b' }}>
-																			<div>{cookie.domain}</div>
-																			<div style={{ fontSize: 10, color: '#94a3b8' }}>{cookie.path}</div>
-																		</td>
-																		<td style={{ padding: '8px 10px' }}>
-																			<div style={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-																				{cookie.httpOnly && (
-																					<span style={{ fontSize: 9, background: '#fef3c7', color: '#92400e', padding: '1px 4px', borderRadius: 4, fontWeight: 700 }}>
-																						HttpOnly
-																					</span>
-																				)}
-																				{cookie.secure && (
-																					<span style={{ fontSize: 9, background: '#dcfce7', color: '#166534', padding: '1px 4px', borderRadius: 4, fontWeight: 700 }}>
-																						Secure
-																					</span>
-																				)}
-																				{cookie.sameSite && cookie.sameSite !== 'None' && (
-																					<span style={{ fontSize: 9, background: '#e0e7ff', color: '#3730a3', padding: '1px 4px', borderRadius: 4, fontWeight: 700 }}>
-																						{cookie.sameSite}
-																					</span>
-																				)}
-																			</div>
-																		</td>
-																		<td style={{ padding: '8px 10px', fontSize: 10, color: '#64748b' }}>
-																			{cookie.expires > 0 ? new Date(cookie.expires * 1000).toLocaleDateString() : 'Session'}
-																		</td>
-																	</tr>
-																);
-															})}
+																			)}
+																			{cookie.secure && (
+																				<span style={{ fontSize: 9, background: '#dcfce7', color: '#166534', padding: '1px 4px', borderRadius: 4, fontWeight: 700 }}>
+																					Secure
+																				</span>
+																			)}
+																			{cookie.sameSite && cookie.sameSite !== 'None' && (
+																				<span style={{ fontSize: 9, background: '#e0e7ff', color: '#3730a3', padding: '1px 4px', borderRadius: 4, fontWeight: 700 }}>
+																					{cookie.sameSite}
+																				</span>
+																			)}
+																		</div>
+																	</td>
+																	<td style={{ padding: '8px 10px', fontSize: 10, color: '#64748b' }}>
+																		{cookie.expires > 0 ? new Date(cookie.expires * 1000).toLocaleDateString() : 'Session'}
+																	</td>
+																</tr>
+															);
+														})}
 														</tbody>
 													</table>
 												</div>
@@ -1634,4 +1664,3 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		</>
 	);
 };
-

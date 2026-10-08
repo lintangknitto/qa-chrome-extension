@@ -1,6 +1,6 @@
 export type FabUiState = 'idle' | 'recording';
 
-export type FabView = 'root' | 'login' | 'start' | 'active' | 'result' | 'history' | 'setting' | 'projects' | 'cleaner' | 'users';
+export type FabView = 'root' | 'login' | 'start' | 'active' | 'result' | 'history' | 'setting' | 'programs' | 'projects' | 'cleaner' | 'users';
 
 export const fabViewTitles: Record<FabView, string> = {
 	root: 'Knitto QA Tools',
@@ -10,7 +10,8 @@ export const fabViewTitles: Record<FabView, string> = {
 	result: 'Hasil Recording',
 	history: 'Riwayat Session',
 	setting: 'Pengaturan',
-	projects: 'Manajemen Project & Test Case',
+	programs: 'Master Program',
+	projects: 'Project & Skenario',
 	cleaner: 'QA Cleaner & Cache',
 	users: 'Manajemen Pengguna'
 };
@@ -26,6 +27,7 @@ export interface FabSettings {
 	side: 'left' | 'right';
 	/** Lebar dinamis sidebar (dalam pixel). */
 	width?: number;
+	initialBaseUrl?: string;
 }
 
 export const FAB_SETTINGS_DEFAULTS: FabSettings = { enabled: true, side: 'right' };

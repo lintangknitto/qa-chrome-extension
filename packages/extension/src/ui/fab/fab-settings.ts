@@ -9,8 +9,12 @@ export const FAB_SETTINGS_KEY = 'qa_fab_settings';
 export const loadFabSettings = async (): Promise<FabSettings> => {
 	try {
 		if (typeof chrome !== 'undefined' && chrome.storage?.local) {
-			const stored = await chrome.storage.local.get(FAB_SETTINGS_KEY);
-			return parseFabSettings(stored[FAB_SETTINGS_KEY] ?? FAB_SETTINGS_DEFAULTS);
+			const stored = await chrome.storage.local.get([FAB_SETTINGS_KEY, 'qa_recording_base_url']);
+			const parsed = parseFabSettings(stored[FAB_SETTINGS_KEY] ?? FAB_SETTINGS_DEFAULTS);
+			if (typeof stored.qa_recording_base_url === 'string') {
+				parsed.initialBaseUrl = stored.qa_recording_base_url;
+			}
+			return parsed;
 		}
 	} catch (err) {
 		console.warn('loadFabSettings failed:', err);

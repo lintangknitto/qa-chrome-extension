@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CheckCircle2, XCircle, AlertTriangle, Check } from 'lucide-react';
+import { CheckCircle2, XCircle, AlertTriangle, Check, Trash2 } from 'lucide-react';
 import type { StoredActiveSession } from '../../../recording/tokenStore';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/Card';
 import { Textarea } from '../components/Textarea';
@@ -12,6 +12,7 @@ interface ResultViewProps {
 	error: string | null;
 	onConfirmEnd: (input: { result: string; actual_result: string }) => void;
 	onCancel: () => void;
+	onDiscard?: () => void;
 }
 
 export const ResultView: React.FC<ResultViewProps> = ({
@@ -20,7 +21,8 @@ export const ResultView: React.FC<ResultViewProps> = ({
 	busy,
 	error,
 	onConfirmEnd,
-	onCancel
+	onCancel,
+	onDiscard
 }) => {
 	const [result, setResult] = useState('PASS');
 	const [actualResult, setActualResult] = useState('');
@@ -107,23 +109,36 @@ export const ResultView: React.FC<ResultViewProps> = ({
 					placeholder="Tuliskan hasil aktual pengujian yang didapatkan..."
 				/>
 
-				<div className="sp-button-row" style={{ marginTop: 16 }}>
-					<Button
-						variant="danger"
-						disabled={busy}
-						loading={busy}
-						onClick={() => onConfirmEnd({ result, actual_result: actualResult })}
-						icon={<Check size={15} />}
-					>
-						{busy ? 'Mengakhiri Session...' : 'Konfirmasi End Session'}
-					</Button>
-					<Button
-						variant="secondary"
-						disabled={busy}
-						onClick={onCancel}
-					>
-						Batal
-					</Button>
+				<div className="sp-button-row" style={{ marginTop: 16, justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+					<div style={{ display: 'flex', gap: 8 }}>
+						<Button
+							variant="danger"
+							disabled={busy}
+							loading={busy}
+							onClick={() => onConfirmEnd({ result, actual_result: actualResult })}
+							icon={<Check size={15} />}
+						>
+							{busy ? 'Mengakhiri Session...' : 'Konfirmasi End Session'}
+						</Button>
+						<Button
+							variant="secondary"
+							disabled={busy}
+							onClick={onCancel}
+						>
+							Batal
+						</Button>
+					</div>
+					{onDiscard && (
+						<Button
+							variant="ghost"
+							disabled={busy}
+							onClick={onDiscard}
+							icon={<Trash2 size={14} />}
+							style={{ color: '#dc2626' }}
+						>
+							Buang Sesi
+						</Button>
+					)}
 				</div>
 			</CardContent>
 		</Card>
