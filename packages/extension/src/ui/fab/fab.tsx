@@ -1061,7 +1061,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 
 				void (async () => {
 					try {
-						await api.generateOutputs(endedSessionId, ['playwright', 'markdown']);
+						// Tanpa `kinds`: default markdown+playwright, plus investigasi otomatis bila sesi FAIL/BLOCKED atau ada anomali.
+						await api.generateOutputs(endedSessionId);
 						setActiveGenerations((prev) => {
 							const next = new Map(prev);
 							next.set(endedSessionId, {

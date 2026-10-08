@@ -3,15 +3,10 @@
  * visual HUD live di halaman, element spotlighting, dan simulasi interaksi DOM nyata.
  */
 
-export interface ReplayActionStep {
-	action: 'goto' | 'fill' | 'click' | 'wait' | 'select' | 'check' | 'press';
-	selector?: string;
-	value?: string;
-	url?: string;
-	timeoutMs?: number;
-	key?: string;
-	description?: string;
-}
+import { installLocatorEngine, type LocatorSpec } from './locatorEngine';
+import { parseScript, type ParsedStep } from './scriptParser';
+
+export type ReplayActionStep = ParsedStep;
 
 export interface ReplayOptions {
 	sessionId: number;
@@ -35,272 +30,20 @@ export interface ReplayResult {
 	error?: string;
 	tabId?: number;
 	groupId?: number;
-}
-
-function preprocessScriptToStatements(script: string): string[] {
-	const noBlockComments = script.replace(/\/\*[\s\S]*?\*\//g, '');
-	const rawLines = noBlockComments.split('\n');
-	const statements: string[] = [];
-	let currentStmt = '';
-
-	for (const raw of rawLines) {
-		const trimmed = raw.trim();
-		if (!trimmed || trimmed.startsWith('//') || trimmed.startsWith('*')) continue;
-
-		if (currentStmt) {
-			if (
-				trimmed.startsWith('.') ||
-				trimmed.startsWith('(') ||
-				trimmed.startsWith('{') ||
-				trimmed.startsWith('>') ||
-				!currentStmt.endsWith(';')
-			) {
-				currentStmt += ' ' + trimmed;
-			} else {
-				statements.push(currentStmt);
-				currentStmt = trimmed;
-			}
-		} else {
-			currentStmt = trimmed;
-		}
-
-		if (currentStmt.endsWith(';')) {
-			statements.push(currentStmt);
-			currentStmt = '';
-		}
-	}
-
-	if (currentStmt) {
-		statements.push(currentStmt);
-	}
-
-	return statements;
+	/** Nomor langkah (1-based) yang gagal, bila replay gagal pada suatu langkah. */
+	failedStepNo?: number;
+	failedStep?: ReplayActionStep;
 }
 
 /**
- * Mengurai baris script Playwright menjadi sekuens aksi replay browser yang komprehensif,
- * mendukung pemanggilan langsung maupun assignment variabel, multiline chained calls, dan regex locators.
+ * Mengurai script Playwright menjadi sekuens langkah replay terstruktur
+ * (locator + aksi) memakai parser generik di `scriptParser.ts`.
  */
 export function parseScriptToReplaySteps(script: string, fallbackUrl?: string): ReplayActionStep[] {
-	if (!script) {
-		return fallbackUrl ? [{ action: 'goto', url: fallbackUrl, description: `Navigasi ke ${fallbackUrl}` }] : [];
-	}
-
-	const steps: ReplayActionStep[] = [];
-	const statements = preprocessScriptToStatements(script);
-	const locatorVariables = new Map<string, string>();
-
-	for (const rawStmt of statements) {
-		const line = rawStmt.trim().replace(/^await\s+/, '');
-		if (!line || line.startsWith('//') || line.startsWith('/*') || line.startsWith('*')) continue;
-
-		// 0. Pelacakan assignment variabel: const btn = page.getByRole(...) / page.locator(...)
-		const varAssignMatch = line.match(/^(?:const|let|var)\s+([a-zA-Z0-9_$]+)\s*=\s*(?:await\s+)?(page\.[a-zA-Z0-9_$.()]+\([^;]*\)(?:\.[a-zA-Z0-9_$.()]+\([^;]*\))*)/);
-		if (varAssignMatch) {
-			const varName = varAssignMatch[1];
-			const expr = varAssignMatch[2];
-			locatorVariables.set(varName, expr);
-			continue;
-		}
-
-		// Resolusi baris yang menggunakan nama variabel
-		let resolvedLine = line;
-		for (const [varName, expr] of locatorVariables.entries()) {
-			const varUsagePattern = new RegExp(`\\b${varName}\\.([a-zA-Z0-9_]+)\\(`, 'g');
-			if (varUsagePattern.test(resolvedLine)) {
-				resolvedLine = resolvedLine.replace(
-					new RegExp(`\\b${varName}\\.`, 'g'),
-					`${expr}.`
-				);
-			}
-		}
-
-		// 1. page.goto('...')
-		const gotoMatch = resolvedLine.match(/page\.goto\(\s*['"`]([^'"`]+)['"`]\s*.*\)/);
-		if (gotoMatch) {
-			steps.push({
-				action: 'goto',
-				url: gotoMatch[1],
-				description: `Navigasi ke ${gotoMatch[1]}`
-			});
-			continue;
-		}
-
-		// 2. page.fill / locator.fill / getBy*.fill
-		const fillMatch =
-			resolvedLine.match(/page\.fill\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			resolvedLine.match(/page\.getByPlaceholder\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			resolvedLine.match(/page\.getByLabel\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			resolvedLine.match(/page\.getByTestId\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			resolvedLine.match(/page\.getByRole\(\s*['"`](?:textbox|searchbox|combobox)['"`]\s*(?:,\s*\{[^}]*name:\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)[^}]*\})?\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.fill\(\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			resolvedLine.match(/page\.type\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/);
-
-		if (fillMatch) {
-			const selector = fillMatch[1] || fillMatch[2] || '';
-			const val = fillMatch[3] !== undefined ? fillMatch[3] : (fillMatch[2] !== undefined && !fillMatch[3] && fillMatch[1] ? fillMatch[2] : (fillMatch[1] ? '' : ''));
-			const cleanValue = fillMatch[fillMatch.length - 1] ?? val ?? '';
-			steps.push({
-				action: 'fill',
-				selector,
-				value: cleanValue,
-				description: `Mengisi field "${selector}" dengan "${cleanValue}"`
-			});
-			continue;
-		}
-
-		// 3. page.click / locator.click / getByRole.click / getByTestId / getByLabel / getByText / getByTitle / getByPlaceholder
-		const roleClickMatch = resolvedLine.match(/page\.getByRole\(\s*['"`]([^'"`]+)['"`]\s*(?:,\s*\{[^}]*name:\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)[^}]*\})?\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
-		if (roleClickMatch) {
-			const role = roleClickMatch[1];
-			const name = roleClickMatch[2] || roleClickMatch[3] || '';
-			const selector = name ? `role:${role}:${name}` : `role:${role}`;
-			steps.push({
-				action: 'click',
-				selector,
-				description: `Mengklik elemen role ${role}${name ? ` "${name}"` : ''}`
-			});
-			continue;
-		}
-
-		const testIdClickMatch = resolvedLine.match(/page\.getByTestId\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
-		if (testIdClickMatch) {
-			const testId = testIdClickMatch[1];
-			steps.push({
-				action: 'click',
-				selector: `[data-testid="${testId}"]`,
-				description: `Mengklik elemen test-id "${testId}"`
-			});
-			continue;
-		}
-
-		const labelClickMatch = resolvedLine.match(/page\.getByLabel\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
-		if (labelClickMatch) {
-			const label = labelClickMatch[1] || labelClickMatch[2];
-			steps.push({
-				action: 'click',
-				selector: `label:${label}`,
-				description: `Mengklik elemen label "${label}"`
-			});
-			continue;
-		}
-
-		const textClickMatch = resolvedLine.match(/page\.getByText\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
-		if (textClickMatch) {
-			const txt = textClickMatch[1] || textClickMatch[2];
-			steps.push({
-				action: 'click',
-				selector: `text=${txt}`,
-				description: `Mengklik elemen berteks "${txt}"`
-			});
-			continue;
-		}
-
-		const placeholderClickMatch = resolvedLine.match(/page\.getByPlaceholder\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
-		if (placeholderClickMatch) {
-			const ph = placeholderClickMatch[1] || placeholderClickMatch[2];
-			steps.push({
-				action: 'click',
-				selector: `placeholder:${ph}`,
-				description: `Mengklik elemen placeholder "${ph}"`
-			});
-			continue;
-		}
-
-		const titleClickMatch = resolvedLine.match(/page\.getByTitle\(\s*(?:['"`]([^'"`]+)['"`]|\/([^/]+)\/[a-z]*)\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
-		if (titleClickMatch) {
-			const tit = titleClickMatch[1] || titleClickMatch[2];
-			steps.push({
-				action: 'click',
-				selector: `[title="${tit}"]`,
-				description: `Mengklik elemen title "${tit}"`
-			});
-			continue;
-		}
-
-		const locatorClickMatch =
-			resolvedLine.match(/page\.click\(\s*['"`]([^'"`]+)['"`]\s*.*\)/) ||
-			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.click\(/);
-		if (locatorClickMatch) {
-			const sel = locatorClickMatch[1];
-			steps.push({
-				action: 'click',
-				selector: sel,
-				description: `Mengklik elemen "${sel}"`
-			});
-			continue;
-		}
-
-		// 4. page.selectOption('selector', 'value')
-		const selectMatch =
-			resolvedLine.match(/page\.selectOption\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]*)['"`]\s*\)/) ||
-			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.selectOption\(\s*['"`]([^'"`]*)['"`]\s*\)/);
-		if (selectMatch) {
-			steps.push({
-				action: 'select',
-				selector: selectMatch[1],
-				value: selectMatch[2],
-				description: `Memilih opsi "${selectMatch[2]}" pada "${selectMatch[1]}"`
-			});
-			continue;
-		}
-
-		// 5. page.check('selector') / uncheck
-		const checkMatch =
-			resolvedLine.match(/page\.(check|uncheck)\(\s*['"`]([^'"`]+)['"`]\s*\)/) ||
-			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.(check|uncheck)\(/);
-		if (checkMatch) {
-			const actionType = (checkMatch[1] || checkMatch[2]) === 'check' ? 'check' : 'uncheck';
-			const selector = checkMatch[1] && checkMatch[2] ? checkMatch[2] : checkMatch[1];
-			steps.push({
-				action: 'check',
-				selector: selector || 'input[type="checkbox"]',
-				value: actionType === 'check' ? 'true' : 'false',
-				description: `${actionType === 'check' ? 'Centang' : 'Hapus centang'} "${selector}"`
-			});
-			continue;
-		}
-
-		// 6. page.waitForTimeout(ms) / page.waitForSelector('...')
-		const waitTimeoutMatch = resolvedLine.match(/page\.waitForTimeout\(\s*(\d+)\s*\)/);
-		if (waitTimeoutMatch) {
-			steps.push({
-				action: 'wait',
-				timeoutMs: Number(waitTimeoutMatch[1]),
-				description: `Menunggu jeda ${waitTimeoutMatch[1]}ms`
-			});
-			continue;
-		}
-		const waitSelectorMatch = resolvedLine.match(/page\.waitForSelector\(\s*['"`]([^'"`]+)['"`]\s*.*\)/);
-		if (waitSelectorMatch) {
-			steps.push({
-				action: 'wait',
-				selector: waitSelectorMatch[1],
-				timeoutMs: 1500,
-				description: `Menunggu elemen "${waitSelectorMatch[1]}" tampil`
-			});
-			continue;
-		}
-
-		// 7. page.press('selector', 'Enter')
-		const pressMatch =
-			resolvedLine.match(/page\.press\(\s*['"`]([^'"`]+)['"`]\s*,\s*['"`]([^'"`]+)['"`]\s*\)/) ||
-			resolvedLine.match(/page\.locator\(\s*['"`]([^'"`]+)['"`]\s*\)(?:\.[a-zA-Z0-9_]+\([^)]*\))*\.press\(\s*['"`]([^'"`]+)['"`]\s*\)/);
-		if (pressMatch) {
-			steps.push({
-				action: 'press',
-				selector: pressMatch[1],
-				key: pressMatch[2],
-				description: `Menekan tombol "${pressMatch[2]}" pada "${pressMatch[1]}"`
-			});
-			continue;
-		}
-	}
-
+	const steps = script ? parseScript(script) : [];
 	if (steps.length === 0 && fallbackUrl) {
-		steps.push({ action: 'goto', url: fallbackUrl, description: `Navigasi ke ${fallbackUrl}` });
+		return [{ action: 'goto', url: fallbackUrl, description: `Navigasi ke ${fallbackUrl}` }];
 	}
-
 	return steps;
 }
 
@@ -488,6 +231,26 @@ async function updateReplayOverlay(
 }
 
 /**
+ * Langkah di dalam iframe: pasang locator engine di semua frame, lalu cari frame (bukan frame utama)
+ * yang memuat elemen target. Bekerja untuk iframe same-origin maupun cross-origin.
+ */
+async function findFrameForStep(tabId: number, step: ReplayActionStep): Promise<number | null> {
+	if (!step.locator) return null;
+	await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: installLocatorEngine as unknown as () => void });
+	const probes = await chrome.scripting.executeScript({
+		target: { tabId, allFrames: true },
+		func: (spec: LocatorSpec) => {
+			if (window === window.top) return false;
+			const engine = (window as Window).__knittoLocator;
+			return Boolean(engine && engine.resolve(spec));
+		},
+		args: [step.locator]
+	});
+	const hit = probes.find((probe) => probe.result === true);
+	return hit ? hit.frameId : null;
+}
+
+/**
  * Eksekusi satu langkah interaksi langsung di dalam DOM browser dengan React Synthetic Events & spotlight visual.
  */
 async function executeStepInTab(
@@ -500,10 +263,33 @@ async function executeStepInTab(
 	}
 
 	try {
+		const frameTarget = step.frames?.length ? await findFrameForStep(tabId, step) : null;
+		if (step.frames?.length && frameTarget === null) {
+			return { success: false, error: `Iframe untuk langkah "${step.selector ?? ''}" belum ditemukan.` };
+		}
+		const target = frameTarget !== null ? { tabId, frameIds: [frameTarget] } : { tabId };
+		if (step.locator && frameTarget === null) {
+			// Locator engine yang sama dengan recorder → elemen yang dinilai unik saat rekam ditemukan persis.
+			await chrome.scripting.executeScript({ target, func: installLocatorEngine as unknown as () => void });
+		}
 		const [res] = await chrome.scripting.executeScript({
-			target: { tabId },
-			func: (actionType: string, selector: string, val: string, keyName: string) => {
+			target,
+			func: (
+				actionType: string,
+				selector: string,
+				val: string,
+				keyName: string,
+				spec: LocatorSpec | null,
+				optionBy: string,
+				targetSpec: LocatorSpec | null
+			) => {
 				const findElement = (sel: string): HTMLElement | null => {
+					if (spec) {
+						const engine = (window as Window).__knittoLocator;
+						const found = engine ? (engine.resolve(spec) as HTMLElement | null) : null;
+						// Selector CSS legacy (mis. teks bebas dari script lama) tetap boleh jatuh ke pencarian longgar.
+						if (found || spec.kind !== 'css') return found;
+					}
 					if (!sel) return null;
 
 					// 1. Format role: "role:button:Kirim" atau "role:button" atau "role:listitem"
@@ -645,7 +431,12 @@ async function executeStepInTab(
 					return null;
 				};
 
-				const element = findElement(selector);
+				const element = actionType === 'press' && !selector && !spec ? (document.activeElement as HTMLElement | null) : findElement(selector);
+
+				const centerOf = (el: Element) => {
+					const rect = el.getBoundingClientRect();
+					return { clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+				};
 
 				if (!element && actionType !== 'wait') {
 					return { success: false, error: `Elemen "${selector}" tidak ditemukan di halaman.` };
@@ -689,7 +480,46 @@ async function executeStepInTab(
 						element.dispatchEvent(new Event('input', { bubbles: true, composed: true }));
 						element.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
 						element.dispatchEvent(new Event('blur', { bubbles: true }));
-					} else if (actionType === 'click') {
+					} else if (actionType === 'rightclick') {
+						const init: MouseEventInit = { bubbles: true, cancelable: true, view: window, button: 2, buttons: 2, ...centerOf(element) };
+						element.dispatchEvent(new PointerEvent('pointerdown', init));
+						element.dispatchEvent(new MouseEvent('mousedown', init));
+						element.dispatchEvent(new PointerEvent('pointerup', init));
+						element.dispatchEvent(new MouseEvent('mouseup', init));
+						element.dispatchEvent(new MouseEvent('contextmenu', init));
+					} else if (actionType === 'drag') {
+						const engine = (window as Window).__knittoLocator;
+						const dropTarget = targetSpec && engine ? (engine.resolve(targetSpec) as HTMLElement | null) : null;
+						if (!dropTarget) return { success: false, error: 'Target drag tidak ditemukan di halaman.' };
+						const from = centerOf(element);
+						const to = centerOf(dropTarget);
+						// Library berbasis pointer (dnd-kit, sortable) …
+						element.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0, buttons: 1, ...from }));
+						element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, button: 0, buttons: 1, ...from }));
+						for (const ratio of [0.25, 0.5, 0.75, 1]) {
+							const point = { clientX: from.clientX + (to.clientX - from.clientX) * ratio, clientY: from.clientY + (to.clientY - from.clientY) * ratio };
+							document.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, cancelable: true, buttons: 1, ...point }));
+							document.dispatchEvent(new MouseEvent('mousemove', { bubbles: true, cancelable: true, buttons: 1, ...point }));
+						}
+						dropTarget.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, cancelable: true, button: 0, ...to }));
+						dropTarget.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, button: 0, ...to }));
+						// … dan HTML5 drag & drop.
+						const dataTransfer = typeof DataTransfer === 'function' ? new DataTransfer() : undefined;
+						const dragInit = (point: { clientX: number; clientY: number }): DragEventInit => ({ bubbles: true, cancelable: true, dataTransfer, ...point });
+						element.dispatchEvent(new DragEvent('dragstart', dragInit(from)));
+						dropTarget.dispatchEvent(new DragEvent('dragenter', dragInit(to)));
+						dropTarget.dispatchEvent(new DragEvent('dragover', dragInit(to)));
+						dropTarget.dispatchEvent(new DragEvent('drop', dragInit(to)));
+						element.dispatchEvent(new DragEvent('dragend', dragInit(to)));
+					} else if (actionType === 'hover') {
+						const rect = element.getBoundingClientRect();
+						const hoverInit: MouseEventInit = { bubbles: true, cancelable: true, view: window, clientX: rect.left + rect.width / 2, clientY: rect.top + rect.height / 2 };
+						element.dispatchEvent(new PointerEvent('pointerover', hoverInit));
+						element.dispatchEvent(new MouseEvent('mouseover', hoverInit));
+						element.dispatchEvent(new PointerEvent('pointerenter', { ...hoverInit, bubbles: false }));
+						element.dispatchEvent(new MouseEvent('mouseenter', { ...hoverInit, bubbles: false }));
+						element.dispatchEvent(new MouseEvent('mousemove', hoverInit));
+					} else if (actionType === 'click' || actionType === 'dblclick') {
 						const clickable = element.closest('button, a, [role="button"], input[type="submit"], input[type="button"], li') || element;
 						(clickable as HTMLElement).focus();
 						const rect = (clickable as HTMLElement).getBoundingClientRect();
@@ -705,11 +535,18 @@ async function executeStepInTab(
 						if (typeof (clickable as any).click === 'function') {
 							(clickable as any).click();
 						}
+						if (actionType === 'dblclick') {
+							(clickable as any).click?.();
+							clickable.dispatchEvent(new MouseEvent('dblclick', eventInit));
+						}
 					} else if (actionType === 'select') {
 						element.focus();
 						const selectEl = element as HTMLSelectElement;
 						if (selectEl.tagName.toLowerCase() === 'select') {
-							selectEl.value = val;
+							const byLabel = optionBy === 'label'
+								? Array.from(selectEl.options).find((opt) => (opt.text || '').replace(/\s+/g, ' ').trim() === val)
+								: undefined;
+							selectEl.value = byLabel ? byLabel.value : val;
 							selectEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
 						}
 					} else if (actionType === 'check') {
@@ -735,7 +572,7 @@ async function executeStepInTab(
 
 				return { success: true };
 			},
-			args: [step.action, step.selector || '', valueToUse ?? '', step.key || 'Enter']
+			args: [step.action, step.selector || '', valueToUse ?? '', step.key || 'Enter', step.locator ?? null, step.optionBy ?? 'value', step.target ?? null]
 		});
 
 		return res?.result ?? { success: true };
@@ -763,6 +600,8 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 
 	let targetTabId: number | undefined;
 	let groupId: number | undefined;
+	let executed = 0;
+	let failedStepNo: number | undefined;
 
 	try {
 		const initialUrl = steps.find((s) => s.action === 'goto')?.url || options.targetUrl || 'about:blank';
@@ -831,7 +670,6 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 
 		const pacingDelay = options.stepDelayMs ?? (options.speedMode === 'fast' ? 300 : options.speedMode === 'slow' ? 1500 : 800);
 
-		let executed = 0;
 		for (let i = 0; i < steps.length; i++) {
 			const step = steps[i];
 			const stepNo = i + 1;
@@ -888,6 +726,7 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 						isError: true,
 						errorMessage: lastErr
 					});
+					failedStepNo = stepNo;
 					throw new Error(lastErr);
 				}
 
@@ -927,11 +766,32 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 		return {
 			success: false,
 			totalSteps: steps.length,
-			executedSteps: 0,
+			executedSteps: executed,
 			error: message,
 			tabId: targetTabId,
-			groupId
+			groupId,
+			failedStepNo,
+			failedStep: failedStepNo ? steps[failedStepNo - 1] : undefined
 		};
 	}
 }
 
+export interface ReplayFailureReport {
+	step_no: number;
+	error: string;
+	step_description?: string;
+	selector?: string;
+	total_steps: number;
+}
+
+/** Payload laporan replay gagal untuk API (null bila replay sukses / gagal sebelum ada langkah). */
+export function buildReplayFailureReport(result: ReplayResult): ReplayFailureReport | null {
+	if (result.success || !result.failedStepNo) return null;
+	return {
+		step_no: result.failedStepNo,
+		error: (result.error || 'Replay gagal').slice(0, 2000),
+		step_description: result.failedStep?.description?.slice(0, 500),
+		selector: result.failedStep?.selector?.slice(0, 500),
+		total_steps: result.totalSteps
+	};
+}

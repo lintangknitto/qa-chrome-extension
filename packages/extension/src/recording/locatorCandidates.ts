@@ -2,8 +2,13 @@
  * Membuat kandidat locator Playwright dari deskripsi elemen, diurutkan dari
  * yang paling stabil (test id, role+name) ke yang paling rapuh (CSS path/tag).
  */
+import type { LocatorCandidate } from './locatorEngine';
+
 export interface ElementDescriptor {
 	tagName: string;
+	accessibleName?: string;
+	/** Kandidat dari locator engine di halaman, lengkap dengan jumlah match. */
+	candidates?: LocatorCandidate[];
 	id?: string;
 	testId?: string;
 	role?: string;

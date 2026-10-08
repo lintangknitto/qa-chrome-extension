@@ -19,7 +19,7 @@ import { PendingConnections } from './pendingConnection';
 import { ConnectedTabGroup, cleanupStalePlaywrightGroups, isNonDebuggableUrl, ungroupTabs, uniqueGroupStyle } from './connectedTabGroup';
 import { RecordingController } from './recording/recorder';
 import { getToken } from './recording/tokenStore';
-import { executeReplay, type ReplayOptions } from './recording/replayEngine';
+import { buildReplayFailureReport, executeReplay, type ReplayFailureReport, type ReplayOptions } from './recording/replayEngine';
 import { captureBrowserStorageState, type PlaywrightStorageState } from './recording/storageStateCapture';
 
 type PageMessage = {
@@ -281,6 +281,11 @@ class PlaywrightExtension {
             }
 
             const targetApiBaseUrl = message.options?.apiBaseUrl || this._currentApiBaseUrl;
+            const failureReport = buildReplayFailureReport(result);
+            if (failureReport && message.options?.sessionId && targetApiBaseUrl) {
+              // Laporan replay gagal memicu investigasi AI di API (hasil lewat WS generation:*).
+              void this._reportReplayFailure(message.options.sessionId, targetApiBaseUrl, failureReport);
+            }
             if (videoDataUrl && message.options?.sessionId && targetApiBaseUrl) {
               try {
                 videoUrl = await this._uploadSessionVideoFromBackground(
@@ -723,6 +728,23 @@ class PlaywrightExtension {
       debugLog('Gagal menghentikan perekaman video tab:', err);
       await this._closeOffscreenDocument();
       return null;
+    }
+  }
+
+  private async _reportReplayFailure(sessionId: number, apiBaseUrl: string, report: ReplayFailureReport): Promise<void> {
+    try {
+      const token = await getToken();
+      await fetch(`${apiBaseUrl.replace(/\/+$/, '')}/sessions/${sessionId}/replay-failures`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': token ? `Bearer ${token}` : ''
+        },
+        body: JSON.stringify(report)
+      });
+    } catch (err) {
+      debugLog('Gagal melaporkan replay gagal:', err);
     }
   }
 

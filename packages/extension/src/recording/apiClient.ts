@@ -455,6 +455,19 @@ export class RecordingApiClient {
 		return this._request('GET', `/sessions/${idSession}/generations`);
 	}
 
+	/** Investigasi kegagalan sesi (rekaman + log Loki dashboard program + codebase memory). */
+	investigateSession(idSession: number): Promise<{ status: 'completed' | 'failed'; output?: string; error?: string }> {
+		return this._request('POST', `/sessions/${idSession}/investigate`);
+	}
+
+	/** Laporkan langkah replay yang gagal; API mencatat & menjalankan investigasi di background. */
+	reportReplayFailure(
+		idSession: number,
+		input: { step_no: number; error: string; step_description?: string; selector?: string; total_steps?: number }
+	): Promise<{ recorded: boolean; investigation: string }> {
+		return this._request('POST', `/sessions/${idSession}/replay-failures`, input);
+	}
+
 	generateShareUrl(sessionId: number): Promise<{ share_token: string; share_url: string }> {
 		return this._request('POST', `/sessions/${sessionId}/share`);
 	}

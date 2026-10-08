@@ -69,10 +69,12 @@ describe('parameterExtractor', () => {
 		expect(params[0].originalValue).toBe('admin@knitto.com');
 		expect(params[0].type).toBe('email');
 
-		expect(params[1].selector).toBe('#password');
+		expect(params[1].selector).toBe("locator('#password')");
+		expect(params[1].label).toBe('Password');
 		expect(params[1].originalValue).toBe('secret123');
 
-		expect(params[2].selector).toBe('Jumlah');
+		expect(params[2].selector).toBe("getByLabel('Jumlah')");
+		expect(params[2].label).toBe('Jumlah');
 		expect(params[2].originalValue).toBe('50');
 		expect(params[2].type).toBe('number');
 	});
