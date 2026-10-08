@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { extensionFetch, isExtensionContextValid } from '../extensionFetch';
+import { base64ToBytes, bytesToBase64, extensionFetch, isBinaryContentType, isExtensionContextValid } from '../extensionFetch';
 
 describe('extensionFetch', () => {
 	const originalChrome = (globalThis as any).chrome;
@@ -125,6 +125,42 @@ describe('extensionFetch', () => {
 			await expect(
 				extensionFetch('http://192.168.21.38:8010/sessions')
 			).rejects.toThrow(/Network connection refused/);
+		} finally {
+			(window as any).location = originalLocation;
+		}
+	});
+	it('isBinaryContentType: xlsx/pdf/octet-stream biner, JSON/teks bukan', () => {
+		expect(isBinaryContentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')).toBe(true);
+		expect(isBinaryContentType('application/octet-stream')).toBe(true);
+		expect(isBinaryContentType('application/json; charset=utf-8')).toBe(false);
+		expect(isBinaryContentType('text/html')).toBe(false);
+		expect(isBinaryContentType('application/problem+json')).toBe(false);
+		expect(isBinaryContentType(null)).toBe(false);
+	});
+
+	it('respons biner dari background (bodyBase64) dikembalikan byte-per-byte utuh', async () => {
+		const bytes = new Uint8Array([0x50, 0x4b, 0x03, 0x04, 0x00, 0xff, 0x80, 0x7f]);
+		expect(Array.from(base64ToBytes(bytesToBase64(bytes)))).toEqual(Array.from(bytes));
+
+		const originalLocation = window.location;
+		delete (window as any).location;
+		(window as any).location = { protocol: 'https:', href: 'https://portal.knitto.org/dashboard' };
+		(globalThis as any).chrome = {
+			runtime: {
+				id: 'mock-id',
+				sendMessage: vi.fn((_message: unknown, callback: (res: unknown) => void) => {
+					callback({
+						success: true,
+						status: 200,
+						headers: [['content-type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet']],
+						bodyBase64: bytesToBase64(bytes)
+					});
+				})
+			}
+		};
+		try {
+			const response = await extensionFetch('http://10.0.0.5:8010/projects/1/test-cases/export');
+			expect(Array.from(new Uint8Array(await response.arrayBuffer()))).toEqual(Array.from(bytes));
 		} finally {
 			(window as any).location = originalLocation;
 		}

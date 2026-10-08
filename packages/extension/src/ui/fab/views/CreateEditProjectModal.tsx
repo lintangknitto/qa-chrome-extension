@@ -1,25 +1,45 @@
 import React, { useState, useEffect } from 'react';
 import type { RecordingProject, ProgramItem } from '../../../recording/apiClient';
+import { PROJECT_METADATA_FIELDS, type ProjectMetadataField } from '../../../recording/projectMetadata';
 import { Modal } from '../components/Modal';
 import { Input } from '../components/Input';
 import { Button } from '../components/Button';
 import { Switch } from '../components/Switch';
-import { FolderKanban, FileText, CheckCircle2, Lock, Layers, Search, Globe, GitBranch } from 'lucide-react';
+import { FolderKanban, FileText, CheckCircle2, Lock, Layers, Search, Globe, GitBranch, FileSpreadsheet, ChevronDown, ChevronRight } from 'lucide-react';
+
+/** Label & placeholder field metadata header format test case V4. */
+export const PROJECT_METADATA_LABELS: Record<ProjectMetadataField, { label: string; placeholder: string }> = {
+	release_version: { label: 'Program Version Release', placeholder: 'Portal V.1.31.0' },
+	test_app_folder: { label: 'Folder Test App', placeholder: 'Program_holis\\TESTING\\...' },
+	ip_dev: { label: 'IP Dev', placeholder: '192.168.x.x' },
+	ip_prod: { label: 'IP Prod', placeholder: '10.x.x.x' },
+	tester_name: { label: 'Tester', placeholder: 'Nama tester' },
+	programmer_name: { label: 'Programmer', placeholder: 'Nama programmer' },
+	task_dev: { label: 'Task Dev', placeholder: 'Link / kode task dev' },
+	brd_id: { label: 'BRD ID', placeholder: 'BRD608' },
+	link_task_pb: { label: 'Link Task PB', placeholder: 'https://...' },
+	link_figma: { label: 'Link Figma', placeholder: 'https://figma.com/...' }
+};
+
+const emptyMetadata = (): Record<ProjectMetadataField, string> =>
+	Object.fromEntries(PROJECT_METADATA_FIELDS.map((field) => [field, ''])) as Record<ProjectMetadataField, string>;
+
+export type ProjectFormData = {
+	name: string;
+	id_program?: number | null;
+	program_ids?: number[];
+	base_url?: string;
+	repo_url?: string;
+	description?: string;
+	is_active?: boolean;
+} & Partial<Record<ProjectMetadataField, string>>;
 
 export interface CreateEditProjectModalProps {
 	isOpen: boolean;
 	onClose: () => void;
 	project?: RecordingProject | null;
 	programs?: ProgramItem[];
-	onSave: (data: {
-		name: string;
-		id_program?: number | null;
-		program_ids?: number[];
-		base_url?: string;
-		repo_url?: string;
-		description?: string;
-		is_active?: boolean;
-	}) => Promise<void>;
+	onSave: (data: ProjectFormData) => Promise<void>;
 }
 
 // Stable default: a fresh `[]` per render would retrigger the form-reset effect (which depends on
@@ -43,6 +63,8 @@ export const CreateEditProjectModal: React.FC<CreateEditProjectModalProps> = ({
 	const [name, setName] = useState('');
 	const [description, setDescription] = useState('');
 	const [isActive, setIsActive] = useState(true);
+	const [metadata, setMetadata] = useState<Record<ProjectMetadataField, string>>(emptyMetadata);
+	const [metadataOpen, setMetadataOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 
@@ -81,6 +103,10 @@ export const CreateEditProjectModal: React.FC<CreateEditProjectModalProps> = ({
 				setRepoUrl(project.repo_url || '');
 				setDescription(project.description || '');
 				setIsActive(project.is_active !== false);
+				const initialMetadata = emptyMetadata();
+				for (const field of PROJECT_METADATA_FIELDS) initialMetadata[field] = project[field] ?? '';
+				setMetadata(initialMetadata);
+				setMetadataOpen(PROJECT_METADATA_FIELDS.some((field) => Boolean(project[field])));
 			} else {
 				setProgramIds([]);
 				setPrimaryProgramId(null);
@@ -89,6 +115,8 @@ export const CreateEditProjectModal: React.FC<CreateEditProjectModalProps> = ({
 				setRepoUrl('');
 				setDescription('');
 				setIsActive(true);
+				setMetadata(emptyMetadata());
+				setMetadataOpen(false);
 			}
 			setProgramSearch('');
 			setError(null);
@@ -150,6 +178,16 @@ export const CreateEditProjectModal: React.FC<CreateEditProjectModalProps> = ({
 		}
 	};
 
+	/** Hanya field metadata yang berubah; string kosong = kosongkan (API menyimpan NULL). */
+	const changedMetadata = (): Partial<Record<ProjectMetadataField, string>> => {
+		const changed: Partial<Record<ProjectMetadataField, string>> = {};
+		for (const field of PROJECT_METADATA_FIELDS) {
+			const value = metadata[field].trim();
+			if (value !== (project?.[field] ?? '').trim()) changed[field] = value;
+		}
+		return changed;
+	};
+
 	const handleSubmit = async (e: React.FormEvent) => {
 		e.preventDefault();
 		if (!name.trim() || busy) return;
@@ -169,7 +207,8 @@ export const CreateEditProjectModal: React.FC<CreateEditProjectModalProps> = ({
 				base_url: finalBaseUrl,
 				repo_url: finalRepoUrl,
 				description: description.trim() || undefined,
-				is_active: isEditMode ? isActive : true
+				is_active: isEditMode ? isActive : true,
+				...changedMetadata()
 			});
 			onClose();
 		} catch (err) {
@@ -499,6 +538,48 @@ export const CreateEditProjectModal: React.FC<CreateEditProjectModalProps> = ({
 								boxSizing: 'border-box'
 							}}
 						/>
+					</div>
+
+					<div style={{ border: '1px solid #e2e8f0', borderRadius: '8px' }}>
+						<button
+							type="button"
+							onClick={() => setMetadataOpen((open) => !open)}
+							aria-expanded={metadataOpen}
+							style={{
+								width: '100%',
+								display: 'flex',
+								alignItems: 'center',
+								gap: 6,
+								padding: '10px 12px',
+								background: 'transparent',
+								border: 'none',
+								cursor: 'pointer',
+								fontSize: '12px',
+								fontWeight: 600,
+								color: '#475569',
+								textAlign: 'left'
+							}}
+						>
+							{metadataOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+							<FileSpreadsheet size={12} /> Metadata Format Test Case V4 (Opsional)
+						</button>
+						{metadataOpen && (
+							<div style={{ padding: '0 12px 12px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
+								{PROJECT_METADATA_FIELDS.map((field) => (
+									<Input
+										key={field}
+										label={PROJECT_METADATA_LABELS[field].label}
+										placeholder={PROJECT_METADATA_LABELS[field].placeholder}
+										value={metadata[field]}
+										disabled={busy}
+										onChange={(e) => setMetadata((prev) => ({ ...prev, [field]: e.target.value }))}
+									/>
+								))}
+								<div className="sp-muted" style={{ gridColumn: '1 / -1', fontSize: '11px', color: '#64748b' }}>
+									Dipakai untuk header & blok PB saat ekspor .xlsx; kosong ditulis "-".
+								</div>
+							</div>
+						)}
 					</div>
 
 					{isEditMode && (

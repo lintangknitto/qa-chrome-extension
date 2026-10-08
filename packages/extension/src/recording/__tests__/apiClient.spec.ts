@@ -203,3 +203,50 @@ describe('recording apiClient fetch binding', () => {
 	});
 });
 
+describe('recording apiClient — template & ekspor test case', () => {
+	const makeClient = (fetchImpl: typeof fetch) =>
+		new RecordingApiClient({ baseUrl: 'http://api.local', getToken: async () => 'tok', fetchImpl });
+
+	it('exportTestCases mengunduh blob dengan nama file dari Content-Disposition', async () => {
+		const fetchImpl = vi.fn(async () =>
+			new Response(new Uint8Array([1, 2, 3]), {
+				status: 200,
+				headers: { 'Content-Disposition': 'attachment; filename="chat-widget-test-case-v4.xlsx"' }
+			})
+		);
+		const { blob, filename } = await makeClient(fetchImpl as unknown as typeof fetch).exportTestCases(5, 2);
+		expect(filename).toBe('chat-widget-test-case-v4.xlsx');
+		expect(blob.size).toBe(3);
+		const [url, init] = fetchImpl.mock.calls[0] as unknown as [string, RequestInit];
+		expect(url).toBe('http://api.local/projects/5/test-cases/export?template=2');
+		expect((init.headers as Record<string, string>).Authorization).toBe('Bearer tok');
+	});
+
+	it('exportTestCases meneruskan pesan error JSON dari API', async () => {
+		const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ message: 'Belum ada template test case default.' }), { status: 404 }));
+		await expect(makeClient(fetchImpl as unknown as typeof fetch).exportTestCases(5)).rejects.toThrow('Belum ada template test case default.');
+	});
+
+	it('endpoint template memakai path & method yang benar', async () => {
+		const calls: Array<[string, string]> = [];
+		const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+			calls.push([String(init.method), url.replace('http://api.local', '')]);
+			return new Response(JSON.stringify({ result: [] }), { status: 200 });
+		});
+		const client = makeClient(fetchImpl as unknown as typeof fetch);
+		await client.listTestCaseTemplates(true);
+		await client.getDefaultTestCaseTemplate();
+		await client.createTestCaseTemplate({ version_label: 'V5', name: 'V5', spreadsheet_url: 'u', column_mapping: {} });
+		await client.updateTestCaseTemplate(2, { name: 'x' });
+		await client.setDefaultTestCaseTemplate(2);
+		await client.deactivateTestCaseTemplate(2);
+		expect(calls).toEqual([
+			['GET', '/test-case-templates?include_inactive=true'],
+			['GET', '/test-case-templates/default'],
+			['POST', '/test-case-templates'],
+			['PUT', '/test-case-templates/2'],
+			['PATCH', '/test-case-templates/2/default'],
+			['PATCH', '/test-case-templates/2/deactivate']
+		]);
+	});
+});

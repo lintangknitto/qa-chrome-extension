@@ -26,6 +26,8 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 	const [idProgram, setIdProgram] = useState<number | ''>('');
 	const [testCaseId, setTestCaseId] = useState('');
 	const [title, setTitle] = useState('');
+	const [scenario, setScenario] = useState('');
+	const [testDate, setTestDate] = useState('');
 	const [feature, setFeature] = useState('');
 	const [testType, setTestType] = useState<'+' | '-'>('+');
 	const [preCondition, setPreCondition] = useState('');
@@ -39,6 +41,8 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 			setIdProgram(initialData.id_program ?? '');
 			setTestCaseId(initialData.test_case_id ?? '');
 			setTitle(initialData.title ?? '');
+			setScenario(initialData.scenario ?? '');
+			setTestDate(initialData.test_date ?? '');
 			setFeature(initialData.feature ?? '');
 			setTestType(initialData.test_type === '-' ? '-' : '+');
 			setPreCondition(initialData.pre_condition ?? '');
@@ -48,6 +52,8 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 			setIdProgram('');
 			setTestCaseId('');
 			setTitle('');
+			setScenario('');
+			setTestDate('');
 			setFeature('');
 			setTestType('+');
 			setPreCondition('');
@@ -68,6 +74,9 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 				id_program: typeof idProgram === 'number' && idProgram > 0 ? idProgram : null,
 				test_case_id: testCaseId.trim(),
 				title: title.trim(),
+				// Saat edit, string kosong mengosongkan kolom; saat tambah cukup dihilangkan.
+				scenario: scenario.trim() || (initialData ? '' : undefined),
+				test_date: testDate.trim() || (initialData ? '' : undefined),
 				feature: feature.trim() || undefined,
 				test_type: testType,
 				pre_condition: preCondition.trim() || undefined,
@@ -216,11 +225,27 @@ export const CreateEditTestCaseModal: React.FC<CreateEditTestCaseModalProps> = (
 					/>
 
 					<Input
-						label="Judul Skenario / Test Case"
+						label="Scenario"
+						placeholder="Contoh: Menguji edit order perubahan qty"
+						value={scenario}
+						onChange={(e) => setScenario(e.target.value)}
+						disabled={busy}
+					/>
+
+					<Input
+						label="Test Case (Judul)"
 						required
 						placeholder="Contoh: User dapat melakukan order kain sampai checkout"
 						value={title}
 						onChange={(e) => setTitle(e.target.value)}
+						disabled={busy}
+					/>
+
+					<Input
+						label="Date"
+						placeholder="Contoh: 19/09/24"
+						value={testDate}
+						onChange={(e) => setTestDate(e.target.value)}
 						disabled={busy}
 					/>
 				</div>

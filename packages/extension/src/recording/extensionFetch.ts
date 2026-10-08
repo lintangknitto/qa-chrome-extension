@@ -28,6 +28,30 @@ const isContentScriptContext = (): boolean => {
 	}
 };
 
+/** Content-type yang aman dibaca sebagai teks; selain itu (xlsx, pdf, image, octet-stream) diperlakukan biner. */
+export const isBinaryContentType = (contentType: string | null | undefined): boolean => {
+	const type = (contentType ?? '').split(';')[0].trim().toLowerCase();
+	if (!type) return false;
+	if (type.startsWith('text/')) return false;
+	if (/^application\/(json|javascript|xml|x-www-form-urlencoded)$/.test(type)) return false;
+	if (type.endsWith('+json') || type.endsWith('+xml')) return false;
+	return true;
+};
+
+export const bytesToBase64 = (bytes: Uint8Array): string => {
+	let binary = '';
+	const chunk = 0x8000;
+	for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+	return btoa(binary);
+};
+
+export const base64ToBytes = (base64: string): Uint8Array<ArrayBuffer> => {
+	const binary = atob(base64);
+	const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return bytes;
+};
+
 export async function extensionFetch(
 	input: RequestInfo | URL,
 	init?: RequestInit
@@ -112,6 +136,7 @@ export async function extensionFetch(
 			ok?: boolean;
 			headers?: [string, string][];
 			body?: string;
+			bodyBase64?: string;
 			error?: string;
 		}>((resolve, reject) => {
 			try {
@@ -147,7 +172,10 @@ export async function extensionFetch(
 			}
 		}
 
-		return new Response(response.body ?? '', {
+		const responseBody: BodyInit = response.bodyBase64 !== undefined
+			? base64ToBytes(response.bodyBase64)
+			: (response.body ?? '');
+		return new Response(responseBody, {
 			status: response.status ?? 200,
 			statusText: response.statusText ?? 'OK',
 			headers: responseHeaders
