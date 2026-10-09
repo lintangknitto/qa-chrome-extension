@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { ACTION_BINDING_NAME, actionCaptureScript } from '../actionCaptureScript';
 
@@ -119,13 +119,74 @@ describe('actionCaptureScript aksi lanjutan', () => {
 		expect(sent[0].target.testId).toBe('kolom-selesai');
 	});
 
-	it('upload file mencatat nama file saja', () => {
+	it('upload file mengirim event langsung lalu isi file (base64) lewat upload_data', async () => {
 		const w = freshWindow('<label for="f">Lampiran</label><input id="f" type="file">');
 		install(w);
 		const input = w.document.getElementById('f') as HTMLInputElement;
-		Object.defineProperty(input, 'files', { value: [{ name: 'invoice.pdf' }, { name: 'foto.png' }] });
+		const files = [
+			new w.File(['halo'], 'invoice.pdf', { type: 'application/pdf' }),
+			new w.File([new Uint8Array(1)], 'tanpa-tipe.bin')
+		];
+		Object.defineProperty(input, 'files', { value: files });
 		input.dispatchEvent(new w.Event('change', { bubbles: true }));
-		expect(sent[0]).toMatchObject({ action: 'upload', files: ['invoice.pdf', 'foto.png'] });
+
+		expect(sent[0]).toMatchObject({ action: 'upload', files: ['invoice.pdf', 'tanpa-tipe.bin'] });
+		const ref = (sent[0] as any).upload_ref;
+		expect(ref).toMatch(/^upload-/);
+
+		// Satu file per pesan, berurutan; `last` menandai file terakhir.
+		await vi.waitFor(() => expect(sent[2]).toBeTruthy());
+		expect(sent[1]).toMatchObject({
+			action: 'upload_data',
+			upload_ref: ref,
+			files: [{ name: 'invoice.pdf', type: 'application/pdf', size: 4, data: 'aGFsbw==' }],
+			last: false
+		});
+		expect(sent[2]).toMatchObject({
+			action: 'upload_data',
+			upload_ref: ref,
+			files: [{ name: 'tanpa-tipe.bin', type: 'application/octet-stream', size: 1, data: 'AA==' }],
+			last: true
+		});
+	});
+
+	it('batas total per langkah: file sesudah total terlampaui dikirim stored:false', async () => {
+		const w = freshWindow('<input id="f" type="file" multiple>');
+		(w as any)[ACTION_BINDING_NAME] = (payload: string) => sent.push(JSON.parse(payload));
+		(w as any).eval(actionCaptureScript({ uploadMaxBytes: 10, uploadMaxTotalBytes: 7 }));
+		const input = w.document.getElementById('f') as HTMLInputElement;
+		const files = ['abc', 'defg', 'hi', 'j'].map((text, i) => new w.File([text], `f${i}.txt`, { type: 'text/plain' }));
+		Object.defineProperty(input, 'files', { value: files });
+		input.dispatchEvent(new w.Event('change', { bubbles: true }));
+
+		await vi.waitFor(() => expect(sent).toHaveLength(5));
+		const data = sent.slice(1).map((m) => m.files[0]);
+		// 3 + 4 = 7 (pas batas); 'hi' (2) melebihi sisa 0 → stored:false; 'j' juga.
+		expect(data.map((f) => f.stored === false ? 'skip' : f.data)).toEqual(['YWJj', 'ZGVmZw==', 'skip', 'skip']);
+		expect(sent.slice(1).map((m) => m.last)).toEqual([false, false, false, true]);
+	});
+
+	it('input file dikosongkan tetap mengirim upload_data terakhir agar referensi dibersihkan', async () => {
+		const w = freshWindow('<input id="f" type="file">');
+		install(w);
+		const input = w.document.getElementById('f') as HTMLInputElement;
+		Object.defineProperty(input, 'files', { value: [] });
+		input.dispatchEvent(new w.Event('change', { bubbles: true }));
+		await vi.waitFor(() => expect(sent[1]).toMatchObject({ action: 'upload_data', files: [], last: true }));
+	});
+
+	it('file di atas batas dikirim stored:false tanpa isi, maksimal 20 file', async () => {
+		const w = freshWindow('<input id="f" type="file" multiple>');
+		(w as any)[ACTION_BINDING_NAME] = (payload: string) => sent.push(JSON.parse(payload));
+		(w as any).eval(actionCaptureScript({ uploadMaxBytes: 2 }));
+		const input = w.document.getElementById('f') as HTMLInputElement;
+		const files = Array.from({ length: 25 }, (_, i) => new w.File(['abc'], `f${i}.txt`, { type: 'text/plain' }));
+		Object.defineProperty(input, 'files', { value: files });
+		input.dispatchEvent(new w.Event('change', { bubbles: true }));
+
+		expect((sent[0] as any).files).toHaveLength(20);
+		await vi.waitFor(() => expect(sent[1]).toBeTruthy());
+		expect((sent[1] as any).files[0]).toEqual({ name: 'f0.txt', type: 'text/plain', size: 3, stored: false });
 	});
 
 	it('klik & change di dalam open shadow DOM memakai elemen asli', () => {

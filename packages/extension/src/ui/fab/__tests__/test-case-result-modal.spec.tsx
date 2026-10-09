@@ -2,7 +2,7 @@
 import React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { TestCaseResultModal } from '../views/TestCaseResultModal';
+import { TestCaseResultModal, buildRunItems } from '../views/TestCaseResultModal';
 import type { RecordingApiClient, TestCaseItem } from '../../../recording/apiClient';
 
 describe('TestCaseResultModal', () => {
@@ -589,6 +589,28 @@ describe('TestCaseResultModal', () => {
 			]
 		});
 		const onShowToast = vi.fn();
+		const run = (n: number, extra: Record<string, unknown> = {}) => ({
+			id_run: n,
+			id_session: 77,
+			run_number: n,
+			kind: n === 1 ? 'original' : 'rerun',
+			result: 'PASS',
+			actual_result: null,
+			executed_steps: null,
+			error: null,
+			video_url: 'http://localhost:9000/videos/session-77.webm',
+			video_file_name: `TC-AUTH-01 - Login - 2026-10-09 10.00 - Run ${n}.webm`,
+			started_at: '2026-10-09T03:00:00Z',
+			ended_at: null,
+			created_by_user_id: 5,
+			created_at: null,
+			...extra
+		});
+		const run2 = run(2, { result: 'FAIL', video_url: 'http://localhost:9000/videos/session-77-rerun.webm' });
+		// Run dimuat dari API: setelah re-run, detail sesi berisi Run #2 dan hasil sesi mengikuti run terakhir.
+		(mockApi.getSession as unknown as ReturnType<typeof vi.fn>)
+			.mockResolvedValueOnce({ ...mockSessionDetail, runs: [run(1)] })
+			.mockResolvedValue({ ...mockSessionDetail, result: 'FAIL', runs: [run(1), run2] });
 
 		const originalChrome = globalThis.chrome;
 		const originalCreateObjectURL = window.URL.createObjectURL;
@@ -599,9 +621,10 @@ describe('TestCaseResultModal', () => {
 		const sendMessageMock = vi.fn((message, callback) => {
 			if (message.type === 'replay:run') {
 				callback?.({
-					success: true,
-					result: { success: true, totalSteps: 3, executedSteps: 3 },
-					videoUrl: 'http://localhost:9000/videos/session-77-rerun.webm'
+					success: false,
+					result: { success: false, totalSteps: 3, executedSteps: 1, error: 'Elemen tidak ditemukan' },
+					videoUrl: run2.video_url,
+					run: run2
 				});
 			} else if (message.type === 'media:fetchBlobUrl') {
 				callback?.({
@@ -654,8 +677,10 @@ describe('TestCaseResultModal', () => {
 			const startReRunBtn = screen.getAllByRole('button', { name: /Mulai Re-run/i })[0];
 			fireEvent.click(startReRunBtn);
 
-			// Verifikasi Run #2 (Re-run) muncul di riwayat eksekusi
+			// Verifikasi Run #2 (Re-run) dimuat ulang dari server dan muncul di riwayat eksekusi
 			await waitFor(() => {
+				expect(mockApi.getSession).toHaveBeenCalledTimes(2);
+				expect(onShowToast).toHaveBeenCalledWith('Replay TC-AUTH-01 gagal. Hasil disimpan ke Run #2.', 'error');
 				expect(screen.getByText('Riwayat Eksekusi (Historical Runs): 2 Run')).toBeTruthy();
 				expect(screen.getByText('Run #2 (Re-run)')).toBeTruthy();
 				expect(screen.getByText(/Pacing: FAST/i)).toBeTruthy();
@@ -885,6 +910,51 @@ describe('TestCaseResultModal', () => {
 		// Tombol Re-run menjadi aktif
 		const rerunBtn = screen.getByRole('button', { name: /Re-run/i }) as HTMLButtonElement;
 		expect(rerunBtn.disabled).toBe(false);
+	});
+
+	it('Unduh .webm memakai blob dan nama file video_file_name dari run', async () => {
+		const mockApi = createMockApi();
+		(mockApi.getSession as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+			...mockSessionDetail,
+			runs: [{
+				id_run: 1, id_session: 77, run_number: 1, kind: 'original', result: 'PASS', actual_result: null,
+				executed_steps: null, error: null, video_url: 'http://minio/b/sessions/77/video/u/x.webm',
+				video_file_name: 'TC-AUTH-01 - Login - 2026-10-09 10.05 - Run 1.webm',
+				started_at: '2026-10-09T03:05:00Z', ended_at: null, created_by_user_id: 5, created_at: null
+			}]
+		});
+		const originalChrome = globalThis.chrome;
+		globalThis.chrome = {
+			...originalChrome,
+			runtime: {
+				sendMessage: vi.fn((message, callback) => {
+					if (message.type === 'media:fetchBlobUrl') callback?.({ success: true, dataUrl: 'data:video/webm;base64,GkXfow==' });
+				})
+			}
+		} as unknown as typeof chrome;
+		const clicked: Array<{ href: string; download: string }> = [];
+		const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+			clicked.push({ href: this.href, download: this.download });
+		});
+
+		try {
+			render(<TestCaseResultModal open={true} sessionId={77} testCase={mockTestCase} api={mockApi} onClose={vi.fn()} />);
+			const button = await screen.findByRole('button', { name: /Unduh \.webm/i });
+			await waitFor(() => expect(document.querySelector('video')?.getAttribute('src')).toBe('blob:mock-blob-url'));
+			fireEvent.click(button);
+			await waitFor(() => {
+				expect(clicked).toEqual([{ href: 'blob:mock-blob-url', download: 'TC-AUTH-01 - Login - 2026-10-09 10.05 - Run 1.webm' }]);
+			});
+		} finally {
+			clickSpy.mockRestore();
+			globalThis.chrome = originalChrome;
+		}
+	});
+
+	it('buildRunItems tanpa riwayat run menghitung nama file Run #1 dari data sesi', () => {
+		const [item] = buildRunItems({ ...mockSessionDetail, started_at: '2026-10-09T03:05:00Z' } as any, 77);
+		expect(item.label).toBe('Run #1 (Asli)');
+		expect(item.videoFileName).toBe('TC-AUTH-01 - Login dengan kredensial benar - 2026-10-09 10.05 - Run 1.webm');
 	});
 
 	it('video player: memuat stream video via media:fetchBlobUrl dan mengonversi ke Blob URL', async () => {

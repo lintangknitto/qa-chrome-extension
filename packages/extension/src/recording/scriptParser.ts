@@ -38,6 +38,8 @@ export interface ParsedStep {
 	timeoutMs?: number;
 	key?: string;
 	description?: string;
+	/** `setInputFiles`: semua path file (mis. `test-data/invoice.pdf`). */
+	files?: string[];
 }
 
 type Literal =
@@ -342,8 +344,10 @@ const buildActionStep = (name: string, args: Literal[], locator: LocatorSpec | u
 			if (o.value !== undefined) return { action: 'select', ...base, value: asText(o.value), optionBy: 'value' };
 			return { action: 'select', ...base, value: asText(arg), optionBy: 'value' };
 		}
-		case 'setInputFiles':
-			return { action: 'setInputFiles', ...base, value: asText(Array.isArray(args[0]) ? args[0][0] : args[0]) };
+		case 'setInputFiles': {
+			const files = (Array.isArray(args[0]) ? args[0] : [args[0]]).map(asText).filter((name): name is string => Boolean(name));
+			return { action: 'setInputFiles', ...base, value: files[0], files };
+		}
 		case 'waitFor':
 			return { action: 'wait', ...base, timeoutMs: 1500 };
 		default:

@@ -37,7 +37,8 @@ import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
 import { Badge } from '../components/Badge';
 import { ReRunModal } from './ReRunModal';
-import type { RecordingApiClient, RecordingSession, TestCaseItem } from '../../../recording/apiClient';
+import type { RecordingApiClient, RecordingSession, SessionRun, TestCaseItem } from '../../../recording/apiClient';
+import { buildVideoFileName } from '../../../recording/videoFileName';
 import type { PlaywrightStorageState, PlaywrightCookie, StorageEntry } from '../../../recording/storageStateCapture';
 import type { GenerationItem } from './HistoryView';
 import { InvestigationPanel } from './InvestigationPanel';
@@ -66,6 +67,8 @@ export interface RunItem {
 	result?: string | null;
 	actualResult?: string | null;
 	videoUrl?: string | null;
+	/** Nama unduhan sesuai format `buildVideoFileName` (dihitung server untuk run tersimpan). */
+	videoFileName?: string;
 	timestamp?: string;
 	speedMode?: 'normal' | 'fast' | 'slow';
 	stepDelayMs?: number;
@@ -73,6 +76,87 @@ export interface RunItem {
 	checkpoints?: CheckpointItem[];
 	sessionId?: number;
 }
+
+type RunMeta = Pick<RunItem, 'speedMode' | 'stepDelayMs' | 'parameterOverrides'>;
+type SessionWithRuns = RecordingSession & { checkpoints?: CheckpointItem[]; runs?: SessionRun[]; started_at?: string | null };
+
+export const toRunItem = (run: SessionRun, sessionId: number, meta?: RunMeta): RunItem => ({
+	id: `run-${run.run_number}`,
+	runNumber: run.run_number,
+	label: `Run #${run.run_number} (${run.kind === 'original' ? 'Asli' : 'Re-run'})`,
+	type: run.kind,
+	result: run.result,
+	actualResult: run.actual_result,
+	videoUrl: run.video_url,
+	videoFileName: run.video_file_name,
+	timestamp: run.started_at ?? run.created_at ?? undefined,
+	sessionId,
+	...meta
+});
+
+/** Daftar run dari server; sesi tanpa riwayat run (belum dimigrasi) tampil sebagai Run #1 dari data sesi. */
+export const buildRunItems = (session: SessionWithRuns, sessionId: number, meta: Record<number, RunMeta> = {}): RunItem[] => {
+	const checkpoints = session.checkpoints || [];
+	if (session.runs && session.runs.length > 0) {
+		return session.runs.map((run) => ({
+			...toRunItem(run, sessionId, meta[run.run_number]),
+			...(run.run_number === 1 ? { checkpoints } : {})
+		}));
+	}
+	return [{
+		id: 'run-1',
+		runNumber: 1,
+		label: 'Run #1 (Asli)',
+		type: 'original',
+		result: session.result,
+		actualResult: session.actual_result,
+		videoUrl: session.video_url,
+		videoFileName: buildVideoFileName({
+			testCaseNo: session.test_case_no,
+			title: session.title,
+			startedAt: session.started_at || session.created_at || new Date(),
+			runNumber: 1
+		}),
+		timestamp: session.created_at ?? undefined,
+		checkpoints,
+		sessionId
+	}];
+};
+
+export const triggerBlobDownload = (blobUrl: string, fileName: string): void => {
+	const a = document.createElement('a');
+	a.href = blobUrl;
+	a.download = fileName;
+	a.rel = 'noreferrer';
+	document.body.appendChild(a);
+	a.click();
+	a.remove();
+};
+
+export const dataUrlToBlob = (dataUrl: string): Blob => {
+	const [header = '', base64 = ''] = dataUrl.split(',');
+	const mime = header.match(/:(.*?);/)?.[1] || 'video/webm';
+	const binary = atob(base64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return new Blob([bytes], { type: mime });
+};
+
+/** Video lewat service worker (`media:fetchBlobUrl`) agar bebas CORS/Mixed Content di halaman HTTPS. */
+const fetchVideoBlob = async (url: string): Promise<Blob> => {
+	if (url.startsWith('data:')) return dataUrlToBlob(url);
+	const res = await new Promise<{ success: boolean; dataUrl?: string; error?: string }>((resolve) => {
+		if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) {
+			resolve({ success: false, error: 'chrome.runtime tidak tersedia' });
+			return;
+		}
+		chrome.runtime.sendMessage({ type: 'media:fetchBlobUrl', url }, (response) =>
+			resolve(response ?? { success: false, error: 'Tidak ada respon dari Service Worker' })
+		);
+	});
+	if (!res.success || !res.dataUrl) throw new Error(res.error || 'Gagal memuat video rekaman');
+	return dataUrlToBlob(res.dataUrl);
+};
 
 interface CheckpointItem {
 	id_checkpoint: number;
@@ -96,7 +180,9 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const [sessionDetail, setSessionDetail] = useState<(RecordingSession & { checkpoints?: CheckpointItem[] }) | null>(null);
+	const [sessionDetail, setSessionDetail] = useState<SessionWithRuns | null>(null);
+	// Pacing/override re-run hanya diketahui sesi modal ini (tidak disimpan server).
+	const runMetaRef = useRef<Record<number, RunMeta>>({});
 	const [generations, setGenerations] = useState<GenerationItem[]>([]);
 	const [runs, setRuns] = useState<RunItem[]>([]);
 	const [activeRunId, setActiveRunId] = useState<string>('');
@@ -132,6 +218,25 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 	// `video_url` dari API adalah URL MinIO publik tanpa signature, jadi bisa dibuka langsung di tab baru.
 	const videoTabUrl = currentVideoUrl ?? undefined;
 	const checkpoints = (activeRun?.checkpoints && activeRun.checkpoints.length > 0) ? activeRun.checkpoints : (sessionDetail?.checkpoints || []);
+
+	const videoDownloadName = activeRun?.videoFileName ?? buildVideoFileName({
+		testCaseNo,
+		title,
+		startedAt: activeRun?.timestamp || sessionDetail?.created_at || new Date(),
+		runNumber: activeRun?.runNumber ?? 1
+	});
+
+	// Atribut `download` diabaikan untuk URL MinIO beda origin: unduh lewat blob agar nama file terbaca.
+	const handleDownloadVideo = async () => {
+		try {
+			let blobUrl = playableVideoSrc?.startsWith('blob:') ? playableVideoSrc : null;
+			if (!blobUrl && currentVideoUrl) blobUrl = URL.createObjectURL(await fetchVideoBlob(currentVideoUrl));
+			if (!blobUrl) return;
+			triggerBlobDownload(blobUrl, videoDownloadName);
+		} catch (err) {
+			onShowToast?.((err as Error).message || 'Gagal mengunduh video', 'error');
+		}
+	};
 
 	const handlePlaybackRateChange = (rate: number) => {
 		setVideoPlaybackRate(rate);
@@ -223,31 +328,23 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 			}
 		});
 
-		if (!res?.success) {
-			throw new Error(res?.error || 'Replay gagal dijalankan');
+		const savedRun = res?.run as SessionRun | null | undefined;
+		if (!savedRun) {
+			throw new Error(res?.runError || res?.error || 'Replay gagal dijalankan');
 		}
 
-		const nextRunNumber = runs.length + 1;
-		const newRun: RunItem = {
-			id: `run-rerun-${Date.now()}`,
-			runNumber: nextRunNumber,
-			label: `Run #${nextRunNumber} (Re-run)`,
-			type: 'rerun',
-			result: res.result?.success ? 'PASSED' : 'FAILED',
-			actualResult: res.result?.success
-				? `Replay sukses dieksekusi (${res.result.executedSteps || 0} langkah selesai).`
-				: (res.result?.error || 'Replay terhenti'),
-			videoUrl: res.videoUrl || res.videoDataUrl || null,
-			timestamp: new Date().toISOString(),
+		runMetaRef.current[savedRun.run_number] = {
 			speedMode: opts.speedMode,
 			stepDelayMs: opts.stepDelayMs,
-			parameterOverrides: opts.parameterOverrides,
-			sessionId: opts.sessionId
+			parameterOverrides: opts.parameterOverrides
 		};
-
-		setRuns((prev) => [...prev, newRun]);
-		setActiveRunId(newRun.id);
-		onShowToast?.(`Replay ${opts.testCaseNo} berhasil! Disimpan ke Run #${nextRunNumber}.`, 'success');
+		// Muat ulang dari server: run baru tersimpan dan hasil sesi mengikuti run terakhir.
+		await loadData(opts.sessionId, `run-${savedRun.run_number}`);
+		if (savedRun.result === 'PASS') {
+			onShowToast?.(`Replay ${opts.testCaseNo} berhasil! Disimpan ke Run #${savedRun.run_number}.`, 'success');
+		} else {
+			onShowToast?.(`Replay ${opts.testCaseNo} gagal. Hasil disimpan ke Run #${savedRun.run_number}.`, 'error');
+		}
 	};
 
 	useEffect(() => {
@@ -258,15 +355,16 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 		};
 	}, []);
 
-	const loadData = useCallback(async (id: number) => {
-		setLoading(true);
+	const loadData = useCallback(async (id: number, selectRunId?: string) => {
+		// Muat ulang setelah re-run (selectRunId) tanpa spinner agar modal Re-run tidak ter-unmount.
+		if (!selectRunId) setLoading(true);
 		setError(null);
 		try {
 			const [sessionRes, genRes] = await Promise.all([
 				api.getSession(id),
 				api.listGenerations(id).catch(() => ({ items: [] }))
 			]);
-			let sessionObj = sessionRes as unknown as (RecordingSession & { checkpoints?: CheckpointItem[] });
+			let sessionObj = sessionRes as unknown as SessionWithRuns;
 
 			// Jika video_url belum ada di session record, coba fetch dari endpoint video khusus
 			if (!sessionObj.video_url && typeof api.getSessionVideo === 'function') {
@@ -279,19 +377,6 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 					// Abaikan jika video belum terunggah
 				}
 			}
-
-			const origRun: RunItem = {
-				id: `run-orig-${id}`,
-				runNumber: 1,
-				label: 'Run #1 (Asli)',
-				type: 'original',
-				result: sessionObj.result,
-				actualResult: sessionObj.actual_result,
-				videoUrl: sessionObj.video_url,
-				timestamp: (sessionObj as any).created_at,
-				checkpoints: sessionObj.checkpoints || [],
-				sessionId: id
-			};
 
 			// Coba muat artifact storage_state (Cookies, LocalStorage, SessionStorage)
 			try {
@@ -315,8 +400,9 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 
 			setSessionDetail(sessionObj);
 			setGenerations((genRes.items || []) as GenerationItem[]);
-			setRuns([origRun]);
-			setActiveRunId(origRun.id);
+			const runItems = buildRunItems(sessionObj, id, runMetaRef.current);
+			setRuns(runItems);
+			setActiveRunId(selectRunId && runItems.some((r) => r.id === selectRunId) ? selectRunId : runItems[0].id);
 		} catch (err) {
 			const isAuthErr =
 				(err as any)?.status === 401 ||
@@ -368,18 +454,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 					if (!isMounted) return;
 
 					if (res.success && res.dataUrl) {
-						// Konversi base64 dataUrl ke Blob URL lokal
-						const parts = res.dataUrl.split(',');
-						const header = parts[0] || '';
-						const base64Data = parts[1] || '';
-						const mime = header.match(/:(.*?);/)?.[1] || 'video/webm';
-						const byteCharacters = atob(base64Data);
-						const byteNumbers = new Array(byteCharacters.length);
-						for (let i = 0; i < byteCharacters.length; i++) {
-							byteNumbers[i] = byteCharacters.charCodeAt(i);
-						}
-						const byteArray = new Uint8Array(byteNumbers);
-						const blob = new Blob([byteArray], { type: mime });
+						const blob = dataUrlToBlob(res.dataUrl);
 						const objUrl = URL.createObjectURL(blob);
 						objectUrlToRevoke = objUrl;
 
@@ -424,6 +499,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 			setGenerations([]);
 			setRuns([]);
 			setActiveRunId('');
+			runMetaRef.current = {};
 			setStorageState(null);
 			setStorageFilter('');
 			setError(null);
@@ -1204,29 +1280,23 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 															Perbesar
 														</Button>
 													)}
-													<a
-														href={playableVideoSrc || currentVideoUrl}
-														download={`session-${sessionId}-${activeRun?.label || 'run'}.webm`}
-														target="_blank"
-														rel="noreferrer"
-														style={{ textDecoration: 'none' }}
+													<Button
+														type="button"
+														variant="primary"
+														size="xs"
+														icon={<Download size={11} color="#ffffff" />}
+														onClick={() => void handleDownloadVideo()}
+														title={videoDownloadName}
+														style={{
+															background: '#2563eb',
+															borderColor: '#1d4ed8',
+															color: '#ffffff',
+															fontWeight: 600,
+															boxShadow: '0 1px 2px rgba(37, 99, 235, 0.25)'
+														}}
 													>
-														<Button
-															type="button"
-															variant="primary"
-															size="xs"
-															icon={<Download size={11} color="#ffffff" />}
-															style={{
-																background: '#2563eb',
-																borderColor: '#1d4ed8',
-																color: '#ffffff',
-																fontWeight: 600,
-																boxShadow: '0 1px 2px rgba(37, 99, 235, 0.25)'
-															}}
-														>
-															Unduh .webm
-														</Button>
-													</a>
+														Unduh .webm
+													</Button>
 												</div>
 											</div>
 										</div>
@@ -1855,6 +1925,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 				title={title}
 				targetUrl={sessionDetail?.target_url || undefined}
 				script={playwrightScript}
+				api={api}
 				onClose={() => setReRunOpen(false)}
 				onStartReRun={handleStartReRun}
 			/>

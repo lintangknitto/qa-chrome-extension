@@ -5,8 +5,13 @@
 import { installLocatorEngine } from './locatorEngine';
 
 export const ACTION_BINDING_NAME = '__qaRecorderBinding';
+/** Batas isi file upload yang disimpan sebagai test data (sama dengan default `RECORDING_UPLOAD_MAX_BYTES` API). */
+export const RECORDING_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+export const RECORDING_UPLOAD_MAX_FILES = 20;
+/** Batas total isi file per langkah upload: file sesudah batas dicatat `stored: false`. */
+export const RECORDING_UPLOAD_MAX_TOTAL_BYTES = 30 * 1024 * 1024;
 
-export const actionCaptureScript = (): string => `
+export const actionCaptureScript = (options: { uploadMaxBytes?: number; uploadMaxTotalBytes?: number } = {}): string => `
 (() => {
   if (window.__qaRecorderInstalled) return;
   window.__qaRecorderInstalled = true;
@@ -299,15 +304,60 @@ export const actionCaptureScript = (): string => `
     }, 300);
   }, true);
 
+  const UPLOAD_MAX_BYTES = ${options.uploadMaxBytes ?? RECORDING_UPLOAD_MAX_BYTES};
+  const readUploadFile = (file) => new Promise((resolve) => {
+    const meta = { name: file.name, type: file.type || 'application/octet-stream', size: file.size };
+    if (typeof FileReader === 'undefined' || !(file.size <= UPLOAD_MAX_BYTES)) {
+      resolve({ ...meta, stored: false });
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = String(reader.result || '');
+      resolve({ ...meta, data: result.slice(result.indexOf(',') + 1) });
+    };
+    reader.onerror = () => resolve({ ...meta, stored: false });
+    reader.readAsDataURL(file);
+  });
+  const UPLOAD_MAX_TOTAL_BYTES = ${options.uploadMaxTotalBytes ?? RECORDING_UPLOAD_MAX_TOTAL_BYTES};
+  // Satu file per pesan dan dibaca berurutan: puluhan MB base64 dalam satu pesan binding bisa
+  // membuat tab yang diuji kehabisan memori atau ditolak CDP.
+  const sendUploadFiles = async (uploadRef, fileList) => {
+    if (fileList.length === 0) {
+      send({ action: 'upload_data', upload_ref: uploadRef, files: [], last: true });
+      return;
+    }
+    let budget = UPLOAD_MAX_TOTAL_BYTES;
+    for (let index = 0; index < fileList.length; index++) {
+      const file = fileList[index];
+      let entry;
+      if (file.size > budget) {
+        entry = { name: file.name, type: file.type || 'application/octet-stream', size: file.size, stored: false };
+      } else {
+        entry = await readUploadFile(file);
+        if (entry.stored !== false) budget -= file.size;
+      }
+      send({ action: 'upload_data', upload_ref: uploadRef, files: [entry], last: index === fileList.length - 1 });
+    }
+  };
+
   const onChange = (event) => {
     flushPendingInput();
     const element = realTarget(event);
     if (!element || !(element instanceof Element) || isExtensionElement(element)) return;
     const desc = descriptor(element);
-    // Upload file: nama file saja (path asli tidak bisa & tidak boleh dibaca).
+    // Upload file: event dikirim langsung (urutan langkah terjaga), isi file menyusul lewat 'upload_data'
+    // agar re-run bisa memasang file yang sama. Path asli tidak bisa & tidak boleh dibaca.
     if (element.tagName === 'INPUT' && (element.getAttribute('type') || '').toLowerCase() === 'file') {
-      const files = Array.from(element.files || []).map((file) => file.name).slice(0, 20);
-      sendAction({ action: 'upload', element: desc, files });
+      const fileList = Array.from(element.files || []).slice(0, ${RECORDING_UPLOAD_MAX_FILES});
+      const uploadRef = 'upload-' + Date.now() + '-' + Math.random().toString(36).slice(2, 10);
+      sendAction({
+        action: 'upload',
+        element: desc,
+        files: fileList.map((file) => file.name),
+        upload_ref: uploadRef
+      });
+      void sendUploadFiles(uploadRef, fileList);
       return;
     }
     const sensitive = isSensitive(element);

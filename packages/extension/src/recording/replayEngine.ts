@@ -21,6 +21,127 @@ export interface ReplayOptions {
 	apiBaseUrl?: string;
 	storageState?: any;
 	onTabReady?: (tabId: number) => Promise<void> | void;
+	/** File test data sesi (`GET /sessions/:id/test-data-files`) untuk langkah `setInputFiles`. */
+	testDataFiles?: ReplayTestDataFile[];
+	/** Diinjeksi test; default `fetch` dari service worker (host permission `<all_urls>`). */
+	fetchTestDataFile?: (url: string) => Promise<Blob>;
+}
+
+export interface ReplayTestDataFile {
+	file_name: string;
+	content_type?: string | null;
+	download_url: string;
+}
+
+interface UploadFilePayload {
+	name: string;
+	type: string;
+	data: string;
+}
+
+const baseName = (path: string): string => path.split(/[\\/]/).pop() || path;
+
+/** Nama file yang diharapkan langkah upload (basename dari path di script). */
+export const stepFileNames = (step: ReplayActionStep): string[] =>
+	(step.files?.length ? step.files : step.value ? [step.value] : []).map(baseName).filter(Boolean);
+
+/** Cocokkan langkah upload dengan file test data tersimpan berdasarkan nama file. */
+export const matchTestDataFiles = (
+	step: ReplayActionStep,
+	files: ReplayTestDataFile[] = []
+): { matched: ReplayTestDataFile[]; missing: string[] } => {
+	const byName = new Map(files.map((file) => [file.file_name, file]));
+	const matched: ReplayTestDataFile[] = [];
+	const missing: string[] = [];
+	for (const name of stepFileNames(step)) {
+		const file = byName.get(name);
+		if (file) matched.push(file);
+		else missing.push(name);
+	}
+	return { matched, missing };
+};
+
+const blobToBase64 = async (blob: Blob): Promise<string> => {
+	const bytes = new Uint8Array(await blob.arrayBuffer());
+	let binary = '';
+	const chunk = 0x8000;
+	for (let i = 0; i < bytes.length; i += chunk) binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+	return btoa(binary);
+};
+
+const defaultFetchTestDataFile = async (url: string): Promise<Blob> => {
+	const response = await fetch(url);
+	if (!response.ok) throw new Error(`Gagal mengambil file test data (HTTP ${response.status}).`);
+	return response.blob();
+};
+
+export const loadUploadPayloads = async (
+	files: ReplayTestDataFile[],
+	fetchFile: (url: string) => Promise<Blob> = defaultFetchTestDataFile
+): Promise<UploadFilePayload[]> =>
+	Promise.all(
+		files.map(async (file) => {
+			const blob = await fetchFile(file.download_url);
+			return { name: file.file_name, type: file.content_type || blob.type || 'application/octet-stream', data: await blobToBase64(blob) };
+		})
+	);
+
+/**
+ * Dijalankan di halaman (chrome.scripting, harus self-contained): cari `<input type=file>`, pasang file lewat
+ * DataTransfer, lalu picu `input` + `change` seperti pilihan manual.
+ */
+export function uploadIntoPage(
+	spec: LocatorSpec | null,
+	selector: string,
+	payloads: Array<{ name: string; type: string; data: string }>
+): { success: boolean; error?: string } {
+	let element: Element | null = null;
+	const engine = (window as Window).__knittoLocator;
+	if (spec && engine) element = engine.resolve(spec) as Element | null;
+	if (!element && selector) {
+		try {
+			element = document.querySelector(selector);
+		} catch {
+			element = null;
+		}
+	}
+	if (!(element instanceof HTMLInputElement) || element.type !== 'file')
+		return { success: false, error: `Input file "${selector}" tidak ditemukan.` };
+	const transfer = new DataTransfer();
+	for (const file of payloads) {
+		const binary = atob(file.data);
+		const bytes = new Uint8Array(binary.length);
+		for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+		transfer.items.add(new File([bytes], file.name, { type: file.type }));
+	}
+	element.files = transfer.files;
+	element.dispatchEvent(new Event('input', { bubbles: true }));
+	element.dispatchEvent(new Event('change', { bubbles: true }));
+	return { success: true };
+}
+
+async function executeUploadInTab(
+	tabId: number,
+	step: ReplayActionStep,
+	files: UploadFilePayload[]
+): Promise<{ success: boolean; error?: string }> {
+	if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript) return { success: true };
+	try {
+		const frameTarget = step.frames?.length ? await findFrameForStep(tabId, step) : null;
+		if (step.frames?.length && frameTarget === null) {
+			return { success: false, error: `Iframe untuk langkah "${step.selector ?? ''}" belum ditemukan.` };
+		}
+		const target = frameTarget !== null ? { tabId, frameIds: [frameTarget] } : { tabId };
+		if (step.locator && frameTarget === null) await chrome.scripting.executeScript({ target, func: installLocatorEngine as unknown as () => void });
+		const [res] = await chrome.scripting.executeScript({
+			target,
+			func: uploadIntoPage,
+			args: [step.locator ?? null, step.selector ?? '', files]
+		});
+		return (res?.result as { success: boolean; error?: string }) ?? { success: false, error: 'Tidak ada hasil eksekusi upload.' };
+	} catch (err) {
+		return { success: false, error: (err as Error).message };
+	}
 }
 
 export interface ReplayResult {
@@ -134,96 +255,125 @@ async function restoreStorageState(tabId: number, storageState?: any): Promise<v
 /**
  * Suntikkan overlay HUD dan spotlight visual interaksi ke dalam halaman tab yang sedang di-replay.
  */
-async function updateReplayOverlay(
-	tabId: number,
-	options: {
-		stepNo: number;
-		totalSteps: number;
-		title: string;
-		actionDesc: string;
-		targetSelector?: string;
-		actionType?: string;
-		isFinished?: boolean;
-		isError?: boolean;
-		errorMessage?: string;
+export interface ReplayHudOptions {
+	stepNo: number;
+	totalSteps: number;
+	title: string;
+	actionDesc: string;
+	targetSelector?: string;
+	actionType?: string;
+	isFinished?: boolean;
+	isError?: boolean;
+	errorMessage?: string;
+	/** Replay baru dimulai: buang HUD & timer dari replay sebelumnya. */
+	reset?: boolean;
+}
+
+export const REPLAY_HUD_ERROR_HIDE_MS = 10_000;
+export const REPLAY_HUD_FINISHED_HIDE_MS = 4_000;
+
+/**
+ * HUD replay di halaman target (chrome.scripting, harus self-contained). Bisa ditutup lewat tombol ✕,
+ * hilang sendiri setelah selesai (4 dtk) atau error (10 dtk), dan direset saat replay baru dimulai.
+ */
+export function renderReplayHud(opts: ReplayHudOptions, hideMs: { error: number; finished: number }): void {
+	const HUD_ID = 'knitto-replay-hud';
+	const w = window as Window & { __knittoReplayHudTimer?: ReturnType<typeof setTimeout> };
+	const removeHud = () => {
+		if (w.__knittoReplayHudTimer) clearTimeout(w.__knittoReplayHudTimer);
+		w.__knittoReplayHudTimer = undefined;
+		document.getElementById(HUD_ID)?.remove();
+		document.querySelectorAll('.knitto-spotlight-box').forEach((el) => el.remove());
+	};
+	if (opts.reset) removeHud();
+	if (w.__knittoReplayHudTimer) {
+		clearTimeout(w.__knittoReplayHudTimer);
+		w.__knittoReplayHudTimer = undefined;
 	}
-): Promise<void> {
+
+	let hud = document.getElementById(HUD_ID);
+	if (!hud) {
+		hud = document.createElement('div');
+		hud.id = HUD_ID;
+		Object.assign(hud.style, {
+			position: 'fixed',
+			top: '16px',
+			right: '16px',
+			zIndex: '2147483647',
+			maxWidth: '360px',
+			width: 'calc(100vw - 32px)',
+			background: '#0f172a',
+			color: '#ffffff',
+			borderRadius: '12px',
+			padding: '12px 16px',
+			boxShadow: '0 10px 30px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.1)',
+			fontFamily: 'system-ui, -apple-system, sans-serif',
+			fontSize: '12px',
+			lineHeight: '1.4',
+			transition: 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)',
+			// HUD tidak menghalangi klik ke halaman, kecuali tombol tutup.
+			pointerEvents: 'none'
+		});
+		document.body.appendChild(hud);
+	}
+
+	const progressPercent = Math.min(100, Math.round((opts.stepNo / Math.max(1, opts.totalSteps)) * 100));
+	let statusBg = '#2F3574';
+	let statusIcon = '▶️';
+	let statusText = `Langkah ${opts.stepNo} dari ${opts.totalSteps}`;
+	if (opts.isFinished) {
+		statusBg = '#16a34a';
+		statusIcon = '✅';
+		statusText = 'Replay Selesai Sukses';
+	} else if (opts.isError) {
+		statusBg = '#dc2626';
+		statusIcon = '❌';
+		statusText = 'Replay Terhenti (Gagal)';
+	}
+
+	hud.replaceChildren();
+	const header = document.createElement('div');
+	header.style.cssText = 'display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px;';
+	const titleBox = document.createElement('div');
+	titleBox.style.cssText = 'display:flex; align-items:center; gap:6px;';
+	titleBox.innerHTML = `<span style="font-size:14px;">${statusIcon}</span><strong style="font-size:13px; color:#f8fafc; letter-spacing:0.3px;">Knitto QA Re-run Live</strong>`;
+	const right = document.createElement('div');
+	right.style.cssText = 'display:flex; align-items:center; gap:6px;';
+	const badge = document.createElement('span');
+	badge.style.cssText = `background:${statusBg}; color:#ffffff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px;`;
+	badge.textContent = statusText;
+	const close = document.createElement('button');
+	close.type = 'button';
+	close.setAttribute('aria-label', 'Tutup');
+	close.textContent = '✕';
+	close.style.cssText = 'pointer-events:auto; cursor:pointer; background:transparent; border:0; color:#cbd5e1; font-size:14px; line-height:1; padding:2px 4px;';
+	close.addEventListener('click', removeHud);
+	right.append(badge, close);
+	header.append(titleBox, right);
+
+	const message = document.createElement('div');
+	message.style.cssText = 'font-size:12px; font-weight:500; color:#e2e8f0; margin-bottom:8px; word-break:break-word;';
+	message.textContent = opts.isError ? opts.errorMessage || 'Terjadi kesalahan' : opts.actionDesc;
+
+	const track = document.createElement('div');
+	track.style.cssText = 'width:100%; height:4px; background:rgba(255,255,255,0.15); border-radius:2px; overflow:hidden;';
+	const bar = document.createElement('div');
+	bar.style.cssText = `width:${progressPercent}%; height:100%; background:${opts.isError ? '#ef4444' : opts.isFinished ? '#22c55e' : '#38bdf8'}; transition:width 0.3s ease;`;
+	track.append(bar);
+	hud.append(header, message, track);
+
+	if (opts.isFinished || opts.isError) {
+		w.__knittoReplayHudTimer = setTimeout(removeHud, opts.isError ? hideMs.error : hideMs.finished);
+	}
+}
+
+async function updateReplayOverlay(tabId: number, options: ReplayHudOptions): Promise<void> {
 	if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript) return;
 	try {
 		await chrome.scripting.executeScript({
 			target: { tabId },
-			func: (opts: typeof options) => {
-				const HUD_ID = 'knitto-replay-hud';
-				let hud = document.getElementById(HUD_ID);
-
-				if (!hud) {
-					hud = document.createElement('div');
-					hud.id = HUD_ID;
-					hud.style.position = 'fixed';
-					hud.style.top = '16px';
-					hud.style.right = '16px';
-					hud.style.zIndex = '2147483647';
-					hud.style.maxWidth = '360px';
-					hud.style.width = 'calc(100vw - 32px)';
-					hud.style.background = '#0f172a';
-					hud.style.color = '#ffffff';
-					hud.style.borderRadius = '12px';
-					hud.style.padding = '12px 16px';
-					hud.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.1)';
-					hud.style.fontFamily = 'system-ui, -apple-system, sans-serif';
-					hud.style.fontSize = '12px';
-					hud.style.lineHeight = '1.4';
-					hud.style.transition = 'all 0.25s cubic-bezier(0.16, 1, 0.3, 1)';
-					hud.style.pointerEvents = 'none';
-					document.body.appendChild(hud);
-				}
-
-				const progressPercent = Math.min(100, Math.round((opts.stepNo / Math.max(1, opts.totalSteps)) * 100));
-
-				let statusBg = '#2F3574';
-				let statusIcon = '▶️';
-				let statusText = `Langkah ${opts.stepNo} dari ${opts.totalSteps}`;
-
-				if (opts.isFinished) {
-					statusBg = '#16a34a';
-					statusIcon = '✅';
-					statusText = 'Replay Selesai Sukses';
-				} else if (opts.isError) {
-					statusBg = '#dc2626';
-					statusIcon = '❌';
-					statusText = 'Replay Terhenti (Gagal)';
-				}
-
-				hud.innerHTML = `
-					<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
-						<div style="display:flex; align-items:center; gap:6px;">
-							<span style="font-size:14px;">${statusIcon}</span>
-							<strong style="font-size:13px; color:#f8fafc; letter-spacing:0.3px;">Knitto QA Re-run Live</strong>
-						</div>
-						<span style="background:${statusBg}; color:#ffffff; font-size:10px; font-weight:700; padding:2px 8px; border-radius:10px;">
-							${statusText}
-						</span>
-					</div>
-					<div style="font-size:12px; font-weight:500; color:#e2e8f0; margin-bottom:8px;">
-						${opts.isError ? (opts.errorMessage || 'Terjadi kesalahan') : opts.actionDesc}
-					</div>
-					<div style="width:100%; height:4px; background:rgba(255,255,255,0.15); border-radius:2px; overflow:hidden;">
-						<div style="width:${progressPercent}%; height:100%; background:${opts.isError ? '#ef4444' : opts.isFinished ? '#22c55e' : '#38bdf8'}; transition:width 0.3s ease;"></div>
-					</div>
-				`;
-
-				if (opts.isFinished) {
-					setTimeout(() => {
-						try {
-							hud?.remove();
-							document.querySelectorAll('.knitto-spotlight-box').forEach((el) => el.remove());
-						} catch {
-							// Ignore
-						}
-					}, 4000);
-				}
-			},
-			args: [options]
+			func: renderReplayHud,
+			args: [options, { error: REPLAY_HUD_ERROR_HIDE_MS, finished: REPLAY_HUD_FINISHED_HIDE_MS }]
 		});
 	} catch {
 		// Scripting may fail on restricted pages
@@ -689,7 +839,8 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 				title: options.testCaseNo,
 				actionDesc,
 				targetSelector: step.selector,
-				actionType: step.action
+				actionType: step.action,
+				reset: i === 0
 			});
 
 			if (step.action === 'goto') {
@@ -699,6 +850,23 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 					await waitForTabLoaded(targetTabId);
 					await sleep(Math.max(600, pacingDelay));
 				}
+			} else if (step.action === 'setInputFiles') {
+				const { matched, missing } = matchTestDataFiles(step, options.testDataFiles);
+				if (missing.length > 0) {
+					failedStepNo = stepNo;
+					throw new Error(`File test data untuk langkah upload tidak tersedia: ${missing.join(', ')}. Pilih file pengganti di modal Re-run.`);
+				}
+				const payloads = await loadUploadPayloads(matched, options.fetchTestDataFile);
+				let res: { success: boolean; error?: string } = { success: false };
+				for (let attempt = 0; attempt < 8 && !res.success; attempt++) {
+					res = await executeUploadInTab(targetTabId, step, payloads);
+					if (!res.success) await sleep(350);
+				}
+				if (!res.success) {
+					failedStepNo = stepNo;
+					throw new Error(res.error || 'Gagal memasang file upload.');
+				}
+				await sleep(pacingDelay);
 			} else if (step.action === 'wait') {
 				const duration = Math.min(step.timeoutMs || 1000, 5000);
 				await sleep(duration);

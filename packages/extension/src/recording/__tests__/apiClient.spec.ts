@@ -44,6 +44,37 @@ describe('recording apiClient fetch binding', () => {
 		expect(fetchImpl).toHaveBeenCalledOnce();
 	});
 
+	it('x-request-id unik hanya di jalur upload paralel; create/end session & createRun memakai dedupe bawaan API', async () => {
+		const seen: Array<{ url: string; headers: Record<string, string> }> = [];
+		const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+			seen.push({ url, headers: init.headers as Record<string, string> });
+			return new Response(JSON.stringify({ result: { upload_url: 'u', object_key: 'k', artifact: { id_artifact: 1 } } }), { status: 200 });
+		});
+		const client = new RecordingApiClient({
+			baseUrl: 'http://127.0.0.1:8010',
+			getToken: async () => 't',
+			fetchImpl: fetchImpl as unknown as typeof fetch
+		});
+
+		const body = { kind: 'test_data_file', content_type: 'text/plain', size_bytes: 1 };
+		await Promise.all([client.presignArtifactUpload(1, body), client.presignArtifactUpload(1, body)]);
+		await client.completeArtifactUpload(1, 1, { size_bytes: 1 });
+		await client.presignSessionVideo(1, { size_bytes: 1 });
+		await client.completeSessionVideo(1, { object_key: 'k' });
+		await client.presignRunVideo(1, 2, { size_bytes: 1 });
+		await client.completeRunVideo(1, 2, { object_key: 'k' });
+		const uploads = seen.map((c) => c.headers['x-request-id']);
+		expect(uploads.every(Boolean)).toBe(true);
+		expect(new Set(uploads).size).toBe(uploads.length);
+
+		seen.length = 0;
+		await client.createRun(1, { result: 'PASS' } as never).catch(() => undefined);
+		await client.endSession(1, { result: 'PASS' } as never).catch(() => undefined);
+		await client.getSessionVideo(1).catch(() => undefined);
+		expect(seen).toHaveLength(3);
+		expect(seen.every((c) => c.headers['x-request-id'] === undefined)).toBe(true);
+	});
+
 	it('mengirim request POST /projects dengan payload dan token yang benar pada createProject', async () => {
 		let capturedUrl = '';
 		let capturedInit: RequestInit | undefined;
@@ -247,6 +278,50 @@ describe('recording apiClient — template & ekspor test case', () => {
 			['PUT', '/test-case-templates/2'],
 			['PATCH', '/test-case-templates/2/default'],
 			['PATCH', '/test-case-templates/2/deactivate']
+		]);
+	});
+});
+
+describe('recording apiClient run (re-run)', () => {
+	const json = (result: unknown) => new Response(JSON.stringify({ result }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+	it('createRun dan listRuns memanggil endpoint run sesi', async () => {
+		const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			calls.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+			return json(init?.method === 'GET' ? [{ run_number: 1 }] : { run_number: 2 });
+		});
+		const client = new RecordingApiClient({ baseUrl: 'http://api', getToken: async () => 't', fetchImpl: fetchImpl as unknown as typeof fetch });
+
+		const run = await client.createRun(5, { result: 'FAIL', executed_steps: 2 });
+		const runs = await client.listRuns(5);
+
+		expect(run.run_number).toBe(2);
+		expect(runs).toEqual([{ run_number: 1 }]);
+		expect(calls).toEqual([
+			{ url: 'http://api/sessions/5/runs', method: 'POST', body: { result: 'FAIL', executed_steps: 2 } },
+			{ url: 'http://api/sessions/5/runs', method: 'GET', body: undefined }
+		]);
+	});
+
+	it('uploadRunVideo: presign run → PUT → complete run', async () => {
+		const calls: string[] = [];
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			calls.push(`${init?.method} ${url}`);
+			if (url.endsWith('/presign-upload')) return json({ upload_url: 'http://minio/b/k.webm', object_key: 'sessions/5/video/u/k.webm' });
+			if (url.startsWith('http://minio')) return new Response(null, { status: 200 });
+			return json({ run_number: 2, video_url: 'http://minio/b/k.webm' });
+		});
+		const client = new RecordingApiClient({ baseUrl: 'http://api', getToken: async () => 't', fetchImpl: fetchImpl as unknown as typeof fetch });
+
+		const run = await client.uploadRunVideo(5, 2, new Blob(['v'], { type: 'video/webm' }));
+
+		expect(run.video_url).toBe('http://minio/b/k.webm');
+		expect(calls).toEqual([
+			'POST http://api/sessions/5/runs/2/video/presign-upload',
+			'PUT http://minio/b/k.webm',
+			'POST http://api/sessions/5/runs/2/video/complete'
 		]);
 	});
 });

@@ -91,6 +91,43 @@ export interface RecordingSession {
 	updated_at?: string | null;
 }
 
+export type SessionResult = 'PASS' | 'FAIL' | 'BLOCKED';
+
+export interface SessionRun {
+	id_run: number;
+	id_session: number;
+	run_number: number;
+	kind: 'original' | 'rerun';
+	result: SessionResult | null;
+	actual_result: string | null;
+	executed_steps: number | null;
+	error: string | null;
+	video_url: string | null;
+	video_file_name: string;
+	started_at: string | null;
+	ended_at: string | null;
+	created_by_user_id: number | null;
+	created_at: string | null;
+}
+
+export interface CreateRunInput {
+	result: SessionResult;
+	actual_result?: string | null;
+	executed_steps?: number | null;
+	error?: string | null;
+	started_at?: string | null;
+	ended_at?: string | null;
+}
+
+export interface TestDataFile {
+	id_artifact: number;
+	file_name: string;
+	content_type: string | null;
+	size_bytes: number;
+	sequence: number | null;
+	download_url: string;
+}
+
 export interface TestCaseItem {
 	id_test_case: number;
 	id_project: number;
@@ -189,6 +226,11 @@ export interface ApiClientOptions {
 	onUnauthorized?: () => void;
 	fetchImpl?: typeof fetch;
 }
+
+const newRequestId = (): string =>
+	typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+		? crypto.randomUUID()
+		: `${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
 export class RecordingApiClient {
 	private readonly _baseUrl: string;
@@ -486,9 +528,9 @@ export class RecordingApiClient {
 
 	presignArtifactUpload(
 		idSession: number,
-		input: { kind: string; content_type: string; size_bytes: number; sequence?: number }
+		input: { kind: string; content_type: string; size_bytes: number; sequence?: number; file_name?: string }
 	): Promise<PresignedUpload> {
-		return this._request<PresignedUpload>('POST', `/sessions/${idSession}/artifacts/presign-upload`, input);
+		return this._request<PresignedUpload>('POST', `/sessions/${idSession}/artifacts/presign-upload`, input, { uniqueRequestId: true });
 	}
 
 	completeArtifactUpload(
@@ -496,7 +538,7 @@ export class RecordingApiClient {
 		idArtifact: number,
 		input: { size_bytes?: number; checksum_sha256?: string }
 	): Promise<unknown> {
-		return this._request('POST', `/sessions/${idSession}/artifacts/${idArtifact}/complete`, input);
+		return this._request('POST', `/sessions/${idSession}/artifacts/${idArtifact}/complete`, input, { uniqueRequestId: true });
 	}
 
 	listArtifacts(idSession: number): Promise<{ items: Array<{ id_artifact: number; kind: string; object_key: string; content_type: string; size_bytes: number }> }> {
@@ -553,14 +595,68 @@ export class RecordingApiClient {
 		sessionId: number,
 		input: { size_bytes: number; content_type?: string }
 	): Promise<{ upload_url: string; object_key: string; content_type: string; expires_in: number }> {
-		return this._request('POST', `/sessions/${sessionId}/video/presign-upload`, input);
+		return this._request('POST', `/sessions/${sessionId}/video/presign-upload`, input, { uniqueRequestId: true });
 	}
 
 	completeSessionVideo(
 		sessionId: number,
 		input: { object_key: string }
 	): Promise<{ id_session: number; video_url: string; object_key: string }> {
-		return this._request('POST', `/sessions/${sessionId}/video/complete`, input);
+		return this._request('POST', `/sessions/${sessionId}/video/complete`, input, { uniqueRequestId: true });
+	}
+
+	createRun(sessionId: number, input: CreateRunInput): Promise<SessionRun> {
+		return this._request<SessionRun>('POST', `/sessions/${sessionId}/runs`, input);
+	}
+
+	listRuns(sessionId: number): Promise<SessionRun[]> {
+		return this._request<SessionRun[]>('GET', `/sessions/${sessionId}/runs`);
+	}
+
+	presignRunVideo(
+		sessionId: number,
+		runNumber: number,
+		input: { size_bytes: number; content_type?: string }
+	): Promise<{ upload_url: string; object_key: string; content_type: string; expires_in: number }> {
+		return this._request('POST', `/sessions/${sessionId}/runs/${runNumber}/video/presign-upload`, input, { uniqueRequestId: true });
+	}
+
+	completeRunVideo(sessionId: number, runNumber: number, input: { object_key: string }): Promise<SessionRun> {
+		return this._request<SessionRun>('POST', `/sessions/${sessionId}/runs/${runNumber}/video/complete`, input, { uniqueRequestId: true });
+	}
+
+	/** Video re-run: presign → PUT ke MinIO → complete, disimpan di run (video sesi/Run #1 tidak tersentuh). */
+	async uploadRunVideo(sessionId: number, runNumber: number, videoBlob: Blob): Promise<SessionRun> {
+		const contentType = videoBlob.type || 'video/webm';
+		const presign = await this.presignRunVideo(sessionId, runNumber, { size_bytes: videoBlob.size, content_type: contentType });
+		await this.uploadToPresignedUrl(presign.upload_url, videoBlob, contentType);
+		return this.completeRunVideo(sessionId, runNumber, { object_key: presign.object_key });
+	}
+
+	listTestDataFiles(sessionId: number): Promise<TestDataFile[]> {
+		return this._request<TestDataFile[]>('GET', `/sessions/${sessionId}/test-data-files`);
+	}
+
+	/** Kaitkan file pengganti ke nama file yang diharapkan langkah upload. */
+	linkTestDataFiles(
+		sessionId: number,
+		files: Array<{ id_artifact: number; file_name: string; sequence?: number }>
+	): Promise<TestDataFile[]> {
+		return this._request<TestDataFile[]>('PUT', `/sessions/${sessionId}/test-data-files`, { files });
+	}
+
+	/** Unggah file pengganti sebagai artifact `test_data_file` lalu kaitkan ke nama file langkah upload. */
+	async uploadReplacementTestData(sessionId: number, expectedFileName: string, file: Blob): Promise<TestDataFile[]> {
+		const contentType = file.type || 'application/octet-stream';
+		const presign = await this.presignArtifactUpload(sessionId, {
+			kind: 'test_data_file',
+			content_type: contentType,
+			size_bytes: file.size,
+			file_name: expectedFileName
+		});
+		await this.uploadToPresignedUrl(presign.upload_url, file, contentType);
+		await this.completeArtifactUpload(sessionId, presign.artifact.id_artifact, { size_bytes: file.size });
+		return this.linkTestDataFiles(sessionId, [{ id_artifact: presign.artifact.id_artifact, file_name: expectedFileName }]);
 	}
 
 	getSessionVideo(sessionId: number): Promise<{ id_session: number; video_url: string | null }> {
@@ -728,10 +824,14 @@ export class RecordingApiClient {
 		method: string,
 		path: string,
 		body?: unknown,
-		options: { skipAuth?: boolean } = {}
+		options: { skipAuth?: boolean; uniqueRequestId?: boolean } = {}
 	): Promise<T> {
 		const headers: Record<string, string> = { Accept: 'application/json' };
 		if (body !== undefined) headers['Content-Type'] = 'application/json';
+		// knitto-http men-dedupe POST/PUT/PATCH/DELETE paralel ber-x-request-id sama; tanpa header id-nya
+		// hash(ip, user, method, path). Dedupe bawaan itu dipertahankan (melindungi klik ganda create/end
+		// session, createRun); hanya jalur upload yang memang paralel memakai id unik.
+		if (options.uniqueRequestId) headers['x-request-id'] = newRequestId();
 
 		if (!options.skipAuth) {
 			const token = await this._getToken();
