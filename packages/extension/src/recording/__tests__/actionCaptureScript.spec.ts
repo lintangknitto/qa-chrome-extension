@@ -134,15 +134,45 @@ describe('actionCaptureScript aksi lanjutan', () => {
 		const ref = (sent[0] as any).upload_ref;
 		expect(ref).toMatch(/^upload-/);
 
-		await vi.waitFor(() => expect(sent[1]).toBeTruthy());
+		// Satu file per pesan, berurutan; `last` menandai file terakhir.
+		await vi.waitFor(() => expect(sent[2]).toBeTruthy());
 		expect(sent[1]).toMatchObject({
 			action: 'upload_data',
 			upload_ref: ref,
-			files: [
-				{ name: 'invoice.pdf', type: 'application/pdf', size: 4, data: 'aGFsbw==' },
-				{ name: 'tanpa-tipe.bin', type: 'application/octet-stream', size: 1, data: 'AA==' }
-			]
+			files: [{ name: 'invoice.pdf', type: 'application/pdf', size: 4, data: 'aGFsbw==' }],
+			last: false
 		});
+		expect(sent[2]).toMatchObject({
+			action: 'upload_data',
+			upload_ref: ref,
+			files: [{ name: 'tanpa-tipe.bin', type: 'application/octet-stream', size: 1, data: 'AA==' }],
+			last: true
+		});
+	});
+
+	it('batas total per langkah: file sesudah total terlampaui dikirim stored:false', async () => {
+		const w = freshWindow('<input id="f" type="file" multiple>');
+		(w as any)[ACTION_BINDING_NAME] = (payload: string) => sent.push(JSON.parse(payload));
+		(w as any).eval(actionCaptureScript({ uploadMaxBytes: 10, uploadMaxTotalBytes: 7 }));
+		const input = w.document.getElementById('f') as HTMLInputElement;
+		const files = ['abc', 'defg', 'hi', 'j'].map((text, i) => new w.File([text], `f${i}.txt`, { type: 'text/plain' }));
+		Object.defineProperty(input, 'files', { value: files });
+		input.dispatchEvent(new w.Event('change', { bubbles: true }));
+
+		await vi.waitFor(() => expect(sent).toHaveLength(5));
+		const data = sent.slice(1).map((m) => m.files[0]);
+		// 3 + 4 = 7 (pas batas); 'hi' (2) melebihi sisa 0 → stored:false; 'j' juga.
+		expect(data.map((f) => f.stored === false ? 'skip' : f.data)).toEqual(['YWJj', 'ZGVmZw==', 'skip', 'skip']);
+		expect(sent.slice(1).map((m) => m.last)).toEqual([false, false, false, true]);
+	});
+
+	it('input file dikosongkan tetap mengirim upload_data terakhir agar referensi dibersihkan', async () => {
+		const w = freshWindow('<input id="f" type="file">');
+		install(w);
+		const input = w.document.getElementById('f') as HTMLInputElement;
+		Object.defineProperty(input, 'files', { value: [] });
+		input.dispatchEvent(new w.Event('change', { bubbles: true }));
+		await vi.waitFor(() => expect(sent[1]).toMatchObject({ action: 'upload_data', files: [], last: true }));
 	});
 
 	it('file di atas batas dikirim stored:false tanpa isi, maksimal 20 file', async () => {

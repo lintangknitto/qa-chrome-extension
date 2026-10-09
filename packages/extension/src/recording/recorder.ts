@@ -474,6 +474,7 @@ export class RecordingController {
 			crossOriginFrame?: boolean;
 			files?: unknown[];
 			upload_ref?: string;
+			last?: boolean;
 		};
 		try {
 			parsed = JSON.parse(params.payload);
@@ -484,7 +485,8 @@ export class RecordingController {
 		// Isi file upload: bukan langkah tester, diunggah sebagai artifact (base64 tidak masuk event).
 		if (parsed.action === 'upload_data') {
 			const sequence = parsed.upload_ref ? this._uploadSequences.get(parsed.upload_ref) : undefined;
-			if (parsed.upload_ref) this._uploadSequences.delete(parsed.upload_ref);
+			// Isi file datang satu per pesan; `last` menandai file terakhir langkah ini.
+			if (parsed.upload_ref && parsed.last !== false) this._uploadSequences.delete(parsed.upload_ref);
 			if (sequence !== undefined && Array.isArray(parsed.files)) void this._storeUploadFiles(sequence, parsed.files as UploadFileData[]);
 			return;
 		}

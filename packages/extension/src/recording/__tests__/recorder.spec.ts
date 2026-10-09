@@ -258,6 +258,30 @@ describe('RecordingController file test data upload', () => {
 		]);
 	});
 
+	it('upload_data per file: referensi tetap hidup sampai pesan last:true', async () => {
+		const controller = new RecordingController();
+		const presigned: string[] = [];
+		(controller as any)._captureScreenshot = async () => {};
+		(controller as any)._options = { idSession: 9 };
+		(controller as any)._api = {
+			presignArtifactUpload: async (_id: number, body: { file_name: string }) => {
+				presigned.push(body.file_name);
+				return { upload_url: 'http://minio/b/k', artifact: { id_artifact: 1 } };
+			},
+			uploadToPresignedUrl: async () => {},
+			completeArtifactUpload: async () => {}
+		};
+		const dispatch = (payload: Record<string, unknown>) =>
+			(controller as any)._onDebuggerEvent(1, 'Runtime.bindingCalled', { name: '__qaRecorderBinding', payload: JSON.stringify(payload) });
+
+		await dispatch({ action: 'upload', element: { tagName: 'INPUT' }, files: ['a.txt', 'b.txt'], upload_ref: 'r2' });
+		await dispatch({ action: 'upload_data', upload_ref: 'r2', files: [{ name: 'a.txt', type: 'text/plain', size: 1, data: 'YQ==' }], last: false });
+		expect((controller as any)._uploadSequences.has('r2')).toBe(true);
+		await dispatch({ action: 'upload_data', upload_ref: 'r2', files: [{ name: 'b.txt', type: 'text/plain', size: 1, data: 'Yg==' }], last: true });
+		expect((controller as any)._uploadSequences.has('r2')).toBe(false);
+		await vi.waitFor(() => expect(presigned).toEqual(['a.txt', 'b.txt']));
+	});
+
 	it('upload_data dengan ref tak dikenal diabaikan', async () => {
 		const controller = new RecordingController();
 		const presign = vi.fn();
