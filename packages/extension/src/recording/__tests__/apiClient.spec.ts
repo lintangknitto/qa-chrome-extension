@@ -250,3 +250,47 @@ describe('recording apiClient — template & ekspor test case', () => {
 		]);
 	});
 });
+
+describe('recording apiClient run (re-run)', () => {
+	const json = (result: unknown) => new Response(JSON.stringify({ result }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+	it('createRun dan listRuns memanggil endpoint run sesi', async () => {
+		const calls: Array<{ url: string; method?: string; body?: unknown }> = [];
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			calls.push({ url: String(input), method: init?.method, body: init?.body ? JSON.parse(String(init.body)) : undefined });
+			return json(init?.method === 'GET' ? [{ run_number: 1 }] : { run_number: 2 });
+		});
+		const client = new RecordingApiClient({ baseUrl: 'http://api', getToken: async () => 't', fetchImpl: fetchImpl as unknown as typeof fetch });
+
+		const run = await client.createRun(5, { result: 'FAIL', executed_steps: 2 });
+		const runs = await client.listRuns(5);
+
+		expect(run.run_number).toBe(2);
+		expect(runs).toEqual([{ run_number: 1 }]);
+		expect(calls).toEqual([
+			{ url: 'http://api/sessions/5/runs', method: 'POST', body: { result: 'FAIL', executed_steps: 2 } },
+			{ url: 'http://api/sessions/5/runs', method: 'GET', body: undefined }
+		]);
+	});
+
+	it('uploadRunVideo: presign run → PUT → complete run', async () => {
+		const calls: string[] = [];
+		const fetchImpl = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+			const url = String(input);
+			calls.push(`${init?.method} ${url}`);
+			if (url.endsWith('/presign-upload')) return json({ upload_url: 'http://minio/b/k.webm', object_key: 'sessions/5/video/u/k.webm' });
+			if (url.startsWith('http://minio')) return new Response(null, { status: 200 });
+			return json({ run_number: 2, video_url: 'http://minio/b/k.webm' });
+		});
+		const client = new RecordingApiClient({ baseUrl: 'http://api', getToken: async () => 't', fetchImpl: fetchImpl as unknown as typeof fetch });
+
+		const run = await client.uploadRunVideo(5, 2, new Blob(['v'], { type: 'video/webm' }));
+
+		expect(run.video_url).toBe('http://minio/b/k.webm');
+		expect(calls).toEqual([
+			'POST http://api/sessions/5/runs/2/video/presign-upload',
+			'PUT http://minio/b/k.webm',
+			'POST http://api/sessions/5/runs/2/video/complete'
+		]);
+	});
+});

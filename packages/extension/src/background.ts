@@ -18,6 +18,9 @@ import { debugLog } from './relayConnection';
 import { PendingConnections } from './pendingConnection';
 import { ConnectedTabGroup, cleanupStalePlaywrightGroups, isNonDebuggableUrl, ungroupTabs, uniqueGroupStyle } from './connectedTabGroup';
 import { RecordingController } from './recording/recorder';
+import { GroupScreencaster } from './recording/groupScreencast';
+import { saveReplayRun } from './recording/replayRun';
+import { RecordingApiClient, type SessionRun } from './recording/apiClient';
 import { getToken } from './recording/tokenStore';
 import { bytesToBase64, isBinaryContentType } from './recording/extensionFetch';
 import { buildReplayFailureReport, executeReplay, type ReplayFailureReport, type ReplayOptions } from './recording/replayEngine';
@@ -54,11 +57,6 @@ type PageMessage = {
 } | {
   type: 'replay:run';
   options: ReplayOptions;
-} | {
-  type: 'tabVideo:start';
-  tabId?: number;
-} | {
-  type: 'tabVideo:stop';
 } | {
   type: 'fab:getState';
 } | {
@@ -184,7 +182,7 @@ class PlaywrightExtension {
         this._recorder.stop().then(
             async () => {
               this._broadcastFabState();
-              const videoDataUrl = await this._stopTabVideoRecording();
+              const videoDataUrl = await this._stopVideoRecording();
               let videoUrl: string | null = null;
               let finalStorageState: PlaywrightStorageState | null = null;
 
@@ -256,11 +254,12 @@ class PlaywrightExtension {
         return true;
       }
       case 'replay:run': {
-        const replayOpts = {
+        const replayOpts: ReplayOptions = {
           ...message.options,
           onTabReady: async (tabId: number) => {
             try {
-              await this._startTabVideoRecording(tabId);
+              // Canvas offscreen dulu, baru screencast semua tab di group replay (tab baru ikut terekam).
+              if (await this._startVideoRecording()) await this._replayScreencaster.start(tabId);
             } catch (err) {
               debugLog('Gagal start video recording saat replay:', err);
             }
@@ -269,12 +268,25 @@ class PlaywrightExtension {
 
         (async () => {
           try {
+            const apiBaseForFiles = message.options?.apiBaseUrl || this._currentApiBaseUrl;
+            if (!replayOpts.testDataFiles && message.options?.sessionId && apiBaseForFiles) {
+              // File test data rekaman (dan pengganti) untuk langkah setInputFiles.
+              replayOpts.testDataFiles = await new RecordingApiClient({ baseUrl: apiBaseForFiles, getToken })
+                .listTestDataFiles(message.options.sessionId)
+                .catch((err) => {
+                  debugLog('Gagal memuat file test data replay:', err);
+                  return [];
+                });
+            }
+            const startedAt = new Date().toISOString();
             const result = await executeReplay(replayOpts);
+            const endedAt = new Date().toISOString();
             let videoDataUrl: string | null = null;
             let videoUrl: string | null = null;
 
             try {
-              videoDataUrl = await this._stopTabVideoRecording();
+              await this._replayScreencaster.stop();
+              videoDataUrl = await this._stopVideoRecording();
             } catch (stopErr) {
               debugLog('Gagal stop tab video recording saat replay:', stopErr);
             }
@@ -285,15 +297,18 @@ class PlaywrightExtension {
               // Laporan replay gagal memicu investigasi AI di API (hasil lewat WS generation:*).
               void this._reportReplayFailure(message.options.sessionId, targetApiBaseUrl, failureReport);
             }
-            if (videoDataUrl && message.options?.sessionId && targetApiBaseUrl) {
+            // Re-run disimpan sebagai run baru dengan videonya sendiri; video Run #1 tidak tertimpa.
+            let run: SessionRun | null = null;
+            let runError: string | null = null;
+            if (message.options?.sessionId && targetApiBaseUrl) {
               try {
-                videoUrl = await this._uploadSessionVideoFromBackground(
-                  message.options.sessionId,
-                  targetApiBaseUrl,
-                  videoDataUrl
-                );
-              } catch (uploadErr) {
-                debugLog('Gagal upload video replay:', uploadErr);
+                const api = new RecordingApiClient({ baseUrl: targetApiBaseUrl, getToken });
+                run = await saveReplayRun(api, message.options.sessionId, result, videoDataUrl, { startedAt, endedAt },
+                    (uploadErr) => debugLog('Gagal upload video replay:', uploadErr));
+                videoUrl = run.video_url;
+              } catch (runErr) {
+                runError = (runErr as Error).message || 'Gagal menyimpan run replay';
+                debugLog('Gagal menyimpan run replay:', runErr);
               }
             }
 
@@ -301,11 +316,14 @@ class PlaywrightExtension {
               success: result.success,
               result,
               videoDataUrl,
-              videoUrl
+              videoUrl,
+              run,
+              runError
             });
           } catch (error: any) {
             try {
-              await this._stopTabVideoRecording();
+              await this._replayScreencaster.stop();
+              await this._stopVideoRecording();
             } catch {
               // Ignore
             }
@@ -314,16 +332,6 @@ class PlaywrightExtension {
         })();
         return true;
       }
-      case 'tabVideo:start':
-        this._startTabVideoRecording(message.tabId ?? sender.tab?.id ?? 0).then(
-            ok => sendResponse({ success: ok }),
-            (error: any) => sendResponse({ success: false, error: error.message }));
-        return true;
-      case 'tabVideo:stop':
-        this._stopTabVideoRecording().then(
-            dataUrl => sendResponse({ success: true, dataUrl }),
-            (error: any) => sendResponse({ success: false, error: error.message }));
-        return true;
       case 'recordingStatus':
         sendResponse({
           recording: this._recorder.isRecording,
@@ -553,6 +561,7 @@ class PlaywrightExtension {
   }
 
   private _isVideoRecordingActive = false;
+  private readonly _replayScreencaster = new GroupScreencaster();
 
   private async _ensureOffscreenDocument(): Promise<void> {
     if (!chrome.offscreen) return;
@@ -565,7 +574,7 @@ class PlaywrightExtension {
       await chrome.offscreen.createDocument({
         url: offscreenUrl,
         reasons: ['USER_MEDIA'],
-        justification: 'Recording tab stream for QA evidence'
+        justification: 'Recording QA evidence video from tab screencast frames'
       });
     } catch (err) {
       debugLog('Offscreen document error:', err);
@@ -607,31 +616,13 @@ class PlaywrightExtension {
     }
   }
 
-  private async _startTabVideoRecording(targetTabId: number): Promise<boolean> {
+  /** Video selalu dari canvas offscreen yang digambar frame CDP screencast tab aktif (tanpa tabCapture). */
+  private async _startVideoRecording(): Promise<boolean> {
     try {
       await this._ensureOffscreenDocument();
       const isOffscreenReady = await this._pingOffscreen();
       if (!isOffscreenReady) {
         debugLog('Offscreen document belum merespon ping, mencoba melanjutkan...');
-      }
-
-      let streamId: string | null = null;
-      if (chrome.tabCapture && typeof chrome.tabCapture.getMediaStreamId === 'function') {
-        streamId = await new Promise<string | null>((resolve) => {
-          try {
-            chrome.tabCapture.getMediaStreamId({ targetTabId }, (id) => {
-              if (chrome.runtime?.lastError) {
-                debugLog('tabCapture.getMediaStreamId note:', chrome.runtime.lastError.message, '- fallback ke CDP screencast');
-                resolve(null);
-              } else {
-                resolve(id || null);
-              }
-            });
-          } catch (err) {
-            debugLog('tabCapture.getMediaStreamId exception:', err, '- fallback ke CDP screencast');
-            resolve(null);
-          }
-        });
       }
 
       let startRes: any = null;
@@ -640,8 +631,7 @@ class PlaywrightExtension {
           chrome.runtime.sendMessage(
             {
               target: 'offscreen',
-              type: 'OFFSCREEN_START_RECORDING',
-              streamId
+              type: 'OFFSCREEN_START_RECORDING'
             },
             (response) => {
               if (chrome.runtime?.lastError) {
@@ -665,7 +655,7 @@ class PlaywrightExtension {
     }
   }
 
-  private async _stopTabVideoRecording(): Promise<string | null> {
+  private async _stopVideoRecording(): Promise<string | null> {
     if (!this._isVideoRecordingActive) {
       debugLog('Perekaman video tidak aktif saat recordingStop.');
       return null;
@@ -885,9 +875,9 @@ class PlaywrightExtension {
     const groupId = await chrome.tabs.group({ tabIds: tabIds as [number, ...number[]] });
     await chrome.tabGroups.update(groupId, { title: 'Knitto QA', color: 'blue' });
 
-    if (recordVideo && tabIds[0]) {
+    if (recordVideo) {
       try {
-        await this._startTabVideoRecording(tabIds[0]);
+        await this._startVideoRecording();
       } catch (err) {
         debugLog('Gagal inisialisasi perekaman video tab:', err);
       }

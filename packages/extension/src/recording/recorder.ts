@@ -23,6 +23,14 @@ export interface RecordingStartOptions {
 	recordVideo?: boolean;
 }
 
+interface UploadFileData {
+	name: string;
+	type?: string;
+	size?: number;
+	data?: string;
+	stored?: boolean;
+}
+
 interface PendingRequest {
 	method: string;
 	url: string;
@@ -70,6 +78,10 @@ export class RecordingController {
 	private _api: RecordingApiClient | null = null;
 	private _flushTimer: ReturnType<typeof setInterval> | null = null;
 	private _flushPromise: Promise<void> | null = null;
+	/** `upload_ref` dari capture script → sequence event upload, untuk menautkan file test data. */
+	private readonly _uploadSequences = new Map<string, number>();
+	/** Tab group yang sedang aktif: hanya frame tab ini yang digambar ke video (offscreen). */
+	private _activeTabId: number | null = null;
 
 	get isRecording(): boolean {
 		return this._options !== null;
@@ -106,6 +118,9 @@ export class RecordingController {
 		for (const tab of recordable)
 			if (typeof tab.id === 'number') await this.attachTab(tab.id).catch(() => {});
 
+		const initialActive = recordable.find((tab) => tab.active) ?? recordable[0];
+		if (typeof initialActive?.id === 'number') this.setActiveTab(initialActive.id, initialActive);
+
 		this._flushTimer = setInterval(() => void this.flush(), options.flushIntervalMs ?? DEFAULT_FLUSH_INTERVAL_MS);
 	}
 
@@ -135,6 +150,33 @@ export class RecordingController {
 		this._pendingRequests.clear();
 		this._buffer.clear();
 		this._options = null;
+		this._activeTabId = null;
+	}
+
+	get activeTabId(): number | null {
+		return this._activeTabId;
+	}
+
+	/**
+	 * Ganti tab aktif yang direkam ke video. Perpindahan (bukan penetapan awal) dicatat sebagai event `tab`
+	 * agar timeline share dan konteks AI tahu urutan tab.
+	 */
+	setActiveTab(tabId: number, tab?: Pick<chrome.tabs.Tab, 'title' | 'url' | 'pendingUrl'>): void {
+		if (!this._attachedTabs.has(tabId)) return;
+		const title = tab?.title ?? '';
+		// Tab baru masih loading: URL tujuan baru ada di pendingUrl, judul belum tersedia.
+		const url = tab?.url || tab?.pendingUrl || '';
+		const from = this._activeTabId;
+		this._postToOffscreen({ type: 'OFFSCREEN_SET_ACTIVE_TAB', tabId, title, url });
+		if (from === tabId) return;
+		this._activeTabId = tabId;
+		if (from !== null) {
+			this._enqueue(
+				'tab',
+				{ kind: 'switch', from_tab_id: from, to_tab_id: tabId, title: title || null, url: url ? redactUrl(url) : null },
+				{ tabId, url: url || undefined }
+			);
+		}
 	}
 
 	async attachTab(tabId: number): Promise<void> {
@@ -208,13 +250,37 @@ export class RecordingController {
 	}
 
 	private _installTabListeners(): void {
-		const onUpdated = (tabId: number, changeInfo: chrome.tabs.OnUpdatedInfo) => {
+		const onUpdated = (tabId: number, changeInfo: chrome.tabs.OnUpdatedInfo, tab?: chrome.tabs.Tab) => {
+			// Judul/URL tab aktif berubah: perbarui label overlay video (bukan perpindahan tab).
+			if (tabId === this._activeTabId && (changeInfo.title !== undefined || changeInfo.url !== undefined) && tab)
+				this.setActiveTab(tabId, tab);
 			if (changeInfo.groupId === undefined) return;
-			void this._reconcileGroup();
-			void tabId;
+			void this._reconcileGroup().then(() => {
+				if (tab?.active && this._attachedTabs.has(tabId)) this.setActiveTab(tabId, tab);
+			});
 		};
 		const onRemoved = (tabId: number) => {
 			void this.detachTab(tabId);
+			if (tabId === this._activeTabId) void this._pickActiveTab();
+		};
+		const onActivated = (info: chrome.tabs.OnActivatedInfo) => {
+			// Tab baru (mis. target=_blank) bisa aktif sebelum sempat di-attach: reconcile dulu.
+			const ready = this._attachedTabs.has(info.tabId) ? Promise.resolve() : this._reconcileGroup();
+			void ready.then(() => {
+				if (!this._attachedTabs.has(info.tabId)) return;
+				chrome.tabs.get(info.tabId, (tab) => {
+					void chrome.runtime.lastError;
+					this.setActiveTab(info.tabId, tab);
+				});
+			});
+		};
+		// Tab yang dibuka dari tab group lahir langsung di group (tanpa onUpdated groupId).
+		const onCreated = (tab: chrome.tabs.Tab) => {
+			if (tab.groupId !== this._options?.recordingGroupId || typeof tab.id !== 'number') return;
+			const tabId = tab.id;
+			void this._reconcileGroup().then(() => {
+				if (tab.active && this._attachedTabs.has(tabId)) this.setActiveTab(tabId, tab);
+			});
 		};
 		const onDebuggerEvent = (source: chrome.debugger.DebuggerSession, method: string, params?: object) => {
 			if (typeof source.tabId !== 'number' || !this._attachedTabs.has(source.tabId)) return;
@@ -226,13 +292,26 @@ export class RecordingController {
 
 		chrome.tabs.onUpdated.addListener(onUpdated);
 		chrome.tabs.onRemoved.addListener(onRemoved);
+		chrome.tabs.onActivated.addListener(onActivated);
+		chrome.tabs.onCreated.addListener(onCreated);
 		chrome.debugger.onEvent.addListener(onDebuggerEvent);
 		chrome.debugger.onDetach.addListener(onDebuggerDetach);
 
 		this._listeners.add(() => chrome.tabs.onUpdated.removeListener(onUpdated));
 		this._listeners.add(() => chrome.tabs.onRemoved.removeListener(onRemoved));
+		this._listeners.add(() => chrome.tabs.onActivated.removeListener(onActivated));
+		this._listeners.add(() => chrome.tabs.onCreated.removeListener(onCreated));
 		this._listeners.add(() => chrome.debugger.onEvent.removeListener(onDebuggerEvent));
 		this._listeners.add(() => chrome.debugger.onDetach.removeListener(onDebuggerDetach));
+	}
+
+	/** Tab aktif tertutup/keluar group: pilih tab group lain (utamakan yang aktif di jendelanya). */
+	private async _pickActiveTab(): Promise<void> {
+		if (!this._options) return;
+		const tabs = filterRecordableTabs(await chrome.tabs.query({}), this._options.recordingGroupId)
+			.filter((tab) => typeof tab.id === 'number' && this._attachedTabs.has(tab.id));
+		const next = tabs.find((tab) => tab.active) ?? tabs[0];
+		if (typeof next?.id === 'number') this.setActiveTab(next.id, next);
 	}
 
 	private async _reconcileGroup(): Promise<void> {
@@ -245,6 +324,7 @@ export class RecordingController {
 		);
 		for (const tabId of added) await this.attachTab(tabId).catch(() => {});
 		for (const tabId of removed) await this.detachTab(tabId);
+		if (this._activeTabId !== null && removed.includes(this._activeTabId)) await this._pickActiveTab();
 	}
 
 	private async _onDebuggerEvent(
@@ -358,26 +438,24 @@ export class RecordingController {
 		if (typeof sessionId === 'number') {
 			this._sendCommand(tabId, 'Page.screencastFrameAck', { sessionId }).catch(() => {});
 		}
-		if (typeof params.data === 'string') {
-			try {
-				chrome.runtime.sendMessage({
-					target: 'offscreen',
-					type: 'OFFSCREEN_ADD_FRAME',
-					data: params.data
-				}, () => {
-					void chrome.runtime.lastError;
-				});
-			} catch {
-				// Ignore
-			}
+		if (typeof params.data === 'string') this._postToOffscreen({ type: 'OFFSCREEN_ADD_FRAME', tabId, data: params.data });
+	}
+
+	private _postToOffscreen(message: Record<string, unknown>): void {
+		try {
+			chrome.runtime.sendMessage({ target: 'offscreen', ...message }, () => {
+				void chrome.runtime.lastError;
+			});
+		} catch {
+			// Offscreen belum/tidak ada (rekaman tanpa video).
 		}
 	}
 
-	private _enqueue(type: RecordingEventType, payload: Record<string, unknown>, extra: { tabId?: number; url?: string } = {}) {
-		this._buffer.enqueue(createEventDraft(type, redactPayload(payload), {
+	private _enqueue(type: RecordingEventType, payload: Record<string, unknown>, extra: { tabId?: number; url?: string } = {}): number {
+		return this._buffer.enqueue(createEventDraft(type, redactPayload(payload), {
 			tabId: extra.tabId ?? null,
 			url: extra.url ? redactUrl(extra.url) : null
-		}));
+		})).sequence;
 	}
 
 	private _onBindingCalled(tabId: number, params: Record<string, unknown>, sessionId?: string): void {
@@ -394,11 +472,20 @@ export class RecordingController {
 			target?: ElementDescriptor;
 			frames?: LocatorCandidate[][];
 			crossOriginFrame?: boolean;
-			files?: string[];
+			files?: unknown[];
+			upload_ref?: string;
 		};
 		try {
 			parsed = JSON.parse(params.payload);
 		} catch {
+			return;
+		}
+
+		// Isi file upload: bukan langkah tester, diunggah sebagai artifact (base64 tidak masuk event).
+		if (parsed.action === 'upload_data') {
+			const sequence = parsed.upload_ref ? this._uploadSequences.get(parsed.upload_ref) : undefined;
+			if (parsed.upload_ref) this._uploadSequences.delete(parsed.upload_ref);
+			if (sequence !== undefined && Array.isArray(parsed.files)) void this._storeUploadFiles(sequence, parsed.files as UploadFileData[]);
 			return;
 		}
 
@@ -412,7 +499,7 @@ export class RecordingController {
 
 		const ranked = parsed.element?.candidates?.length ? rankCandidates(parsed.element.candidates) : null;
 		const locators = ranked ? ranked.locators : parsed.element ? buildLocatorCandidates(parsed.element) : [];
-		this._enqueue(
+		const sequence = this._enqueue(
 			'action',
 			{
 				action: parsed.action ?? 'unknown',
@@ -431,13 +518,14 @@ export class RecordingController {
 			// URL halaman saat aksi terjadi → codegen bisa membuat goto awal walau rekaman dimulai di halaman terbuka.
 			{ tabId, url: typeof parsed.pageUrl === 'string' ? parsed.pageUrl : undefined }
 		);
+		if (parsed.action === 'upload' && typeof parsed.upload_ref === 'string') this._uploadSequences.set(parsed.upload_ref, sequence);
 
 		void this._captureScreenshot(tabId);
 	}
 
 	/** Field tambahan aksi: rantai locator iframe, target drag, dan nama file upload. */
 	private _extraActionFields(
-		parsed: { target?: ElementDescriptor; frames?: LocatorCandidate[][]; files?: string[] },
+		parsed: { target?: ElementDescriptor; frames?: LocatorCandidate[][]; files?: unknown[] },
 		sessionId?: string
 	): Record<string, unknown> {
 		const extra: Record<string, unknown> = {};
@@ -450,7 +538,7 @@ export class RecordingController {
 			extra.target_locators = rankedTarget ? rankedTarget.locators : buildLocatorCandidates(parsed.target);
 			extra.target_unique_locator = rankedTarget?.uniqueLocator ?? null;
 		}
-		if (Array.isArray(parsed.files)) extra.files = parsed.files.filter((name) => typeof name === 'string').slice(0, 20);
+		if (Array.isArray(parsed.files)) extra.files = parsed.files.filter((name): name is string => typeof name === 'string').slice(0, 20);
 		return extra;
 	}
 
@@ -576,6 +664,35 @@ export class RecordingController {
 			{ action: 'navigation', locators: [], url: frame.url ?? null },
 			{ tabId, url: String(frame.url ?? '') }
 		);
+	}
+
+	/**
+	 * Unggah file yang dipilih tester sebagai artifact `test_data_file` (presign → PUT → complete) dengan
+	 * `sequence` event upload, sehingga re-run bisa memasang file yang sama. File `stored: false` dilewati.
+	 */
+	private async _storeUploadFiles(sequence: number, files: UploadFileData[]): Promise<void> {
+		const options = this._options;
+		const api = this._api;
+		if (!options || !api) return;
+		for (const file of files) {
+			if (typeof file?.data !== 'string' || file.stored === false) continue;
+			try {
+				const contentType = file.type || 'application/octet-stream';
+				const blob = new Blob([base64ToBytes(file.data) as BlobPart], { type: contentType });
+				const presign = await api.presignArtifactUpload(options.idSession, {
+					kind: 'test_data_file',
+					content_type: contentType,
+					size_bytes: blob.size,
+					sequence,
+					file_name: file.name
+				});
+				await api.uploadToPresignedUrl(presign.upload_url, blob, contentType);
+				await api.completeArtifactUpload(options.idSession, presign.artifact.id_artifact, { size_bytes: blob.size });
+			} catch (error) {
+				// Re-run akan meminta file pengganti untuk langkah ini.
+				debugLog(`Gagal menyimpan file test data ${file.name}:`, error);
+			}
+		}
 	}
 
 	private async _captureScreenshot(tabId: number): Promise<void> {

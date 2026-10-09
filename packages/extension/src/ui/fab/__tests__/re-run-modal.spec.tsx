@@ -222,4 +222,52 @@ describe('ReRunModal', () => {
 			expect(onClose).toHaveBeenCalled();
 		});
 	});
+
+	describe('file test data pengganti (langkah upload)', () => {
+		const uploadScript = `
+			await page.goto('https://app.knitto.co.id/form');
+			await page.getByLabel('Lampiran').setInputFiles(['test-data/invoice.pdf', 'test-data/foto.png']);
+		`;
+		const file = (id: number, file_name: string) => ({
+			id_artifact: id, file_name, content_type: 'application/pdf', size_bytes: 1, sequence: null, download_url: `http://minio/${id}`
+		});
+
+		it('requiredUploadFileNames membaca nama file langkah upload tanpa duplikat', async () => {
+			const { requiredUploadFileNames } = await import('../views/ReRunModal');
+			expect(requiredUploadFileNames(uploadScript)).toEqual(['invoice.pdf', 'foto.png']);
+			expect(requiredUploadFileNames(null)).toEqual([]);
+		});
+
+		it('menampilkan file yang hilang, Mulai Re-run nonaktif sampai file pengganti diunggah', async () => {
+			const api = {
+				listTestDataFiles: vi.fn().mockResolvedValue([file(1, 'invoice.pdf')]),
+				uploadReplacementTestData: vi.fn().mockResolvedValue([file(1, 'invoice.pdf'), file(2, 'foto.png')])
+			};
+			const onStartReRun = vi.fn().mockResolvedValue(undefined);
+			render(
+				<ReRunModal open={true} sessionId={5} testCaseNo="TC-UP" title="Upload" script={uploadScript} api={api} onClose={vi.fn()} onStartReRun={onStartReRun} />
+			);
+
+			const picker = await screen.findByLabelText('Pilih file pengganti untuk foto.png');
+			expect(screen.queryByLabelText('Pilih file pengganti untuk invoice.pdf')).toBeNull();
+			const startBtn = screen.getAllByRole('button', { name: /Mulai Re-run/i })[0] as HTMLButtonElement;
+			expect(startBtn.disabled).toBe(true);
+
+			const replacement = new File(['x'], 'foto-baru.png', { type: 'image/png' });
+			fireEvent.change(picker, { target: { files: [replacement] } });
+
+			await waitFor(() => expect(api.uploadReplacementTestData).toHaveBeenCalledWith(5, 'foto.png', replacement));
+			await waitFor(() => expect(screen.queryByTestId('rerun-missing-files')).toBeNull());
+			expect(startBtn.disabled).toBe(false);
+		});
+
+		it('tanpa langkah upload tidak memuat daftar file dan tombol tetap aktif', () => {
+			const api = { listTestDataFiles: vi.fn(), uploadReplacementTestData: vi.fn() };
+			render(
+				<ReRunModal open={true} sessionId={5} testCaseNo="TC-01" title="T" script={sampleScript} api={api} onClose={vi.fn()} onStartReRun={vi.fn()} />
+			);
+			expect(api.listTestDataFiles).not.toHaveBeenCalled();
+			expect((screen.getAllByRole('button', { name: /Mulai Re-run/i })[0] as HTMLButtonElement).disabled).toBe(false);
+		});
+	});
 });

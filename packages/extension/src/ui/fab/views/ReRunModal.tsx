@@ -10,7 +10,8 @@ import {
 	Gauge,
 	Zap,
 	Clock,
-	Video
+	Video,
+	FileUp
 } from 'lucide-react';
 import { Modal } from '../components/Modal';
 import { Button } from '../components/Button';
@@ -20,6 +21,17 @@ import {
 	generateRandomValue,
 	type ReRunParameter
 } from '../../../recording/parameterExtractor';
+import { parseScriptToReplaySteps, stepFileNames } from '../../../recording/replayEngine';
+import type { RecordingApiClient, TestDataFile } from '../../../recording/apiClient';
+
+/** Nama file yang dibutuhkan langkah upload di script, tanpa duplikat. */
+export const requiredUploadFileNames = (script: string | null | undefined): string[] => {
+	if (!script?.trim()) return [];
+	const names = parseScriptToReplaySteps(script)
+		.filter((step) => step.action === 'setInputFiles')
+		.flatMap(stepFileNames);
+	return [...new Set(names)];
+};
 
 export interface ReRunModalProps {
 	isOpen?: boolean;
@@ -30,6 +42,8 @@ export interface ReRunModalProps {
 	targetUrl?: string;
 	script?: string | null;
 	actions?: Array<{ action_type?: string; target_selector?: string; value?: string }>;
+	/** Untuk mendeteksi & mengunggah file test data pengganti langkah upload. */
+	api?: Pick<RecordingApiClient, 'listTestDataFiles' | 'uploadReplacementTestData'>;
 	onClose: () => void;
 	onStartReRun: (options: {
 		sessionId: number;
@@ -52,6 +66,7 @@ export const ReRunModal: React.FC<ReRunModalProps> = ({
 	targetUrl,
 	script,
 	actions,
+	api,
 	onClose,
 	onStartReRun
 }) => {
@@ -64,6 +79,41 @@ export const ReRunModal: React.FC<ReRunModalProps> = ({
 	const [error, setError] = useState<string | null>(null);
 
 	const hasScript = Boolean(script && script.trim().length > 0);
+	const [testDataFiles, setTestDataFiles] = useState<TestDataFile[] | null>(null);
+	const [uploadingName, setUploadingName] = useState<string | null>(null);
+	const requiredFiles = requiredUploadFileNames(script);
+	const availableNames = new Set((testDataFiles ?? []).map((file) => file.file_name));
+	// Daftar belum dimuat dianggap belum lengkap agar replay tidak jalan sebelum file dicek.
+	const missingFiles = requiredFiles.filter((name) => testDataFiles === null || !availableNames.has(name));
+	const filesReady = requiredFiles.length === 0 || (testDataFiles !== null && missingFiles.length === 0);
+
+	useEffect(() => {
+		if (!isVisible || !api || !sessionId || requiredFiles.length === 0) {
+			setTestDataFiles(requiredFiles.length === 0 ? [] : null);
+			return;
+		}
+		let active = true;
+		api.listTestDataFiles(sessionId)
+			.then((files) => active && setTestDataFiles(files))
+			.catch(() => active && setTestDataFiles([]));
+		return () => {
+			active = false;
+		};
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, [isVisible, api, sessionId, script]);
+
+	const handleReplacementFile = async (expectedName: string, file: File | undefined) => {
+		if (!file || !api || !sessionId) return;
+		setUploadingName(expectedName);
+		setError(null);
+		try {
+			setTestDataFiles(await api.uploadReplacementTestData(sessionId, expectedName, file));
+		} catch (err) {
+			setError((err as Error).message || 'Gagal mengunggah file pengganti');
+		} finally {
+			setUploadingName(null);
+		}
+	};
 
 	useEffect(() => {
 		if (isVisible) {
@@ -152,10 +202,10 @@ export const ReRunModal: React.FC<ReRunModalProps> = ({
 						variant="primary"
 						size="sm"
 						loading={running}
-						disabled={running || !hasScript}
+						disabled={running || !hasScript || !filesReady || uploadingName !== null}
 						icon={<PlayCircle size={14} />}
 						onClick={handleSubmit}
-						title={hasScript ? undefined : 'Script otomasi belum tersedia'}
+						title={!hasScript ? 'Script otomasi belum tersedia' : !filesReady ? 'Pilih file pengganti untuk semua langkah upload' : undefined}
 					>
 						Mulai Re-run
 					</Button>
@@ -179,6 +229,33 @@ export const ReRunModal: React.FC<ReRunModalProps> = ({
 					>
 						<AlertCircle size={16} />
 						<span>Script otomasi Playwright belum terbuat. Generate script terlebih dahulu sebelum dapat menjalankan re-run.</span>
+					</div>
+				)}
+
+				{requiredFiles.length > 0 && missingFiles.length > 0 && (
+					<div
+						data-testid="rerun-missing-files"
+						style={{ padding: '10px 12px', borderRadius: 8, background: '#fffbeb', border: '1px solid #fde68a', fontSize: 12, display: 'flex', flexDirection: 'column', gap: 8 }}
+					>
+						<div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#92400e' }}>
+							<FileUp size={14} />
+							<span>{testDataFiles === null ? 'Memeriksa file test data…' : 'File test data langkah upload belum tersedia'}</span>
+						</div>
+						{testDataFiles !== null && missingFiles.map((name) => (
+							<label key={name} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, color: '#78350f' }}>
+								<span style={{ fontFamily: 'monospace', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
+								<span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+									<span style={{ fontWeight: 600 }}>{uploadingName === name ? 'Mengunggah…' : 'Pilih file pengganti'}</span>
+									<input
+										type="file"
+										aria-label={`Pilih file pengganti untuk ${name}`}
+										disabled={uploadingName !== null || !api}
+										onChange={(event) => void handleReplacementFile(name, event.target.files?.[0])}
+										style={{ fontSize: 11, maxWidth: 180 }}
+									/>
+								</span>
+							</label>
+						))}
 					</div>
 				)}
 

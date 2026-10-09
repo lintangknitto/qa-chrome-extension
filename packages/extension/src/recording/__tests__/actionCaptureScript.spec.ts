@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { JSDOM } from 'jsdom';
 import { ACTION_BINDING_NAME, actionCaptureScript } from '../actionCaptureScript';
 
@@ -119,13 +119,44 @@ describe('actionCaptureScript aksi lanjutan', () => {
 		expect(sent[0].target.testId).toBe('kolom-selesai');
 	});
 
-	it('upload file mencatat nama file saja', () => {
+	it('upload file mengirim event langsung lalu isi file (base64) lewat upload_data', async () => {
 		const w = freshWindow('<label for="f">Lampiran</label><input id="f" type="file">');
 		install(w);
 		const input = w.document.getElementById('f') as HTMLInputElement;
-		Object.defineProperty(input, 'files', { value: [{ name: 'invoice.pdf' }, { name: 'foto.png' }] });
+		const files = [
+			new w.File(['halo'], 'invoice.pdf', { type: 'application/pdf' }),
+			new w.File([new Uint8Array(1)], 'tanpa-tipe.bin')
+		];
+		Object.defineProperty(input, 'files', { value: files });
 		input.dispatchEvent(new w.Event('change', { bubbles: true }));
-		expect(sent[0]).toMatchObject({ action: 'upload', files: ['invoice.pdf', 'foto.png'] });
+
+		expect(sent[0]).toMatchObject({ action: 'upload', files: ['invoice.pdf', 'tanpa-tipe.bin'] });
+		const ref = (sent[0] as any).upload_ref;
+		expect(ref).toMatch(/^upload-/);
+
+		await vi.waitFor(() => expect(sent[1]).toBeTruthy());
+		expect(sent[1]).toMatchObject({
+			action: 'upload_data',
+			upload_ref: ref,
+			files: [
+				{ name: 'invoice.pdf', type: 'application/pdf', size: 4, data: 'aGFsbw==' },
+				{ name: 'tanpa-tipe.bin', type: 'application/octet-stream', size: 1, data: 'AA==' }
+			]
+		});
+	});
+
+	it('file di atas batas dikirim stored:false tanpa isi, maksimal 20 file', async () => {
+		const w = freshWindow('<input id="f" type="file" multiple>');
+		(w as any)[ACTION_BINDING_NAME] = (payload: string) => sent.push(JSON.parse(payload));
+		(w as any).eval(actionCaptureScript({ uploadMaxBytes: 2 }));
+		const input = w.document.getElementById('f') as HTMLInputElement;
+		const files = Array.from({ length: 25 }, (_, i) => new w.File(['abc'], `f${i}.txt`, { type: 'text/plain' }));
+		Object.defineProperty(input, 'files', { value: files });
+		input.dispatchEvent(new w.Event('change', { bubbles: true }));
+
+		expect((sent[0] as any).files).toHaveLength(20);
+		await vi.waitFor(() => expect(sent[1]).toBeTruthy());
+		expect((sent[1] as any).files[0]).toEqual({ name: 'f0.txt', type: 'text/plain', size: 3, stored: false });
 	});
 
 	it('klik & change di dalam open shadow DOM memakai elemen asli', () => {

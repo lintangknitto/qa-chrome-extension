@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { RecordingController } from '../recorder';
 import type { RecordingEventDraft } from '../eventTypes';
 
@@ -169,5 +169,119 @@ describe('RecordingController iframe cross-origin (child session CDP)', () => {
 		});
 		expect(enqueued[0].payload).toMatchObject({ unique_locator: "getByTestId('card-1')", target_unique_locator: "getByTestId('kolom-selesai')" });
 		expect(enqueued[1].payload).toMatchObject({ action: 'upload', files: ['invoice.pdf'] });
+	});
+});
+
+describe('RecordingController tab aktif (video multi-tab)', () => {
+	const setup = () => {
+		const controller = new RecordingController();
+		const enqueued: Array<{ type: string; payload: Record<string, unknown>; extra: unknown }> = [];
+		const posted: Array<Record<string, unknown>> = [];
+		(controller as any)._enqueue = (type: string, payload: Record<string, unknown>, extra: unknown) => enqueued.push({ type, payload, extra });
+		(controller as any)._postToOffscreen = (message: Record<string, unknown>) => posted.push(message);
+		(controller as any)._sendCommand = async () => ({});
+		(controller as any)._attachedTabs.add(1);
+		(controller as any)._attachedTabs.add(2);
+		return { controller, enqueued, posted };
+	};
+
+	it('frame screencast dikirim ke offscreen bersama tabId', async () => {
+		const { controller, posted } = setup();
+		await (controller as any)._onDebuggerEvent(2, 'Page.screencastFrame', { sessionId: 7, data: 'AAAA' });
+		expect(posted).toEqual([{ type: 'OFFSCREEN_ADD_FRAME', tabId: 2, data: 'AAAA' }]);
+	});
+
+	it('penetapan awal tanpa event; perpindahan mencatat event tab switch', () => {
+		const { controller, enqueued, posted } = setup();
+		controller.setActiveTab(1, { title: 'Checkout', url: 'https://app.example/checkout' });
+		expect(enqueued).toHaveLength(0);
+
+		controller.setActiveTab(2, { title: 'Bayar', url: 'https://pay.example/x?token=rahasia' });
+		expect(controller.activeTabId).toBe(2);
+		expect(posted.map((m) => [m.type, m.tabId, m.title])).toEqual([
+			['OFFSCREEN_SET_ACTIVE_TAB', 1, 'Checkout'],
+			['OFFSCREEN_SET_ACTIVE_TAB', 2, 'Bayar']
+		]);
+		expect(enqueued).toHaveLength(1);
+		expect(enqueued[0].type).toBe('tab');
+		expect(enqueued[0].payload).toMatchObject({ kind: 'switch', from_tab_id: 1, to_tab_id: 2, title: 'Bayar' });
+		expect(String(enqueued[0].payload.url)).not.toContain('rahasia');
+	});
+
+	it('perubahan judul tab aktif hanya memperbarui label, tab di luar group diabaikan', () => {
+		const { controller, enqueued, posted } = setup();
+		controller.setActiveTab(1, { title: '', url: 'https://app.example/' });
+		controller.setActiveTab(1, { title: 'Dashboard', url: 'https://app.example/' });
+		controller.setActiveTab(99, { title: 'Lain', url: 'https://other/' });
+		expect(enqueued).toHaveLength(0);
+		expect(posted.map((m) => m.title)).toEqual(['', 'Dashboard']);
+		expect(controller.activeTabId).toBe(1);
+	});
+});
+
+describe('RecordingController file test data upload', () => {
+	it('upload_data diunggah sebagai artifact test_data_file dengan sequence event upload; base64 tidak masuk event', async () => {
+		const controller = new RecordingController();
+		const calls: Array<[string, ...unknown[]]> = [];
+		(controller as any)._captureScreenshot = async () => {};
+		(controller as any)._options = { idSession: 9 };
+		(controller as any)._api = {
+			presignArtifactUpload: async (...args: unknown[]) => {
+				calls.push(['presign', ...args]);
+				return { upload_url: 'http://minio/b/k', artifact: { id_artifact: 31 } };
+			},
+			uploadToPresignedUrl: async (url: string, blob: Blob, type: string) => calls.push(['put', url, blob.size, type]),
+			completeArtifactUpload: async (...args: unknown[]) => calls.push(['complete', ...args])
+		};
+		const dispatch = (payload: Record<string, unknown>) =>
+			(controller as any)._onDebuggerEvent(1, 'Runtime.bindingCalled', { name: '__qaRecorderBinding', payload: JSON.stringify(payload) });
+
+		await dispatch({ action: 'upload', element: { tagName: 'INPUT' }, files: ['a.pdf', 'besar.zip'], upload_ref: 'r1' });
+		await dispatch({
+			action: 'upload_data',
+			upload_ref: 'r1',
+			files: [
+				{ name: 'a.pdf', type: 'application/pdf', size: 4, data: 'aGFsbw==' },
+				{ name: 'besar.zip', type: 'application/zip', size: 99, stored: false }
+			]
+		});
+		await vi.waitFor(() => expect(calls.some((c) => c[0] === 'complete')).toBe(true));
+
+		const events = (controller as any)._buffer.takeBatch(10);
+		expect(events).toHaveLength(1);
+		expect(events[0].payload).toMatchObject({ action: 'upload', files: ['a.pdf', 'besar.zip'] });
+		expect(JSON.stringify(events[0].payload)).not.toContain('aGFsbw==');
+		expect(calls).toEqual([
+			['presign', 9, { kind: 'test_data_file', content_type: 'application/pdf', size_bytes: 4, sequence: events[0].sequence, file_name: 'a.pdf' }],
+			['put', 'http://minio/b/k', 4, 'application/pdf'],
+			['complete', 9, 31, { size_bytes: 4 }]
+		]);
+	});
+
+	it('upload_data dengan ref tak dikenal diabaikan', async () => {
+		const controller = new RecordingController();
+		const presign = vi.fn();
+		(controller as any)._options = { idSession: 9 };
+		(controller as any)._api = { presignArtifactUpload: presign };
+		await (controller as any)._onDebuggerEvent(1, 'Runtime.bindingCalled', {
+			name: '__qaRecorderBinding',
+			payload: JSON.stringify({ action: 'upload_data', upload_ref: 'x', files: [{ name: 'a', data: 'AA==' }] })
+		});
+		expect(presign).not.toHaveBeenCalled();
+		expect((controller as any)._buffer.pendingCount).toBe(0);
+	});
+});
+
+describe('RecordingController tab baru yang masih loading', () => {
+	it('event switch memakai pendingUrl bila url belum ada', () => {
+		const controller = new RecordingController();
+		const enqueued: Array<{ payload: Record<string, unknown> }> = [];
+		(controller as any)._enqueue = (_type: string, payload: Record<string, unknown>) => enqueued.push({ payload });
+		(controller as any)._postToOffscreen = () => {};
+		(controller as any)._attachedTabs.add(1);
+		(controller as any)._attachedTabs.add(2);
+		controller.setActiveTab(1, { title: 'A', url: 'https://app/a' });
+		controller.setActiveTab(2, { title: '', url: '', pendingUrl: 'https://app/b' });
+		expect(enqueued[0].payload).toMatchObject({ to_tab_id: 2, title: null, url: 'https://app/b' });
 	});
 });
