@@ -44,6 +44,29 @@ describe('recording apiClient fetch binding', () => {
 		expect(fetchImpl).toHaveBeenCalledOnce();
 	});
 
+	it('request non-GET membawa x-request-id unik agar POST paralel ke path sama tidak digabung API', async () => {
+		const headersSeen: Array<Record<string, string>> = [];
+		const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
+			headersSeen.push(init.headers as Record<string, string>);
+			return new Response(JSON.stringify({ result: { upload_url: 'u', artifact: { id_artifact: 1 } } }), { status: 200 });
+		});
+		const client = new RecordingApiClient({
+			baseUrl: 'http://127.0.0.1:8010',
+			getToken: async () => 't',
+			fetchImpl: fetchImpl as unknown as typeof fetch
+		});
+
+		const body = { kind: 'test_data_file', content_type: 'text/plain', size_bytes: 1 };
+		await Promise.all([client.presignArtifactUpload(1, body), client.presignArtifactUpload(1, body)]);
+		await client.getSessionVideo(1).catch(() => undefined);
+
+		const [a, b, get] = headersSeen;
+		expect(a['x-request-id']).toBeTruthy();
+		expect(b['x-request-id']).toBeTruthy();
+		expect(a['x-request-id']).not.toBe(b['x-request-id']);
+		expect(get['x-request-id']).toBeUndefined();
+	});
+
 	it('mengirim request POST /projects dengan payload dan token yang benar pada createProject', async () => {
 		let capturedUrl = '';
 		let capturedInit: RequestInit | undefined;

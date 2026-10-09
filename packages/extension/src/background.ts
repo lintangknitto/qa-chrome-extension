@@ -698,7 +698,9 @@ class PlaywrightExtension {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
+          'Authorization': token ? `Bearer ${token}` : '',
+          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
+          'x-request-id': crypto.randomUUID()
         },
         body: JSON.stringify(report)
       });
@@ -727,7 +729,9 @@ class PlaywrightExtension {
           headers: {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
-            'Authorization': token ? `Bearer ${token}` : ''
+            'Authorization': token ? `Bearer ${token}` : '',
+            // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
+            'x-request-id': crypto.randomUUID()
           },
           body: JSON.stringify({
             video_base64: base64Data,
@@ -761,7 +765,9 @@ class PlaywrightExtension {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
+          'Authorization': token ? `Bearer ${token}` : '',
+          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
+          'x-request-id': crypto.randomUUID()
         },
         body: JSON.stringify({ size_bytes: blob.size, content_type: contentType })
       });
@@ -791,7 +797,9 @@ class PlaywrightExtension {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
+          'Authorization': token ? `Bearer ${token}` : '',
+          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
+          'x-request-id': crypto.randomUUID()
         },
         body: JSON.stringify({ object_key: presign.object_key })
       });
@@ -826,7 +834,9 @@ class PlaywrightExtension {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
+          'Authorization': token ? `Bearer ${token}` : '',
+          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
+          'x-request-id': crypto.randomUUID()
         },
         body: JSON.stringify({
           kind: 'storage_state',
@@ -855,7 +865,9 @@ class PlaywrightExtension {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : ''
+          'Authorization': token ? `Bearer ${token}` : '',
+          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
+          'x-request-id': crypto.randomUUID()
         },
         body: JSON.stringify({ size_bytes: blob.size })
       });

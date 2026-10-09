@@ -80,6 +80,7 @@ export class RecordingController {
 	private _flushPromise: Promise<void> | null = null;
 	/** `upload_ref` dari capture script → sequence event upload, untuk menautkan file test data. */
 	private readonly _uploadSequences = new Map<string, number>();
+	private _uploadQueue: Promise<void> = Promise.resolve();
 	/** Tab group yang sedang aktif: hanya frame tab ini yang digambar ke video (offscreen). */
 	private _activeTabId: number | null = null;
 
@@ -487,7 +488,11 @@ export class RecordingController {
 			const sequence = parsed.upload_ref ? this._uploadSequences.get(parsed.upload_ref) : undefined;
 			// Isi file datang satu per pesan; `last` menandai file terakhir langkah ini.
 			if (parsed.upload_ref && parsed.last !== false) this._uploadSequences.delete(parsed.upload_ref);
-			if (sequence !== undefined && Array.isArray(parsed.files)) void this._storeUploadFiles(sequence, parsed.files as UploadFileData[]);
+			if (sequence !== undefined && Array.isArray(parsed.files)) {
+				// Diantre berurutan: file dari pesan berikutnya menunggu upload sebelumnya selesai.
+				const files = parsed.files as UploadFileData[];
+				this._uploadQueue = this._uploadQueue.then(() => this._storeUploadFiles(sequence, files)).catch(() => {});
+			}
 			return;
 		}
 

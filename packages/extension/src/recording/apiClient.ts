@@ -227,6 +227,11 @@ export interface ApiClientOptions {
 	fetchImpl?: typeof fetch;
 }
 
+const newRequestId = (): string =>
+	typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+		? crypto.randomUUID()
+		: `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
 export class RecordingApiClient {
 	private readonly _baseUrl: string;
 	private readonly _getToken: () => Promise<string | null>;
@@ -790,6 +795,10 @@ export class RecordingApiClient {
 	private async _send(method: string, path: string, body?: unknown, options: { skipAuth?: boolean } = {}): Promise<Response> {
 		const headers: Record<string, string> = { Accept: '*/*' };
 		if (body !== undefined) headers['Content-Type'] = 'application/json';
+		// knitto-http men-dedupe POST/PUT/PATCH/DELETE yang berjalan bersamaan berdasarkan x-request-id,
+		// dan bila header kosong id-nya = hash(ip, user, method, path). Tanpa id unik, request paralel ke path
+		// yang sama (mis. beberapa presign artifact) digabung dan mendapat respons yang sama.
+		if (method !== 'GET') headers['x-request-id'] = newRequestId();
 		if (!options.skipAuth) {
 			const token = await this._getToken();
 			if (!token) {
@@ -823,6 +832,7 @@ export class RecordingApiClient {
 	): Promise<T> {
 		const headers: Record<string, string> = { Accept: 'application/json' };
 		if (body !== undefined) headers['Content-Type'] = 'application/json';
+		if (method !== 'GET') headers['x-request-id'] = newRequestId();
 
 		if (!options.skipAuth) {
 			const token = await this._getToken();
