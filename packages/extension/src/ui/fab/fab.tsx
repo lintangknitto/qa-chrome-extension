@@ -34,6 +34,8 @@ import { ProgramView } from './views/ProgramView';
 import { ProjectView } from './views/ProjectView';
 import { CleanerView } from './views/CleanerView';
 import { UserManagementView } from './views/UserManagementView';
+import type { ProjectFormData } from './views/CreateEditProjectModal';
+import { TestCaseTemplateSettings, canManageTestCaseTemplates } from './views/TestCaseTemplateSettings';
 import { ChangePasswordModal } from './views/ChangePasswordModal';
 import { TestCaseResultModal } from './views/TestCaseResultModal';
 import { Toast } from './components/Toast';
@@ -833,13 +835,7 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 	}, [state, showNotice]);
 
 	const handleCreateProject = useCallback(
-		async (input: {
-			name: string;
-			id_program?: number | null;
-			base_url?: string;
-			repo_url?: string;
-			description?: string;
-		}) => {
+		async (input: ProjectFormData) => {
 			const created = await api.createProject(input);
 			await loadProjects();
 			showNotice(`Project "${input.name}" berhasil dibuat.`, 'success');
@@ -1881,6 +1877,9 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 												</button>
 											</div>
 										</div>
+										{canManageTestCaseTemplates(user?.level) && api && (
+											<TestCaseTemplateSettings api={api} showNotice={showNotice} />
+										)}
 									</div>
 								) : currentView === 'cleaner' ? (
 									<CleanerView

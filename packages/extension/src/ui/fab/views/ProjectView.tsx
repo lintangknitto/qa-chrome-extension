@@ -4,6 +4,7 @@ import {
 	Plus,
 	Search,
 	Upload,
+	Download,
 	Play,
 	Edit,
 	Trash2,
@@ -27,6 +28,7 @@ import type {
 	RecordingSession,
 	TestCaseItem,
 	TestCaseSummary,
+	TestCaseTemplate,
 	ProgramItem
 } from '../../../recording/apiClient';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '../components/Card';
@@ -37,7 +39,7 @@ import { Button } from '../components/Button';
 import { Modal } from '../components/Modal';
 import { ImportTestCaseModal } from './ImportTestCaseModal';
 import { CreateEditTestCaseModal } from './CreateEditTestCaseModal';
-import { CreateEditProjectModal } from './CreateEditProjectModal';
+import { CreateEditProjectModal, type ProjectFormData } from './CreateEditProjectModal';
 import { DeleteProjectModal } from './DeleteProjectModal';
 import { EmptyStateTestCase } from './EmptyStateTestCase';
 import { TestCaseResultModal } from './TestCaseResultModal';
@@ -51,21 +53,32 @@ export interface ProjectViewProps {
 	api: RecordingApiClient;
 	canCreateProject: boolean;
 	onRefreshProjects: () => Promise<void>;
-	onCreateProject: (input: {
-		name: string;
-		id_program?: number | null;
-		base_url?: string;
-		repo_url?: string;
-		description?: string;
-	}) => Promise<number | undefined>;
+	onCreateProject: (input: ProjectFormData) => Promise<number | undefined>;
 	onSelectTestCaseForRecording: (project: RecordingProject, testCase: TestCaseItem) => void;
 	onShowToast: (message: string, type?: 'success' | 'error' | 'info') => void;
 	onActiveProjectChange?: (project: RecordingProject | null) => void;
 	activeGenerations?: Map<number, { id_session: number; title: string; status: string; startTime?: number; error?: string }>;
 }
 
-const SYSTEM_TEMPLATE_URL =
-	'https://docs.google.com/spreadsheets/d/1k_08EdNZUBGBhLNU-FIPxqm06PpCfn4Dyprc4sDYCsI/edit?gid=603972469#gid=603972469';
+/** Simpan blob sebagai file lewat anchor sementara (bekerja di content script tanpa izin downloads). */
+export const downloadBlob = (blob: Blob, filename: string): void => {
+	const url = URL.createObjectURL(blob);
+	const anchor = document.createElement('a');
+	anchor.href = url;
+	anchor.download = filename;
+	anchor.style.display = 'none';
+	document.body.appendChild(anchor);
+	anchor.click();
+	anchor.remove();
+	setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
+
+/** URL tab template: tambahkan gid bila URL terdaftar belum membawanya, supaya tab yang tepat yang diunduh. */
+export const templateSheetUrl = (template: Pick<TestCaseTemplate, 'spreadsheet_url' | 'gid'>): string => {
+	const url = template.spreadsheet_url.trim();
+	if (!template.gid || /[?&#]gid=\d+/.test(url)) return url;
+	return `${url.split('#')[0]}#gid=${template.gid}`;
+};
 
 export const ProjectView: React.FC<ProjectViewProps> = ({
 	user,
@@ -162,6 +175,23 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 	const [activePrograms, setActivePrograms] = useState<ProgramItem[]>([]);
 	const [selectedProgramFilter, setSelectedProgramFilter] = useState<number | ''>('');
 
+	// Template test case default (registry di API) untuk "Template Sistem" & pemetaan kolom import
+	const [defaultTemplate, setDefaultTemplate] = useState<TestCaseTemplate | null>(null);
+	useEffect(() => {
+		let cancelled = false;
+		(async () => {
+			try {
+				const template = await api.getDefaultTestCaseTemplate();
+				if (!cancelled) setDefaultTemplate(template);
+			} catch {
+				// non-blocking: import tetap jalan dengan alias kolom bawaan
+			}
+		})();
+		return () => {
+			cancelled = true;
+		};
+	}, [api]);
+
 	const loadActivePrograms = useCallback(async () => {
 		try {
 			const res = await api.listActivePrograms();
@@ -190,14 +220,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 		setDeleteProjectModalOpen(true);
 	};
 
-	const handleSaveProject = async (data: {
-		name: string;
-		id_program?: number | null;
-		base_url?: string;
-		repo_url?: string;
-		description?: string;
-		is_active?: boolean;
-	}) => {
+	const handleSaveProject = async (data: ProjectFormData) => {
 		if (editingProject) {
 			const updated = await api.updateProject(editingProject.id_project, data);
 			onShowToast('Project berhasil diperbarui.', 'success');
@@ -290,6 +313,21 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 			void loadProjectSessions(selectedProject.id_project);
 		}
 	}, [selectedProject, activeProjectTab, loadProjectSessions]);
+
+	const [exporting, setExporting] = useState(false);
+	const handleExportTestCases = async () => {
+		if (!selectedProject || exporting) return;
+		setExporting(true);
+		try {
+			const { blob, filename } = await api.exportTestCases(selectedProject.id_project, defaultTemplate?.id_template);
+			downloadBlob(blob, filename);
+			onShowToast(`File ${filename} berhasil diunduh.`, 'success');
+		} catch (err) {
+			onShowToast((err as Error).message || 'Gagal mengekspor test case.', 'error');
+		} finally {
+			setExporting(false);
+		}
+	};
 
 	const handleImportTestCases = async (items: ParsedImportTestCase[]) => {
 		if (!selectedProject) return;
@@ -792,6 +830,18 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 							</Button>
 							<Button
 								type="button"
+								variant="secondary"
+								size="sm"
+								icon={<Download size={14} />}
+								loading={exporting}
+								disabled={exporting}
+								onClick={() => void handleExportTestCases()}
+								title={defaultTemplate ? `Unduh test case berformat ${defaultTemplate.name}` : 'Unduh test case berformat template default'}
+							>
+								Ekspor {defaultTemplate?.version_label ?? 'V4'} (.xlsx)
+							</Button>
+							<Button
+								type="button"
 								variant="primary"
 								size="sm"
 								icon={<Plus size={14} />}
@@ -1134,7 +1184,7 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 									<th style={{ padding: '10px 12px', width: '48px', textAlign: 'center', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #cbd5e1', position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2 }}>TYPE</th>
 									<th style={{ padding: '10px 12px', minWidth: '95px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #cbd5e1', position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2 }}>Test Case ID</th>
 									<th style={{ padding: '10px 12px', minWidth: '110px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #cbd5e1', position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2 }}>Fitur</th>
-									<th style={{ padding: '10px 12px', minWidth: '180px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #cbd5e1', position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2 }}>Test Case (Skenario)</th>
+									<th style={{ padding: '10px 12px', minWidth: '180px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #cbd5e1', position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2 }}>Scenario / Test Case</th>
 									<th style={{ padding: '10px 12px', minWidth: '150px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #cbd5e1', position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2 }}>Expected Result</th>
 									<th style={{ padding: '10px 12px', width: '100px', borderRight: '1px solid #cbd5e1', borderBottom: '2px solid #cbd5e1', position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2 }}>Status</th>
 									<th style={{ padding: '10px 12px', width: '120px', textAlign: 'center', borderBottom: '2px solid #cbd5e1', position: 'sticky', top: 0, background: '#f1f5f9', zIndex: 2 }}>Aksi</th>
@@ -1157,7 +1207,14 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 											<td colSpan={7} style={{ padding: '0', border: 'none' }}>
 												<EmptyStateTestCase
 													onUseTemplate={() => {
-														setImportPrefillUrl(SYSTEM_TEMPLATE_URL);
+														if (!defaultTemplate) {
+															onShowToast(
+																'Belum ada template test case default. Minta admin mendaftarkannya di Pengaturan → Template Test Case.',
+																'error'
+															);
+															return;
+														}
+														setImportPrefillUrl(templateSheetUrl(defaultTemplate));
 														setImportModalOpen(true);
 													}}
 													onUseCustom={() => {
@@ -1235,7 +1292,15 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 											</td>
 											<td style={{ padding: '10px 12px', color: '#475569', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', verticalAlign: 'middle' }}>{tc.feature || '-'}</td>
 											<td style={{ padding: '10px 12px', color: '#1e293b', borderRight: '1px solid #e2e8f0', borderBottom: '1px solid #e2e8f0', verticalAlign: 'top' }}>
+												{tc.scenario && (
+													<div style={{ fontSize: '10px', fontWeight: 600, color: '#64748b', textTransform: 'uppercase', marginBottom: '2px' }} title="Scenario">
+														{tc.scenario}
+													</div>
+												)}
 												<div style={{ fontWeight: 500 }}>{tc.title}</div>
+												{tc.test_date && (
+													<div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>Date: {tc.test_date}</div>
+												)}
 												{tc.pre_condition && (
 													<div style={{ fontSize: '11px', color: '#64748b', marginTop: '3px' }}>
 														<em>Pre: {tc.pre_condition}</em>
@@ -1579,6 +1644,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 				isOpen={isImportModalOpen}
 				projectName={selectedProject.name}
 				prefillUrl={importPrefillUrl}
+				templateMapping={defaultTemplate?.column_mapping}
+				placeholderUrl={defaultTemplate ? templateSheetUrl(defaultTemplate) : undefined}
 				onClose={() => {
 					setImportModalOpen(false);
 					setImportPrefillUrl(undefined);

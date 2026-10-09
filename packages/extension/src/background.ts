@@ -19,6 +19,7 @@ import { PendingConnections } from './pendingConnection';
 import { ConnectedTabGroup, cleanupStalePlaywrightGroups, isNonDebuggableUrl, ungroupTabs, uniqueGroupStyle } from './connectedTabGroup';
 import { RecordingController } from './recording/recorder';
 import { getToken } from './recording/tokenStore';
+import { bytesToBase64, isBinaryContentType } from './recording/extensionFetch';
 import { buildReplayFailureReport, executeReplay, type ReplayFailureReport, type ReplayOptions } from './recording/replayEngine';
 import { captureBrowserStorageState, type PlaywrightStorageState } from './recording/storageStateCapture';
 
@@ -438,18 +439,20 @@ class PlaywrightExtension {
             headers: message.headers,
             body: reqBody
           });
-          const text = await response.text();
           const headers: [string, string][] = [];
           response.headers.forEach((val, key) => {
             headers.push([key, val]);
           });
+          // Respons biner (mis. ekspor .xlsx) dikirim sebagai base64 supaya byte-nya tidak rusak saat lewat pesan runtime.
+          const binary = isBinaryContentType(response.headers.get('content-type'));
           return {
             success: true,
             status: response.status,
             statusText: response.statusText,
             ok: response.ok,
             headers,
-            body: text
+            body: binary ? undefined : await response.text(),
+            bodyBase64: binary ? bytesToBase64(new Uint8Array(await response.arrayBuffer())) : undefined
           };
         })()
           .then((result) => sendResponse(result))

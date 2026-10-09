@@ -12,6 +12,8 @@ export interface ParseSpreadsheetResult {
 	detectedColumns: Record<string, number>;
 	totalRowsFound: number;
 	sheetName?: string;
+	/** Test Case ID yang muncul lebih dari sekali (mis. TC1-1 di dua blok PB); saat import baris terakhir menimpa. */
+	duplicateTestCaseIds?: string[];
 }
 
 export interface GoogleSpreadsheetInfo {
@@ -97,12 +99,20 @@ export const fetchGoogleSpreadsheetCsv = async (exportUrl: string): Promise<stri
 	return text;
 };
 
+/** Pemetaan kolom dari template terdaftar: field sistem → header + alias. */
+export type TemplateColumnMapping = Record<string, { header: string; aliases?: string[] }>;
+
+/**
+ * Alias bawaan (fallback bila template tidak memetakan field). `title` = kolom "Test Case";
+ * "Scenario" punya field sendiri supaya tidak lagi dipakai sebagai judul.
+ */
 const COLUMN_ALIASES: Record<string, string[]> = {
 	test_case_id: ['test case id', 'tc id', 'case id', 'tc_id', 'no test case', 'test case no', 'id test case'],
-	title: ['test case', 'skenario', 'scenario', 'title', 'judul', 'nama test case', 'deskripsi test case'],
+	title: ['test case', 'title', 'judul', 'nama test case', 'deskripsi test case'],
+	scenario: ['scenario', 'skenario'],
 	group_no: ['group no', 'group', 'grup', 'no grup', 'group_no'],
 	feature: ['feature', 'fitur', 'modul', 'module'],
-	process_no: ['process no (fc)', 'process no', 'no proses', 'process_no'],
+	process_no: ['process no (fc)', 'prosess no (fc)', 'process no', 'no proses', 'process_no'],
 	test_type: ['type', 'tipe', 'test type', 'jenis'],
 	test_variable: ['test variable', 'variabel', 'variable'],
 	pre_condition: ['pre-condition', 'precondition', 'pre condition', 'prekondisi', 'prasyarat'],
@@ -113,13 +123,57 @@ const COLUMN_ALIASES: Record<string, string[]> = {
 	status: ['status', 'hasil', 'result'],
 	evidence: ['evidence', 'bukti', 'lampiran'],
 	remarks: ['remarks', 'catatan', 'keterangan'],
-	automation_tools: ['automation tools', 'tools', 'alat otomasi', 'automation']
+	automation_tools: ['automation tools', 'tools', 'alat otomasi', 'automation'],
+	test_date: ['date', 'tanggal', 'test date']
 };
 
 export const TOTAL_KNOWN_COLUMNS = Object.keys(COLUMN_ALIASES).length;
 
+/** Kolom yang di spreadsheet di-merge per grup: hanya baris pertama berisi nilai, baris berikutnya mewarisi. */
+const FORWARD_FILL_FIELDS = ['group_no', 'feature', 'process_no', 'scenario'] as const;
+
+/** Baris dianggap header tabel bila memuat Test Case ID + Test Case dan cukup banyak kolom lain (bukan baris blok PB). */
+const MIN_TABLE_HEADER_SCORE = 4;
+
+const VALID_STATUSES = ['Progress', 'Passed', 'Failed', 'Re-Test', 'Skip'];
+
+export const normalizeHeaderCell = (cell: unknown): string =>
+	String(cell ?? '')
+		.replace(/\s+/g, ' ')
+		.trim()
+		.toLowerCase();
+
+/** Daftar kandidat header per field: header & alias template (prioritas), lalu alias bawaan. */
+const buildAliasPasses = (mapping?: TemplateColumnMapping): Array<Record<string, string[]>> => {
+	const templatePass: Record<string, string[]> = {};
+	for (const [field, column] of Object.entries(mapping ?? {})) {
+		templatePass[field] = [column.header, ...(column.aliases ?? [])].map(normalizeHeaderCell).filter(Boolean);
+	}
+	return [templatePass, COLUMN_ALIASES];
+};
+
+const matchColumns = (row: unknown[], mapping?: TemplateColumnMapping): Record<string, number> => {
+	const cells = row.map(normalizeHeaderCell);
+	const matched: Record<string, number> = {};
+	const claimed = new Set<number>();
+	for (const pass of buildAliasPasses(mapping)) {
+		for (const [field, aliases] of Object.entries(pass)) {
+			if (matched[field] !== undefined) continue;
+			const idx = cells.findIndex((cell, i) => !claimed.has(i) && cell !== '' && aliases.includes(cell));
+			if (idx === -1) continue;
+			matched[field] = idx;
+			claimed.add(idx);
+		}
+	}
+	return matched;
+};
+
+const isTableHeader = (columnMap: Record<string, number>): boolean =>
+	columnMap.test_case_id !== undefined && columnMap.title !== undefined && Object.keys(columnMap).length >= MIN_TABLE_HEADER_SCORE;
+
 export const findHeaderRow = (
-	rows: unknown[][]
+	rows: unknown[][],
+	mapping?: TemplateColumnMapping
 ): { rowIndex: number; columnMap: Record<string, number>; score: number } | null => {
 	let bestCandidate: { rowIndex: number; columnMap: Record<string, number>; score: number } | null = null;
 
@@ -127,16 +181,7 @@ export const findHeaderRow = (
 		const row = rows[r];
 		if (!Array.isArray(row)) continue;
 
-		const normalizedCells = row.map((cell) => String(cell ?? '').trim().toLowerCase());
-		const matchedColumns: Record<string, number> = {};
-
-		for (const [field, aliases] of Object.entries(COLUMN_ALIASES)) {
-			const idx = normalizedCells.findIndex((cell) => aliases.includes(cell));
-			if (idx !== -1) {
-				matchedColumns[field] = idx;
-			}
-		}
-
+		const matchedColumns = matchColumns(row, mapping);
 		const matchCount = Object.keys(matchedColumns).length;
 
 		// Header harus memiliki setidaknya test_case_id atau title
@@ -150,15 +195,21 @@ export const findHeaderRow = (
 	return bestCandidate;
 };
 
+const normalizeTestType = (raw: string): string => (raw === '-' || raw.toLowerCase() === 'negative' ? '-' : '+');
+
+const normalizeStatus = (raw: string): string =>
+	VALID_STATUSES.find((s) => s.toLowerCase() === raw.toLowerCase()) ?? 'Progress';
+
 export const parseSpreadsheetRows = (
 	rows: unknown[][],
-	sheetName?: string
+	sheetName?: string,
+	mapping?: TemplateColumnMapping
 ): ParseSpreadsheetResult => {
 	if (!rows || rows.length === 0) {
 		throw new Error(sheetName ? `Sheet "${sheetName}" kosong.` : 'Data spreadsheet kosong.');
 	}
 
-	const headerMatch = findHeaderRow(rows);
+	const headerMatch = findHeaderRow(rows, mapping);
 	if (!headerMatch) {
 		throw new Error(
 			sheetName
@@ -167,12 +218,26 @@ export const parseSpreadsheetRows = (
 		);
 	}
 
-	const { rowIndex: headerRowIndex, columnMap } = headerMatch;
+	const { rowIndex: headerRowIndex } = headerMatch;
+	let columnMap = headerMatch.columnMap;
+	const detectedColumns = { ...columnMap };
 	const items: ParsedImportTestCase[] = [];
+	const seenIds = new Set<string>();
+	const duplicateTestCaseIds = new Set<string>();
+	let carried: Partial<Record<(typeof FORWARD_FILL_FIELDS)[number], string>> = {};
 
 	for (let r = headerRowIndex + 1; r < rows.length; r++) {
 		const row = rows[r];
 		if (!Array.isArray(row)) continue;
+
+		// Spreadsheet bisa berisi beberapa tabel (satu per PB): header baru → pemetaan & nilai warisan direset.
+		const rowColumns = matchColumns(row, mapping);
+		if (isTableHeader(rowColumns)) {
+			columnMap = rowColumns;
+			Object.assign(detectedColumns, rowColumns);
+			carried = {};
+			continue;
+		}
 
 		const getCell = (colName: string): string => {
 			const idx = columnMap[colName];
@@ -183,65 +248,72 @@ export const parseSpreadsheetRows = (
 		const testCaseId = getCell('test_case_id');
 		const title = getCell('title');
 		const testVar = getCell('test_variable');
+		const ownScenario = getCell('scenario');
 
-		// Abaikan baris kosong
-		if (!testCaseId && !title && !testVar) continue;
+		// Abaikan baris kosong / baris non-data (mis. baris BRD di antara tabel) — dicek sebelum forward-fill.
+		if (!testCaseId && !title && !testVar && !ownScenario) continue;
 
-		let testType = getCell('test_type');
-		if (testType === '-' || testType.toLowerCase() === 'negative') testType = '-';
-		else testType = '+';
+		// Group No baru = grup merge baru; feature/FC/scenario grup sebelumnya tidak boleh terbawa.
+		if (getCell('group_no')) carried = {};
+		for (const field of FORWARD_FILL_FIELDS) {
+			const own = getCell(field);
+			if (own) carried[field] = own;
+		}
+		const scenario = carried.scenario ?? '';
 
-		let status = getCell('status') || 'Progress';
-		const validStatuses = ['Progress', 'Passed', 'Failed', 'Re-Test', 'Skip'];
-		const matchedStatus = validStatuses.find((s) => s.toLowerCase() === status.toLowerCase());
-		status = matchedStatus ?? 'Progress';
+		const finalId = testCaseId || `TC-ROW-${r + 1}`;
+		if (seenIds.has(finalId)) duplicateTestCaseIds.add(finalId);
+		seenIds.add(finalId);
 
 		items.push({
-			test_case_id: testCaseId || `TC-ROW-${r + 1}`,
-			title: title || testVar || testCaseId || `Skenario Baris ${r + 1}`,
-			group_no: getCell('group_no') || undefined,
-			feature: getCell('feature') || undefined,
-			process_no: getCell('process_no') || undefined,
-			test_type: testType,
+			test_case_id: finalId,
+			title: title || scenario || testVar || testCaseId || `Skenario Baris ${r + 1}`,
+			scenario: scenario || undefined,
+			group_no: carried.group_no || undefined,
+			feature: carried.feature || undefined,
+			process_no: carried.process_no || undefined,
+			test_type: normalizeTestType(getCell('test_type')),
 			test_variable: testVar || undefined,
 			pre_condition: getCell('pre_condition') || undefined,
 			test_data: getCell('test_data') || undefined,
 			test_steps: getCell('test_steps') || undefined,
 			expected_result: getCell('expected_result') || undefined,
 			actual_result: getCell('actual_result') || undefined,
-			status,
+			status: normalizeStatus(getCell('status') || 'Progress'),
 			evidence: getCell('evidence') || undefined,
 			remarks: getCell('remarks') || undefined,
-			automation_tools: getCell('automation_tools') || undefined
+			automation_tools: getCell('automation_tools') || undefined,
+			test_date: getCell('test_date') || undefined
 		});
 	}
 
 	return {
 		items,
 		headerRowIndex,
-		detectedColumns: columnMap,
+		detectedColumns,
 		totalRowsFound: items.length,
-		sheetName
+		sheetName,
+		duplicateTestCaseIds: [...duplicateTestCaseIds]
 	};
 };
 
-export const parseSpreadsheetCsv = (csvText: string): ParseSpreadsheetResult => {
-	const workbook = XLSX.read(csvText, { type: 'string' });
+/** Nilai sel sebagai teks yang tampil (tanggal tetap "7 November 2025", bukan serial number). */
+const sheetRows = (worksheet: XLSX.WorkSheet): unknown[][] =>
+	XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '', raw: false });
+
+export const parseSpreadsheetCsv = (csvText: string, mapping?: TemplateColumnMapping): ParseSpreadsheetResult => {
+	// raw: CSV dibaca apa adanya; tanggal seperti "19/09/24" tidak diubah jadi serial tanggal.
+	const workbook = XLSX.read(csvText, { type: 'string', raw: true });
 	const sheetName = workbook.SheetNames[0];
 	if (!sheetName) throw new Error('Data spreadsheet kosong.');
 
-	const worksheet = workbook.Sheets[sheetName];
-	const rows: unknown[][] = XLSX.utils.sheet_to_json(worksheet, {
-		header: 1,
-		defval: ''
-	});
-
-	return parseSpreadsheetRows(rows);
+	return parseSpreadsheetRows(sheetRows(workbook.Sheets[sheetName]), undefined, mapping);
 };
 
 export const parseSpreadsheetFile = async (
 	fileData: ArrayBuffer | Uint8Array,
-	preferredSheetName?: string
+	preferredSheetName?: string,
+	mapping?: TemplateColumnMapping
 ): Promise<ParseSpreadsheetResult> => {
 	const workbook = XLSX.read(fileData, { type: 'array' });
 	if (!workbook.SheetNames || workbook.SheetNames.length === 0) {
@@ -257,8 +329,7 @@ export const parseSpreadsheetFile = async (
 		for (const name of workbook.SheetNames) {
 			const ws = workbook.Sheets[name];
 			if (!ws) continue;
-			const rows: unknown[][] = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
-			const match = findHeaderRow(rows);
+			const match = findHeaderRow(sheetRows(ws), mapping);
 			if (match && match.score > highestScore) {
 				highestScore = match.score;
 				chosenSheetName = name;
@@ -270,11 +341,65 @@ export const parseSpreadsheetFile = async (
 		chosenSheetName = workbook.SheetNames[0];
 	}
 
-	const worksheet = workbook.Sheets[chosenSheetName];
-	const rows: unknown[][] = XLSX.utils.sheet_to_json(worksheet, {
-		header: 1,
-		defval: ''
-	});
+	return parseSpreadsheetRows(sheetRows(workbook.Sheets[chosenSheetName]), chosenSheetName, mapping);
+};
 
-	return parseSpreadsheetRows(rows, chosenSheetName);
+/** Label field sistem (urutan kolom V4) untuk UI pemetaan template. */
+export const TEMPLATE_FIELD_LABELS: Array<{ field: string; label: string; required?: boolean }> = [
+	{ field: 'group_no', label: 'Group No' },
+	{ field: 'feature', label: 'Feature' },
+	{ field: 'process_no', label: 'Process No (FC)' },
+	{ field: 'test_type', label: 'TYPE' },
+	{ field: 'test_case_id', label: 'Test Case ID', required: true },
+	{ field: 'test_variable', label: 'Test Variable' },
+	{ field: 'scenario', label: 'Scenario' },
+	{ field: 'title', label: 'Test Case', required: true },
+	{ field: 'pre_condition', label: 'Pre-Condition' },
+	{ field: 'test_data', label: 'Test Data' },
+	{ field: 'test_steps', label: 'Test Steps' },
+	{ field: 'expected_result', label: 'Expected Result' },
+	{ field: 'status', label: 'Status' },
+	{ field: 'evidence', label: 'Evidence' },
+	{ field: 'remarks', label: 'Remarks' },
+	{ field: 'automation_tools', label: 'Automation Tools' },
+	{ field: 'test_date', label: 'Date' }
+];
+
+export interface TemplateMappingCheck {
+	headerRowIndex: number | null;
+	mapped: Array<{ field: string; header: string }>;
+	unmapped: string[];
+}
+
+/**
+ * "Uji template": cari baris header tab memakai pemetaan template SAJA (tanpa alias bawaan),
+ * lalu laporkan field mana yang ketemu kolomnya dan mana yang tidak.
+ */
+export const checkTemplateMapping = (csvText: string, mapping: TemplateColumnMapping): TemplateMappingCheck => {
+	const workbook = XLSX.read(csvText, { type: 'string', raw: true });
+	const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ''];
+	const rows = sheet ? sheetRows(sheet) : [];
+	const fields = Object.keys(mapping);
+
+	let best: { rowIndex: number; matched: Record<string, number> } | null = null;
+	for (let r = 0; r < Math.min(rows.length, 50); r++) {
+		const row = rows[r];
+		if (!Array.isArray(row)) continue;
+		const cells = row.map(normalizeHeaderCell);
+		const matched: Record<string, number> = {};
+		for (const field of fields) {
+			const candidates = [mapping[field].header, ...(mapping[field].aliases ?? [])].map(normalizeHeaderCell).filter(Boolean);
+			const idx = cells.findIndex((cell) => cell !== '' && candidates.includes(cell));
+			if (idx !== -1) matched[field] = idx;
+		}
+		if (!best || Object.keys(matched).length > Object.keys(best.matched).length) best = { rowIndex: r, matched };
+	}
+
+	if (!best || Object.keys(best.matched).length === 0) return { headerRowIndex: null, mapped: [], unmapped: fields };
+	const headerRow = rows[best.rowIndex];
+	return {
+		headerRowIndex: best.rowIndex,
+		mapped: Object.entries(best.matched).map(([field, idx]) => ({ field, header: String(headerRow[idx] ?? '').trim() })),
+		unmapped: fields.filter((field) => best!.matched[field] === undefined)
+	};
 };

@@ -27,10 +27,49 @@ export interface RecordingProject {
 	base_url?: string | null;
 	repo_url?: string | null;
 	description?: string | null;
+	release_version?: string | null;
+	test_app_folder?: string | null;
+	ip_dev?: string | null;
+	ip_prod?: string | null;
+	tester_name?: string | null;
+	programmer_name?: string | null;
+	task_dev?: string | null;
+	brd_id?: string | null;
+	link_task_pb?: string | null;
+	link_figma?: string | null;
 	created_by_user_id?: number | null;
 	created_at?: string | null;
 	updated_at?: string | null;
 }
+
+import type { ProjectMetadataField } from './projectMetadata';
+export type { ProjectMetadataField } from './projectMetadata';
+
+export type TemplateColumnMapping = Record<string, { header: string; aliases?: string[] }>;
+
+export interface TestCaseTemplate {
+	id_template: number;
+	version_label: string;
+	name: string;
+	spreadsheet_url: string;
+	gid: string | null;
+	column_mapping: TemplateColumnMapping;
+	export_anchors: Record<string, unknown>;
+	is_default: boolean;
+	is_active: boolean;
+	created_at?: string | null;
+	updated_at?: string | null;
+}
+
+export type TestCaseTemplateInput = {
+	version_label: string;
+	name: string;
+	spreadsheet_url: string;
+	gid?: string | null;
+	column_mapping: TemplateColumnMapping;
+	export_anchors?: Record<string, unknown>;
+	is_default?: boolean;
+};
 
 export interface RecordingSession {
 	id_session: number;
@@ -67,6 +106,7 @@ export interface TestCaseItem {
 	test_type: string;
 	test_case_id: string;
 	test_variable?: string | null;
+	scenario?: string | null;
 	title: string;
 	pre_condition?: string | null;
 	test_data?: string | null;
@@ -77,6 +117,7 @@ export interface TestCaseItem {
 	evidence?: string | null;
 	remarks?: string | null;
 	automation_tools?: string | null;
+	test_date?: string | null;
 	last_session_id?: number | null;
 	created_at?: string;
 	updated_at?: string;
@@ -182,7 +223,7 @@ export class RecordingApiClient {
 		repo_url?: string;
 		description?: string;
 		code?: string;
-	}): Promise<RecordingProject> {
+	} & Partial<Record<ProjectMetadataField, string | null>>): Promise<RecordingProject> {
 		return this._request<RecordingProject>('POST', '/projects', input);
 	}
 
@@ -196,7 +237,7 @@ export class RecordingApiClient {
 			repo_url?: string;
 			description?: string;
 			is_active?: boolean;
-		}
+		} & Partial<Record<ProjectMetadataField, string | null>>
 	): Promise<RecordingProject> {
 		return this._request<RecordingProject>('PUT', `/projects/${idProject}`, input);
 	}
@@ -382,6 +423,42 @@ export class RecordingApiClient {
 		summary: TestCaseSummary;
 	}> {
 		return this._request('POST', `/projects/${idProject}/test-cases/import`, { items });
+	}
+
+	/** Unduh test case project sebagai .xlsx berformat template (default bila idTemplate kosong). */
+	async exportTestCases(idProject: number, idTemplate?: number): Promise<{ blob: Blob; filename: string }> {
+		const suffix = idTemplate ? `?template=${idTemplate}` : '';
+		const response = await this._send('GET', `/projects/${idProject}/test-cases/export${suffix}`);
+		const disposition = response.headers.get('content-disposition') ?? '';
+		const filename = /filename="?([^";]+)"?/i.exec(disposition)?.[1] ?? `project-${idProject}-test-case.xlsx`;
+		return { blob: await response.blob(), filename };
+	}
+
+	listTestCaseTemplates(includeInactive = false): Promise<TestCaseTemplate[]> {
+		return this._request('GET', `/test-case-templates${includeInactive ? '?include_inactive=true' : ''}`);
+	}
+
+	getDefaultTestCaseTemplate(): Promise<TestCaseTemplate> {
+		return this._request('GET', '/test-case-templates/default');
+	}
+
+	createTestCaseTemplate(input: TestCaseTemplateInput): Promise<TestCaseTemplate> {
+		return this._request('POST', '/test-case-templates', input);
+	}
+
+	updateTestCaseTemplate(
+		idTemplate: number,
+		input: Partial<Omit<TestCaseTemplateInput, 'is_default'>> & { is_active?: boolean }
+	): Promise<TestCaseTemplate> {
+		return this._request('PUT', `/test-case-templates/${idTemplate}`, input);
+	}
+
+	setDefaultTestCaseTemplate(idTemplate: number): Promise<TestCaseTemplate> {
+		return this._request('PATCH', `/test-case-templates/${idTemplate}/default`);
+	}
+
+	deactivateTestCaseTemplate(idTemplate: number): Promise<TestCaseTemplate> {
+		return this._request('PATCH', `/test-case-templates/${idTemplate}/deactivate`);
 	}
 
 	listSessions(params: { page?: number; perPage?: number; id_project?: number } = {}): Promise<{
@@ -616,6 +693,35 @@ export class RecordingApiClient {
 				new_password: newPassword
 			}
 		);
+	}
+
+	/** Request mentah (untuk unduhan biner); error JSON API tetap jadi ApiError. */
+	private async _send(method: string, path: string, body?: unknown, options: { skipAuth?: boolean } = {}): Promise<Response> {
+		const headers: Record<string, string> = { Accept: '*/*' };
+		if (body !== undefined) headers['Content-Type'] = 'application/json';
+		if (!options.skipAuth) {
+			const token = await this._getToken();
+			if (!token) {
+				this._onUnauthorized?.();
+				throw new ApiError('Belum login.', 401);
+			}
+			headers.Authorization = `Bearer ${token}`;
+		}
+		const response = await this._fetch(`${this._baseUrl}${path}`, {
+			method,
+			headers,
+			body: body === undefined ? undefined : JSON.stringify(body)
+		});
+		if (response.status === 401) {
+			this._onUnauthorized?.();
+			throw new ApiError('Sesi login berakhir. Silakan login ulang.', 401);
+		}
+		if (!response.ok) {
+			const parsed = safeParse(await response.text());
+			const message = (parsed as { message?: string } | null)?.message ?? `Request gagal (HTTP ${response.status}).`;
+			throw new ApiError(message, response.status);
+		}
+		return response;
 	}
 
 	private async _request<T>(

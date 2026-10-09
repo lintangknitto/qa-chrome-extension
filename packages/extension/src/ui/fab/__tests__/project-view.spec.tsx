@@ -321,8 +321,21 @@ describe('ProjectView & Test Case Spreadsheet Management', () => {
 	// C-01 to C-06 — EmptyStateTestCase integration in ProjectView
 	// -----------------------------------------------------------------------
 
+	const v4Template = {
+		id_template: 1,
+		version_label: 'V4',
+		name: 'FORMAT TEST CASE V4',
+		spreadsheet_url: 'https://docs.google.com/spreadsheets/d/1k_08EdNZUBGBhLNU-FIPxqm06PpCfn4Dyprc4sDYCsI/edit',
+		gid: '1730053292',
+		column_mapping: { test_case_id: { header: 'Test Case ID' }, title: { header: 'Test Case' } },
+		export_anchors: {},
+		is_default: true,
+		is_active: true
+	};
+
 	const createEmptyMockApi = () =>
 		({
+			getDefaultTestCaseTemplate: vi.fn().mockResolvedValue(v4Template),
 			listTestCases: vi.fn().mockResolvedValue({
 				items: [],
 				total: 0,
@@ -415,10 +428,35 @@ describe('ProjectView & Test Case Spreadsheet Management', () => {
 			expect(screen.getByRole('dialog', { name: /Import Test Case/i })).toBeTruthy();
 			// URL input should be filled with the system template URL
 			const urlInput = screen.getByPlaceholderText(/docs\.google\.com/i) as HTMLInputElement;
-			expect(urlInput.value).toContain('docs.google.com/spreadsheets');
+			// URL template default dari API (tab V4), bukan konstanta tab CONTOH
+			expect(urlInput.value).toBe('https://docs.google.com/spreadsheets/d/1k_08EdNZUBGBhLNU-FIPxqm06PpCfn4Dyprc4sDYCsI/edit#gid=1730053292');
 			// GID detection should be active
 			expect(screen.getByText(/Sheet GID terdeteksi/i)).toBeTruthy();
 		});
+	});
+
+	it('C-03b: tanpa template default, "Template Sistem" menampilkan toast dan modal tidak dibuka', async () => {
+		const mockApi = createEmptyMockApi();
+		(mockApi.getDefaultTestCaseTemplate as ReturnType<typeof vi.fn>).mockRejectedValue(new Error('Belum ada template test case default.'));
+		const onShowToast = vi.fn();
+		render(
+			<ProjectView
+				projects={mockProjects}
+				api={mockApi}
+				canCreateProject={true}
+				onRefreshProjects={vi.fn().mockResolvedValue(undefined)}
+				onCreateProject={vi.fn().mockResolvedValue(1)}
+				onSelectTestCaseForRecording={vi.fn()}
+				onShowToast={onShowToast}
+			/>
+		);
+
+		fireEvent.click(screen.getByText('Knitto Portal'));
+		await waitFor(() => expect(screen.getByText('Template Sistem')).toBeTruthy());
+		fireEvent.click(screen.getByText('Template Sistem'));
+
+		expect(onShowToast).toHaveBeenCalledWith(expect.stringContaining('Belum ada template test case default'), 'error');
+		expect(screen.queryByRole('dialog', { name: /Import Test Case/i })).toBeNull();
 	});
 
 	// C-04: Struktur Sendiri CTA opens modal with empty URL

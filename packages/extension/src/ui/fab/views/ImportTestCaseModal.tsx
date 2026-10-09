@@ -16,13 +16,20 @@ import {
 	TOTAL_KNOWN_COLUMNS,
 	type ParsedImportTestCase,
 	type ParseSpreadsheetResult,
-	type GoogleSpreadsheetInfo
+	type GoogleSpreadsheetInfo,
+	type TemplateColumnMapping
 } from '../../../recording/spreadsheetParser';
+
+const DEFAULT_PLACEHOLDER_URL = 'https://docs.google.com/spreadsheets/d/.../edit?gid=...#gid=...';
 
 export interface ImportTestCaseModalProps {
 	isOpen: boolean;
 	projectName: string;
 	prefillUrl?: string;
+	/** Pemetaan kolom template default dari API; parser memakai alias bawaan bila kosong. */
+	templateMapping?: TemplateColumnMapping;
+	/** Contoh URL di placeholder (URL template default dari API). */
+	placeholderUrl?: string;
 	onClose: () => void;
 	onImport: (items: ParsedImportTestCase[]) => Promise<void>;
 }
@@ -31,6 +38,8 @@ export const ImportTestCaseModal: React.FC<ImportTestCaseModalProps> = ({
 	isOpen,
 	projectName,
 	prefillUrl,
+	templateMapping,
+	placeholderUrl,
 	onClose,
 	onImport
 }) => {
@@ -68,7 +77,7 @@ export const ImportTestCaseModal: React.FC<ImportTestCaseModalProps> = ({
 
 		try {
 			const csvText = await fetchGoogleSpreadsheetCsv(detectedInfo.exportUrl);
-			const result = parseSpreadsheetCsv(csvText);
+			const result = parseSpreadsheetCsv(csvText, templateMapping);
 			if (result.items.length === 0) {
 				setError('Tidak ada baris test case valid ditemukan pada sheet tersebut.');
 			} else {
@@ -116,7 +125,7 @@ export const ImportTestCaseModal: React.FC<ImportTestCaseModalProps> = ({
 						label="URL Google Spreadsheet"
 						icon={<Link2 size={14} />}
 						value={sheetUrl}
-						placeholder="https://docs.google.com/spreadsheets/d/.../edit?gid=1730053292#gid=1730053292"
+						placeholder={placeholderUrl || DEFAULT_PLACEHOLDER_URL}
 						onChange={(e) => handleUrlChange(e.target.value)}
 						helperText={
 							detectedInfo
@@ -214,6 +223,29 @@ export const ImportTestCaseModal: React.FC<ImportTestCaseModalProps> = ({
 						<div style={{ fontSize: '12px', color: '#166534', marginTop: '4px' }}>
 							{`Sheet GID: ${detectedInfo?.gid ?? '-'} · Header di baris ke-${parseResult.headerRowIndex + 1}`}
 						</div>
+						{(parseResult.duplicateTestCaseIds?.length ?? 0) > 0 && (
+							<div
+								role="alert"
+								style={{
+									marginTop: '8px',
+									padding: '8px 10px',
+									borderRadius: '8px',
+									background: '#fffbeb',
+									border: '1px solid #fde68a',
+									color: '#92400e',
+									fontSize: '12px',
+									display: 'flex',
+									gap: '6px',
+									alignItems: 'flex-start'
+								}}
+							>
+								<AlertTriangle size={14} style={{ marginTop: '1px', flexShrink: 0 }} />
+								<span>
+									Test Case ID berikut muncul lebih dari sekali: <strong>{parseResult.duplicateTestCaseIds!.join(', ')}</strong>.
+									Saat diimpor, baris terakhir menimpa baris sebelumnya (kunci: Test Case ID per project).
+								</span>
+							</div>
+						)}
 
 						{/* Kolom Terdeteksi & Confidence */}
 						<div

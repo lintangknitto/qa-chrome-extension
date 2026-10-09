@@ -1,0 +1,144 @@
+PROGRAM VERSION RELEASE,Portal V.1.31.0,,,,,,TESTER,Ela,,,,,,
+FOLDER TEST APP,Program_holis\TESTING\order pusat\Rilis Dev\V.0.146.0,,,,,,PROGRAMMER,Nanda,,,,,,
+IP DEV,-,,,,,,,,,,,,,
+IP PROD,-,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+BRD515 ,PB. 1.107.3 Penambahan Edit Order Pada Portal Knitto,,,,,,,,,,,,Figma,
+Group No,Feature,Process No (FC),Test Case ID,Test Variable,Scenario,Test Case,Pre-Condition,Test Data,Test Steps ,Expected Result,Status,Evidence,Remarks,Date
+1,Pengecekan Perubahan Qty Order,FC 2C.18.9.21 - Proses 2,TC1-1,"Order Item : Kain
+Jumlah Item : 1 
+
+Edit: Tambah Item (Kain)",MENGUJI EDIT ORDER PERUBAHAN QTY ,Test Tambah item kain pada Order Kain,User buat Order berisi 1 item Kain Eceran (Body),"No Order : OH190924005
+","1. Buka Portal
+2. Klik menu Status Order
+3. Klik Edit Order pada satu Order Kain 
+4. Tambah item Kain 
+","- Checkout Edit berhasil dilakukan
+- Tampil halaman Berhasil Edit Order [KN UI 1716]
+Text:
+""Order {nomor} Berhasil diubah. Customer Sevice kami akan segera mengkonfirmasi pesanan Anda""
+",Passed,TC1-1 Passed,,19/09/24
+,,,TC1-2,"Order Item : Kain
+Jumlah Item : 1 
+
+Edit : Tambah Item(Katalog)",,Test Tambah item Katalog pada Order Kain,User buat Order berisi 1 item Kain Eceran (Body+ Roll),"No Order : OH190924012
+","1. Buka Portal
+2. Klik menu Status Order
+3. Klik Edit Order pada satu Order Kain 
+4. Tambah item Kain 
+","- Checkout Edit berhasil dilakukan
+- Tampil halaman Berhasil Edit Order [KN UI 1716]
+Text:
+""Order {nomor} Berhasil diubah. Customer Sevice kami akan segera mengkonfirmasi pesanan Anda""",Progress,,,19/09/24
+,,,TC1-3,"Order Item : Katalog
+Jumlah Item : 1 
+
+Edit :Tambah Item(Katalog)",,Test Tambah item Katalog pada Order Katalog,User buat Order berisi 1 item Katalog,"No Order : KTC190924001
+","1. Buka Portal
+2. Klik menu Status Order
+3. Klik Edit Order pada satu Order Kain 
+4. Tambah item Kain 
+","- Checkout Edit berhasil dilakukan
+- Tampil halaman Berhasil Edit Order [KN UI 1716]
+Text:
+""Order {nomor} Berhasil diubah. Customer Sevice kami akan segera mengkonfirmasi pesanan Anda""",Failed,,"19/9 Ada Error
+BUGS NO 1
+20/9 BUGS Solved",20/09/24
+,,FC 2C.18.9.21 - Proses 4,TC1-4,"Order Item : Kain
+Jumlah Item : 2 
+
+Edit : Kurangi & Tambah Qty",,Test Tambah dan Kurangi Qty - pada Semua Item,User buat Order di Portal berisi 1 item Katalog,"No Order : OH190924050
+","1. Buka Portal
+2. Klik menu Status Order
+3. Klik Edit Order pada satu Order Kain 
+4. Tambah qty pada item pertama
+","- Checkout Edit berhasil dilakukan
+- Tampil halaman Berhasil Edit Order [KN UI 1716]
+Text:
+""Order {nomor} Berhasil diubah. Customer Sevice kami akan segera mengkonfirmasi pesanan Anda""",,,,
+2,Konfirmasi Pembayaran,FC 2C.6.2 - Proses 11,TC2-1,Nomor Order yg belum diedit,MEMASTIKAN BUTTON KONFIRMASI PEMBAYARAN ENABLE UNTUK ORDER YANG BERHASIL EDIT,Test Button Konfirmasi Pembayaran via Rincian Order pada Order yg belum diedit,User buat Order di Portal,"No Order : OH190924035
+","1. Buka Portal
+2. Klik menu Status Order
+3. Klik button Lihat Rincian Order pada satu Order
+",Button Konfirmasi Pembayaran Enable,,,,
+,,,TC2-2,Nomor Order status 'sukses edit',,Test Button Konfirmasi Pembayaran via Rincian Order pada Order yg statusnya 'gagal-edit',User buat Order di Portal dan order diedit sehingga punya status 'sukses-edit',"No Order : OH190924040
+","1. Buka Portal
+2. Klik menu Status Order
+3. Klik button Lihat Rincian Order pada satu Order
+",Button Konfirmasi Pembayaran Enable,,,,
+,,FC 2C.6.2 - Proses 21,TC2-3,Nomor Order yg statusnya 'gagal edit',,Test Order status 'gagal-edit' - klik Konfirmasi Pembayaran,User buat Order di Portal dan melakukan edit order sehingga order status 'gagal-edit',"No Order : OH190924041
+","1. Buka Portal
+2. Klik menu Status Order
+3. Klik button Lihat Rincian Order pada satu Order
+4. Klik Konfirmasi Pembayaran","Tampil popup message 
+""Konfirmasi Pembayaran atas perubahan order tidak dapat dilakukan. Silahkan hubungi Customer Service kami melalui WhatsApp""",,,,
+3,Page Status Order,KN UI 942.2 - UI Hal 20,TC3-3,Nomor Order baru dibuat,,Test penambahakan button Edit Order pada halaman Status Order,User buat Order di portal,"No Order : OH190924001
+","1. Buka Portal
+2. Klik Status Order
+","- Desain sesuai Figma
+- Button Edit Order hanya ada pada Order yg statusnya Belum Bayar
+- No KN UI 942,2 sesuai
+- Tampil Web dokumentasi untuk KN UI tsb",,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+BRD772 V1,PB 1.561.1 Update Penjagaan Order Sample Pada Portal Knitto,,,,,,,,,,,,Figma,
+Group No,Feature,Prosess No (FC),Test Case ID,Test Variable,,Test Case,Pre-Condition,Test Data,Test Steps ,Expected Result,Status,Evidence,Remarks,Date
+1,Penjagaan Button 'Beli' atau 'Minta Sample',(FC: 2C.5.4 - Proses 8),TC1-1,"Sample: Berelasi dengan Katalog
+
+Kondisi Keranjang : Ada item lain selain sample
+
+Tambah Sample kedua :
+Jenis Kain : Sama
+Warna : Sama",,"[DESKTOP]
+Test di Keranjang sudah ada item Kain, 1 Sample, lalu ditambahkan 1 sample yg sama","User menambahkan 1 Kain, 1 Sample pada keranjang","Tambah Sample Pertama dan Kedua
+ID Katalog : 19001
+Jenis Kain : Combed 30s
+Warna : Biru Muda","1.Buka Portal 
+2.Klik Menu Sample -> Plain -> Combed 30s -> Biru Muda
+4. Klik Minta Sample -> Klik Beli","Tampil Popup :
+""Kamu sudah memiliki Sample Kain [nama kain] di Keranjang""
+
+""Beli Katalog Warna untuk mendapatkan seluruh warna yang tersedia pada suatu jenis kain, atau selesaikan pesananmu terlebih dahulu dan hubungi admin kami untuk meminta sample kain [nama kain]""
+
+""Permintaan Sample jenis kain yang sama lebih dari 1 warna akan dikenakan biata Rp 2.000/sample""
+
+Button Putih : 'LIHAT CATALOG'
+Button Orange: 'LIHAT KERANJANG'
+",Passed,TC1-1 Passed,,19/09/24
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,
+,,,,chatbot,,customer baru,,,,,,,,

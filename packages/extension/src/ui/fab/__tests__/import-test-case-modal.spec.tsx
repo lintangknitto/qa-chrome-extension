@@ -165,7 +165,7 @@ describe('ImportTestCaseModal', () => {
 
 		await waitFor(() => {
 			expect(screen.getByText(/Kolom Terdeteksi/i)).toBeTruthy();
-			expect(screen.getByText(/10 \/ 16 kolom dikenali/i)).toBeTruthy();
+			expect(screen.getByText(/10 \/ 18 kolom dikenali/i)).toBeTruthy();
 			expect(screen.getByText(/✓ test_case_id/i)).toBeTruthy();
 			expect(screen.getByText(/✓ title/i)).toBeTruthy();
 		});
@@ -182,7 +182,7 @@ describe('ImportTestCaseModal', () => {
 		});
 
 		await waitFor(() => {
-			const badge = screen.getByText(/8 \/ 16 kolom dikenali/i);
+			const badge = screen.getByText(/8 \/ 18 kolom dikenali/i);
 			// Green text color for >=8
 			expect(badge).toBeTruthy();
 			expect(badge.style.color).toBe('rgb(21, 128, 61)'); // #15803d
@@ -200,7 +200,7 @@ describe('ImportTestCaseModal', () => {
 		});
 
 		await waitFor(() => {
-			const badge = screen.getByText(/5 \/ 16 kolom dikenali/i);
+			const badge = screen.getByText(/5 \/ 18 kolom dikenali/i);
 			expect(badge).toBeTruthy();
 			expect(badge.style.color).toBe('rgb(146, 64, 14)'); // #92400e (amber)
 		});
@@ -217,7 +217,7 @@ describe('ImportTestCaseModal', () => {
 		});
 
 		await waitFor(() => {
-			const badge = screen.getByText(/2 \/ 16 kolom dikenali/i);
+			const badge = screen.getByText(/2 \/ 18 kolom dikenali/i);
 			expect(badge).toBeTruthy();
 			expect(badge.style.color).toBe('rgb(185, 28, 28)'); // #b91c1c (red)
 		});
@@ -419,5 +419,22 @@ describe('ImportTestCaseModal', () => {
 		const inputSecond = screen.getByPlaceholderText(/docs\.google\.com/i) as HTMLInputElement;
 		expect(inputSecond.value).toBe('');
 		expect(screen.queryByText(/Sheet GID terdeteksi/i)).toBeNull();
+	});
+	it('B-12: pemetaan template diteruskan ke parser dan Test Case ID duplikat diperingatkan', async () => {
+		const parseResult = { ...makeParseResult(2, 10), duplicateTestCaseIds: ['TC1-1'] };
+		vi.mocked(fetchGoogleSpreadsheetCsv).mockResolvedValue('csv-content');
+		vi.mocked(parseSpreadsheetCsv).mockReturnValue(parseResult);
+		const mapping = { test_case_id: { header: 'Test Case ID' }, title: { header: 'Test Case' } };
+
+		render(<ImportTestCaseModal {...defaultProps} prefillUrl={VALID_URL} templateMapping={mapping} placeholderUrl="https://docs.google.com/spreadsheets/d/v4/edit#gid=1730053292" />);
+		expect((screen.getByPlaceholderText(/gid=1730053292/) as HTMLInputElement)).toBeTruthy();
+		await act(async () => {
+			fireEvent.click(screen.getByRole('button', { name: /Tarik Data Spreadsheet/i }));
+		});
+
+		await waitFor(() => {
+			expect(vi.mocked(parseSpreadsheetCsv)).toHaveBeenCalledWith('csv-content', mapping);
+			expect(screen.getByRole('alert').textContent).toContain('TC1-1');
+		});
 	});
 });
