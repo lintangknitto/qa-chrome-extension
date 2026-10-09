@@ -129,14 +129,8 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 	const currentResult = activeRun?.result ?? sessionDetail?.result ?? testCase?.status;
 	const currentActualResult = activeRun?.actualResult ?? sessionDetail?.actual_result ?? testCase?.actual_result;
 	const currentVideoUrl = activeRun?.videoUrl ?? sessionDetail?.video_url;
-	// URL presigned MinIO menunjuk host internal (mis. 127.0.0.1:9000) sehingga tidak bisa dibuka dari
-	// komputer lain: tab baru memakai endpoint stream API untuk video sesi (tab penuh = fullscreen asli diizinkan).
-	const videoSessionId = activeRun?.sessionId || sessionId;
-	const isSessionVideo = Boolean(currentVideoUrl) && currentVideoUrl === sessionDetail?.video_url;
-	const videoTabUrl =
-		isSessionVideo && videoSessionId && api.baseUrl
-			? `${api.baseUrl.replace(/\/+$/, '')}/sessions/${videoSessionId}/video/stream`
-			: currentVideoUrl ?? undefined;
+	// `video_url` dari API adalah URL MinIO publik tanpa signature, jadi bisa dibuka langsung di tab baru.
+	const videoTabUrl = currentVideoUrl ?? undefined;
 	const checkpoints = (activeRun?.checkpoints && activeRun.checkpoints.length > 0) ? activeRun.checkpoints : (sessionDetail?.checkpoints || []);
 
 	const handlePlaybackRateChange = (rate: number) => {
@@ -365,9 +359,7 @@ export const TestCaseResultModal: React.FC<TestCaseResultModalProps> = ({
 						chrome.runtime.sendMessage(
 							{
 								type: 'media:fetchBlobUrl',
-								url: currentVideoUrl,
-								apiBaseUrl: api.baseUrl,
-								sessionId: activeRun?.sessionId || sessionId
+								url: currentVideoUrl
 							},
 							(response) => resolve(response ?? { success: false, error: 'Tidak ada respon dari Service Worker' })
 						);

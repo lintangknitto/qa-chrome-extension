@@ -113,7 +113,7 @@ describe('TestCaseResultModal video: Perbesar & Buka di Tab Baru', () => {
 		vi.restoreAllMocks();
 	});
 
-	const MINIO_URL = 'http://127.0.0.1:9000/qa-recording-artifacts/sessions/1/9-video-1.webm?X-Amz-Signature=abc';
+	const MINIO_URL = 'http://192.168.20.2:9000/qa-recording-artifacts/sessions/9/video/0f8fad5b-d9cb-469f-a165-70867728950e.webm';
 	const makeApi = () =>
 		({
 			baseUrl: 'http://192.168.20.2:8010',
@@ -124,10 +124,10 @@ describe('TestCaseResultModal video: Perbesar & Buka di Tab Baru', () => {
 			generateShareUrl: vi.fn()
 		}) as unknown as RecordingApiClient;
 
-	it('"Buka di Tab Baru" memakai endpoint stream API, bukan URL MinIO 127.0.0.1', async () => {
+	it('"Buka di Tab Baru" memakai video_url MinIO publik dari API, bukan endpoint stream API', async () => {
 		render(<TestCaseResultModal open sessionId={9} testCase={null} api={makeApi()} onClose={vi.fn()} />);
 		const link = await screen.findByRole('link', { name: /Buka di Tab Baru/ });
-		expect(link.getAttribute('href')).toBe('http://192.168.20.2:8010/sessions/9/video/stream');
+		expect(link.getAttribute('href')).toBe(MINIO_URL);
 	});
 
 	it('"Perbesar" membuka overlay layar penuh tanpa Fullscreen API dan Esc menutupnya', async () => {
@@ -137,7 +137,7 @@ describe('TestCaseResultModal video: Perbesar & Buka di Tab Baru', () => {
 		const overlay = await screen.findByTestId('expanded-video-overlay');
 		expect(overlay.style.position).toBe('fixed');
 		expect(overlay.querySelector('video')?.getAttribute('src')).toBe(MINIO_URL);
-		expect(within(overlay).getByRole('link', { name: /Buka di Tab Baru/ }).getAttribute('href')).toBe('http://192.168.20.2:8010/sessions/9/video/stream');
+		expect(within(overlay).getByRole('link', { name: /Buka di Tab Baru/ }).getAttribute('href')).toBe(MINIO_URL);
 
 		fireEvent.keyDown(window, { key: 'Escape' });
 		await waitFor(() => expect(screen.queryByTestId('expanded-video-overlay')).toBeNull());

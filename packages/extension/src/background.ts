@@ -105,8 +105,6 @@ type PageMessage = {
 } | {
   type: 'media:fetchBlobUrl';
   url: string;
-  apiBaseUrl?: string;
-  sessionId?: number;
 };
 
 class PlaywrightExtension {
@@ -462,44 +460,12 @@ class PlaywrightExtension {
       case 'media:fetchBlobUrl': {
         (async () => {
           try {
-            let fetchUrl = message.url;
-            const targetApiBase = message.apiBaseUrl || this._currentApiBaseUrl;
-            if (targetApiBase && (fetchUrl.includes('127.0.0.1:9000') || fetchUrl.includes('localhost:9000'))) {
-              try {
-                const apiHost = new URL(targetApiBase).hostname;
-                if (apiHost && apiHost !== '127.0.0.1' && apiHost !== 'localhost') {
-                  fetchUrl = fetchUrl.replace('127.0.0.1:9000', `${apiHost}:9000`).replace('localhost:9000', `${apiHost}:9000`);
-                }
-              } catch {
-                // Ignore URL parse error
-              }
-            }
-
+            // Bucket MinIO publik: `video_url` dari API sudah memakai host yang dijangkau browser, tanpa signature.
             let res: Response | null = null;
-
-            // Prioritize backend streaming endpoint if sessionId & targetApiBase are available
-            if (targetApiBase && message.sessionId) {
-              const streamUrl = `${targetApiBase.replace(/\/+$/, '')}/sessions/${message.sessionId}/video/stream`;
-              try {
-                const streamRes = await fetch(streamUrl);
-                if (streamRes.ok) {
-                  res = streamRes;
-                }
-              } catch {
-                // Ignore stream error and fallback to direct fetchUrl
-              }
-            }
-
-            // Fallback to direct MinIO URL if stream endpoint did not succeed
-            if (!res && fetchUrl) {
-              try {
-                const directRes = await fetch(fetchUrl);
-                if (directRes.ok) {
-                  res = directRes;
-                }
-              } catch {
-                // Ignore direct fetch error
-              }
+            try {
+              res = await fetch(message.url);
+            } catch {
+              // Ditangani di bawah sebagai gagal memuat.
             }
 
             if (!res || !res.ok) {
