@@ -105,6 +105,13 @@ type PageMessage = {
   url: string;
 };
 
+/**
+ * Jalur upload artifact/video yang bisa berjalan paralel ke path sama: knitto-http men-dedupe
+ * POST paralel ber-x-request-id sama (default: hash ip+user+method+path), jadi diberi id unik.
+ * Request lain sengaja tanpa header agar dedupe bawaan tetap mencegah klik ganda.
+ */
+const uniqueRequestIdHeader = (): Record<string, string> => ({ 'x-request-id': crypto.randomUUID() });
+
 class PlaywrightExtension {
   private _connections = new Map<number, ConnectedTabGroup>();
   private _lastConnectionId = 0;
@@ -698,9 +705,7 @@ class PlaywrightExtension {
         headers: {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
-          'Authorization': token ? `Bearer ${token}` : '',
-          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
-          'x-request-id': crypto.randomUUID()
+          'Authorization': token ? `Bearer ${token}` : ''
         },
         body: JSON.stringify(report)
       });
@@ -730,8 +735,7 @@ class PlaywrightExtension {
             'Content-Type': 'application/json',
             'Accept': 'application/json',
             'Authorization': token ? `Bearer ${token}` : '',
-            // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
-            'x-request-id': crypto.randomUUID()
+            ...uniqueRequestIdHeader()
           },
           body: JSON.stringify({
             video_base64: base64Data,
@@ -766,8 +770,7 @@ class PlaywrightExtension {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': token ? `Bearer ${token}` : '',
-          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
-          'x-request-id': crypto.randomUUID()
+          ...uniqueRequestIdHeader()
         },
         body: JSON.stringify({ size_bytes: blob.size, content_type: contentType })
       });
@@ -798,8 +801,7 @@ class PlaywrightExtension {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': token ? `Bearer ${token}` : '',
-          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
-          'x-request-id': crypto.randomUUID()
+          ...uniqueRequestIdHeader()
         },
         body: JSON.stringify({ object_key: presign.object_key })
       });
@@ -835,8 +837,7 @@ class PlaywrightExtension {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': token ? `Bearer ${token}` : '',
-          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
-          'x-request-id': crypto.randomUUID()
+          ...uniqueRequestIdHeader()
         },
         body: JSON.stringify({
           kind: 'storage_state',
@@ -866,8 +867,7 @@ class PlaywrightExtension {
           'Content-Type': 'application/json',
           'Accept': 'application/json',
           'Authorization': token ? `Bearer ${token}` : '',
-          // knitto-http men-dedupe request paralel ber-x-request-id sama (default: hash ip+user+method+path).
-          'x-request-id': crypto.randomUUID()
+          ...uniqueRequestIdHeader()
         },
         body: JSON.stringify({ size_bytes: blob.size })
       });

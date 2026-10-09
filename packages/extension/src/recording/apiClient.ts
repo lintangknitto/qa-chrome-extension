@@ -530,7 +530,7 @@ export class RecordingApiClient {
 		idSession: number,
 		input: { kind: string; content_type: string; size_bytes: number; sequence?: number; file_name?: string }
 	): Promise<PresignedUpload> {
-		return this._request<PresignedUpload>('POST', `/sessions/${idSession}/artifacts/presign-upload`, input);
+		return this._request<PresignedUpload>('POST', `/sessions/${idSession}/artifacts/presign-upload`, input, { uniqueRequestId: true });
 	}
 
 	completeArtifactUpload(
@@ -538,7 +538,7 @@ export class RecordingApiClient {
 		idArtifact: number,
 		input: { size_bytes?: number; checksum_sha256?: string }
 	): Promise<unknown> {
-		return this._request('POST', `/sessions/${idSession}/artifacts/${idArtifact}/complete`, input);
+		return this._request('POST', `/sessions/${idSession}/artifacts/${idArtifact}/complete`, input, { uniqueRequestId: true });
 	}
 
 	listArtifacts(idSession: number): Promise<{ items: Array<{ id_artifact: number; kind: string; object_key: string; content_type: string; size_bytes: number }> }> {
@@ -595,14 +595,14 @@ export class RecordingApiClient {
 		sessionId: number,
 		input: { size_bytes: number; content_type?: string }
 	): Promise<{ upload_url: string; object_key: string; content_type: string; expires_in: number }> {
-		return this._request('POST', `/sessions/${sessionId}/video/presign-upload`, input);
+		return this._request('POST', `/sessions/${sessionId}/video/presign-upload`, input, { uniqueRequestId: true });
 	}
 
 	completeSessionVideo(
 		sessionId: number,
 		input: { object_key: string }
 	): Promise<{ id_session: number; video_url: string; object_key: string }> {
-		return this._request('POST', `/sessions/${sessionId}/video/complete`, input);
+		return this._request('POST', `/sessions/${sessionId}/video/complete`, input, { uniqueRequestId: true });
 	}
 
 	createRun(sessionId: number, input: CreateRunInput): Promise<SessionRun> {
@@ -618,11 +618,11 @@ export class RecordingApiClient {
 		runNumber: number,
 		input: { size_bytes: number; content_type?: string }
 	): Promise<{ upload_url: string; object_key: string; content_type: string; expires_in: number }> {
-		return this._request('POST', `/sessions/${sessionId}/runs/${runNumber}/video/presign-upload`, input);
+		return this._request('POST', `/sessions/${sessionId}/runs/${runNumber}/video/presign-upload`, input, { uniqueRequestId: true });
 	}
 
 	completeRunVideo(sessionId: number, runNumber: number, input: { object_key: string }): Promise<SessionRun> {
-		return this._request<SessionRun>('POST', `/sessions/${sessionId}/runs/${runNumber}/video/complete`, input);
+		return this._request<SessionRun>('POST', `/sessions/${sessionId}/runs/${runNumber}/video/complete`, input, { uniqueRequestId: true });
 	}
 
 	/** Video re-run: presign → PUT ke MinIO → complete, disimpan di run (video sesi/Run #1 tidak tersentuh). */
@@ -795,10 +795,6 @@ export class RecordingApiClient {
 	private async _send(method: string, path: string, body?: unknown, options: { skipAuth?: boolean } = {}): Promise<Response> {
 		const headers: Record<string, string> = { Accept: '*/*' };
 		if (body !== undefined) headers['Content-Type'] = 'application/json';
-		// knitto-http men-dedupe POST/PUT/PATCH/DELETE yang berjalan bersamaan berdasarkan x-request-id,
-		// dan bila header kosong id-nya = hash(ip, user, method, path). Tanpa id unik, request paralel ke path
-		// yang sama (mis. beberapa presign artifact) digabung dan mendapat respons yang sama.
-		if (method !== 'GET') headers['x-request-id'] = newRequestId();
 		if (!options.skipAuth) {
 			const token = await this._getToken();
 			if (!token) {
@@ -828,11 +824,14 @@ export class RecordingApiClient {
 		method: string,
 		path: string,
 		body?: unknown,
-		options: { skipAuth?: boolean } = {}
+		options: { skipAuth?: boolean; uniqueRequestId?: boolean } = {}
 	): Promise<T> {
 		const headers: Record<string, string> = { Accept: 'application/json' };
 		if (body !== undefined) headers['Content-Type'] = 'application/json';
-		if (method !== 'GET') headers['x-request-id'] = newRequestId();
+		// knitto-http men-dedupe POST/PUT/PATCH/DELETE paralel ber-x-request-id sama; tanpa header id-nya
+		// hash(ip, user, method, path). Dedupe bawaan itu dipertahankan (melindungi klik ganda create/end
+		// session, createRun); hanya jalur upload yang memang paralel memakai id unik.
+		if (options.uniqueRequestId) headers['x-request-id'] = newRequestId();
 
 		if (!options.skipAuth) {
 			const token = await this._getToken();

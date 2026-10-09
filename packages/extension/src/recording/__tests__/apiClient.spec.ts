@@ -44,11 +44,11 @@ describe('recording apiClient fetch binding', () => {
 		expect(fetchImpl).toHaveBeenCalledOnce();
 	});
 
-	it('request non-GET membawa x-request-id unik agar POST paralel ke path sama tidak digabung API', async () => {
-		const headersSeen: Array<Record<string, string>> = [];
-		const fetchImpl = vi.fn(async (_url: string, init: RequestInit) => {
-			headersSeen.push(init.headers as Record<string, string>);
-			return new Response(JSON.stringify({ result: { upload_url: 'u', artifact: { id_artifact: 1 } } }), { status: 200 });
+	it('x-request-id unik hanya di jalur upload paralel; create/end session & createRun memakai dedupe bawaan API', async () => {
+		const seen: Array<{ url: string; headers: Record<string, string> }> = [];
+		const fetchImpl = vi.fn(async (url: string, init: RequestInit) => {
+			seen.push({ url, headers: init.headers as Record<string, string> });
+			return new Response(JSON.stringify({ result: { upload_url: 'u', object_key: 'k', artifact: { id_artifact: 1 } } }), { status: 200 });
 		});
 		const client = new RecordingApiClient({
 			baseUrl: 'http://127.0.0.1:8010',
@@ -58,13 +58,21 @@ describe('recording apiClient fetch binding', () => {
 
 		const body = { kind: 'test_data_file', content_type: 'text/plain', size_bytes: 1 };
 		await Promise.all([client.presignArtifactUpload(1, body), client.presignArtifactUpload(1, body)]);
-		await client.getSessionVideo(1).catch(() => undefined);
+		await client.completeArtifactUpload(1, 1, { size_bytes: 1 });
+		await client.presignSessionVideo(1, { size_bytes: 1 });
+		await client.completeSessionVideo(1, { object_key: 'k' });
+		await client.presignRunVideo(1, 2, { size_bytes: 1 });
+		await client.completeRunVideo(1, 2, { object_key: 'k' });
+		const uploads = seen.map((c) => c.headers['x-request-id']);
+		expect(uploads.every(Boolean)).toBe(true);
+		expect(new Set(uploads).size).toBe(uploads.length);
 
-		const [a, b, get] = headersSeen;
-		expect(a['x-request-id']).toBeTruthy();
-		expect(b['x-request-id']).toBeTruthy();
-		expect(a['x-request-id']).not.toBe(b['x-request-id']);
-		expect(get['x-request-id']).toBeUndefined();
+		seen.length = 0;
+		await client.createRun(1, { result: 'PASS' } as never).catch(() => undefined);
+		await client.endSession(1, { result: 'PASS' } as never).catch(() => undefined);
+		await client.getSessionVideo(1).catch(() => undefined);
+		expect(seen).toHaveLength(3);
+		expect(seen.every((c) => c.headers['x-request-id'] === undefined)).toBe(true);
 	});
 
 	it('mengirim request POST /projects dengan payload dan token yang benar pada createProject', async () => {
