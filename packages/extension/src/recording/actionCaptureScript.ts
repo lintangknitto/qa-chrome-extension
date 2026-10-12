@@ -10,6 +10,10 @@ export const RECORDING_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 export const RECORDING_UPLOAD_MAX_FILES = 20;
 /** Batas total isi file per langkah upload: file sesudah batas dicatat `stored: false`. */
 export const RECORDING_UPLOAD_MAX_TOTAL_BYTES = 30 * 1024 * 1024;
+/** Jeda setelah scroll berhenti sebelum event scroll dikirim. */
+export const SCROLL_DEBOUNCE_MS = 300;
+/** Scroll dianggap dari tester bila ada wheel/tombol scroll/pointer dalam rentang ini sebelumnya. */
+export const SCROLL_INTENT_MS = 1000;
 
 export const actionCaptureScript = (options: { uploadMaxBytes?: number; uploadMaxTotalBytes?: number } = {}): string => `
 (() => {
@@ -175,11 +179,74 @@ export const actionCaptureScript = (options: { uploadMaxBytes?: number; uploadMa
   };
 
   const sendAction = (payload) => {
+    // Scroll yang masih ditunda dikirim dulu agar urutan langkah terjaga.
+    if (payload.action !== 'scroll') flushPendingScrolls();
     const chain = frameChain();
     if (chain.frames) payload.frames = chain.frames;
     if (chain.crossOrigin) payload.crossOriginFrame = true;
     send(payload);
   };
+
+  // ---- Scroll: hanya yang dipicu tester (wheel/tombol scroll/pointer pada scrollbar sesaat sebelumnya).
+  // Dikirim ${SCROLL_DEBOUNCE_MS}ms setelah scroll berhenti; scroll beruntun pada target sama jadi satu event.
+  const SCROLL_DEBOUNCE_MS = ${SCROLL_DEBOUNCE_MS};
+  const SCROLL_INTENT_MS = ${SCROLL_INTENT_MS};
+  const SCROLL_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End', ' '];
+  let scrollIntentAt = 0;
+  const markScrollIntent = () => { scrollIntentAt = Date.now(); };
+  window.addEventListener('wheel', markScrollIntent, { capture: true, passive: true });
+  window.addEventListener('pointerdown', markScrollIntent, true);
+  window.addEventListener('touchmove', markScrollIntent, { capture: true, passive: true });
+  window.addEventListener('keydown', (event) => { if (SCROLL_KEYS.includes(event.key)) markScrollIntent(); }, true);
+
+  const pendingScrolls = new Map();
+  const lastScrollPos = new Map();
+  const isWindowScroller = (target) =>
+    target === document || target === window || target === document.documentElement || target === document.body || target === document.scrollingElement;
+  const scrollPosOf = (target) => isWindowScroller(target)
+    ? { x: Math.round(window.scrollX || 0), y: Math.round(window.scrollY || 0) }
+    : { x: Math.round(target.scrollLeft || 0), y: Math.round(target.scrollTop || 0) };
+
+  const emitScroll = (key) => {
+    const entry = pendingScrolls.get(key);
+    if (!entry) return;
+    clearTimeout(entry.timer);
+    pendingScrolls.delete(key);
+    const pos = scrollPosOf(entry.target);
+    lastScrollPos.set(key, pos);
+    const dx = pos.x - entry.start.x;
+    const dy = pos.y - entry.start.y;
+    if (dx === 0 && dy === 0) return;
+    sendAction({
+      action: 'scroll',
+      element: key === 'window' ? null : descriptor(entry.target),
+      scroll_x: pos.x,
+      scroll_y: pos.y,
+      delta_x: dx,
+      delta_y: dy
+    });
+  };
+  function flushPendingScrolls() {
+    for (const key of Array.from(pendingScrolls.keys())) emitScroll(key);
+  }
+
+  document.addEventListener('scroll', (event) => {
+    const target = event.target;
+    const key = isWindowScroller(target) ? 'window' : target;
+    if (key !== 'window' && (!(target instanceof Element) || isExtensionElement(target))) return;
+    let entry = pendingScrolls.get(key);
+    if (!entry) {
+      // Scroll tanpa aksi tester sesaat sebelumnya (scrollIntoView, auto-scroll aplikasi) diabaikan.
+      if (Date.now() - scrollIntentAt > SCROLL_INTENT_MS) {
+        lastScrollPos.set(key, scrollPosOf(isWindowScroller(target) ? document : target));
+        return;
+      }
+      entry = { target: key === 'window' ? document : target, start: lastScrollPos.get(key) || { x: 0, y: 0 }, timer: null };
+      pendingScrolls.set(key, entry);
+    }
+    clearTimeout(entry.timer);
+    entry.timer = setTimeout(() => emitScroll(key), SCROLL_DEBOUNCE_MS);
+  }, true);
 
   // ---- Hover yang membuka menu: dicatat hanya bila elemen yang kemudian diklik
   // muncul di DOM setelah hover (terdeteksi MutationObserver), agar tidak berisik.
@@ -215,6 +282,14 @@ export const actionCaptureScript = (options: { uploadMaxBytes?: number; uploadMa
     sendAction({ action: 'hover', element: descriptor(hover.el) });
   };
 
+  // Koordinat klik relatif viewport + ukuran viewport: cadangan replay bila elemen tidak punya locator stabil.
+  const pointOf = (event) => ({
+    client_x: Math.round(event.clientX || 0),
+    client_y: Math.round(event.clientY || 0),
+    viewport_w: Math.round(window.innerWidth || 0),
+    viewport_h: Math.round(window.innerHeight || 0)
+  });
+
   // ---- Klik, double-click, klik kanan
   document.addEventListener('click', (event) => {
     const rawTarget = realTarget(event);
@@ -230,21 +305,21 @@ export const actionCaptureScript = (options: { uploadMaxBytes?: number; uploadMa
     flushHoverFor(interactiveTarget);
     // event.detail === 2 adalah klik kedua dari double-click; dblclick dicatat terpisah.
     if (event.detail >= 2) return;
-    sendAction({ action: 'click', element: descriptor(interactiveTarget) });
+    sendAction({ action: 'click', element: descriptor(interactiveTarget), ...pointOf(event) });
   }, true);
 
   document.addEventListener('dblclick', (event) => {
     const rawTarget = realTarget(event);
     if (!(rawTarget instanceof Element) || isExtensionElement(rawTarget)) return;
     flushPendingInput();
-    sendAction({ action: 'dblclick', element: descriptor(getInteractiveTarget(rawTarget)) });
+    sendAction({ action: 'dblclick', element: descriptor(getInteractiveTarget(rawTarget)), ...pointOf(event) });
   }, true);
 
   document.addEventListener('contextmenu', (event) => {
     const rawTarget = realTarget(event);
     if (!(rawTarget instanceof Element) || isExtensionElement(rawTarget)) return;
     flushPendingInput();
-    sendAction({ action: 'rightclick', element: descriptor(getInteractiveTarget(rawTarget)) });
+    sendAction({ action: 'rightclick', element: descriptor(getInteractiveTarget(rawTarget)), ...pointOf(event) });
   }, true);
 
   // ---- Drag & drop: HTML5 (dragstart/drop) atau berbasis pointer (dnd-kit, sortable, dll.)
@@ -384,12 +459,64 @@ export const actionCaptureScript = (options: { uploadMaxBytes?: number; uploadMa
     }
   }, true);
 
+  // ---- Keyboard: tombol aksi, navigasi, dan shortcut. Ketikan biasa sudah diwakili fill.
+  const ACTION_KEYS = ['Enter', 'Tab', 'Escape'];
+  const NAV_KEYS = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'];
+  const DELETE_KEYS = ['Backspace', 'Delete'];
+  const MODIFIER_ONLY = ['Control', 'Meta', 'Alt', 'Shift', 'AltGraph', 'CapsLock'];
+  // Salin/tempel/potong/pilih semua: hasil paste tercatat lewat fill.
+  const CLIPBOARD_KEYS = ['c', 'v', 'x', 'a'];
+  const isTextField = (el) => {
+    if (!el || !el.tagName) return false;
+    if (el.isContentEditable || el.getAttribute('contenteditable') === 'true' || el.getAttribute('role') === 'textbox') return true;
+    if (el.tagName === 'TEXTAREA') return true;
+    if (el.tagName !== 'INPUT') return false;
+    const type = (el.getAttribute('type') || 'text').toLowerCase();
+    return !['checkbox', 'radio', 'button', 'submit', 'reset', 'file', 'image', 'range', 'color'].includes(type);
+  };
+  const fieldIsEmpty = (el) => {
+    if (el.isContentEditable || el.getAttribute('contenteditable') === 'true') return !(el.textContent || '').length;
+    return typeof el.value === 'string' ? el.value.length === 0 : true;
+  };
+  const shouldRecordKey = (event, element) => {
+    const key = event.key;
+    if (!key || MODIFIER_ONLY.includes(key) || event.isComposing) return false;
+    // Jangan pernah rekam tombol di field password, termasuk shortcut.
+    if (element.tagName === 'INPUT' && (element.getAttribute('type') || '').toLowerCase() === 'password') return false;
+    // AltGr (Windows: Ctrl+Alt) dipakai mengetik karakter seperti @ atau €: itu ketikan, bukan shortcut.
+    const altGraph = typeof event.getModifierState === 'function' && event.getModifierState('AltGraph');
+    if (altGraph || (event.ctrlKey && event.altKey && key.length === 1)) return false;
+    const command = event.ctrlKey || event.metaKey;
+    // Alt/Option + karakter tunggal di field teks menghasilkan karakter (mis. Option+2 → ™ di macOS).
+    if (event.altKey && !command && key.length === 1 && isTextField(element)) return false;
+    if (command && !event.altKey && CLIPBOARD_KEYS.includes(key.toLowerCase())) return false;
+    if (command || event.altKey) return true;
+    if (ACTION_KEYS.includes(key) || NAV_KEYS.includes(key)) return true;
+    if (DELETE_KEYS.includes(key)) return !isTextField(element) || fieldIsEmpty(element);
+    return false;
+  };
+  const modifiersOf = (event) => {
+    const mods = [];
+    if (event.ctrlKey) mods.push('Control');
+    if (event.metaKey) mods.push('Meta');
+    if (event.altKey) mods.push('Alt');
+    if (event.shiftKey) mods.push('Shift');
+    return mods;
+  };
+
   document.addEventListener('keydown', (event) => {
-    if (event.key !== 'Enter' && event.key !== 'Tab' && event.key !== 'Escape') return;
-    flushPendingInput();
     const element = realTarget(event);
     if (!element || !(element instanceof Element) || isExtensionElement(element)) return;
-    sendAction({ action: 'keydown', key: event.key, element: descriptor(element) });
+    if (!shouldRecordKey(event, element)) return;
+    flushPendingInput();
+    // Fokus di body/html: tidak ada target → page.keyboard.press di codegen.
+    const focused = element === document.body || element === document.documentElement ? null : element;
+    sendAction({
+      action: 'keydown',
+      key: event.key === ' ' ? 'Space' : event.key,
+      modifiers: modifiersOf(event),
+      element: focused ? descriptor(focused) : null
+    });
   }, true);
 })();
 `;

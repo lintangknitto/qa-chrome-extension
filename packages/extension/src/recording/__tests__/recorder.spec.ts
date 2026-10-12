@@ -86,6 +86,76 @@ describe('RecordingController capture events', () => {
 	});
 });
 
+describe('RecordingController jenis navigasi', () => {
+	type Entry = { id: number; url: string; transitionType: string };
+	const setup = (initial: { entries: Entry[]; currentIndex: number }) => {
+		const controller = new RecordingController();
+		const enqueued: Array<Record<string, unknown>> = [];
+		let history = initial;
+		(controller as any)._enqueue = (_type: string, payload: Record<string, unknown>) => enqueued.push(payload);
+		(controller as any)._sendCommand = async (_tabId: number, method: string) => {
+			if (method === 'Page.getNavigationHistory') return history;
+			if (method === 'Page.getFrameTree') return { frameTree: { frame: { id: 'main' } } };
+			return {};
+		};
+		const dispatch = (method: string, params: Record<string, unknown>, sessionId?: string) =>
+			(controller as any)._onDebuggerEvent(1, method, params, sessionId);
+		const setHistory = (next: typeof history) => (history = next);
+		return { controller, enqueued, dispatch, setHistory };
+	};
+	const nav = (url: string) => ({ frame: { id: 'main', url } });
+	const a = { id: 1, url: 'https://app/a', transitionType: 'typed' };
+	const b = { id: 2, url: 'https://app/b', transitionType: 'link' };
+
+	it('klasifikasi: link (diminta renderer), reload, typed, back, forward', async () => {
+		const { controller, enqueued, dispatch, setHistory } = setup({ entries: [a], currentIndex: 0 });
+		await (controller as any)._seedNavigationHistory(1);
+
+		setHistory({ entries: [a, b], currentIndex: 1 });
+		await dispatch('Page.frameRequestedNavigation', { frameId: 'main', reason: 'anchorClick', url: b.url });
+		await dispatch('Page.frameNavigated', nav(b.url));
+
+		setHistory({ entries: [a, { ...b, transitionType: 'reload' }], currentIndex: 1 });
+		await dispatch('Page.frameStartedNavigating', { frameId: 'main', url: b.url, navigationType: 'reload' });
+		await dispatch('Page.frameNavigated', nav(b.url));
+
+		setHistory({ entries: [a, b], currentIndex: 0 });
+		await dispatch('Page.frameNavigated', nav(a.url));
+
+		setHistory({ entries: [a, b], currentIndex: 1 });
+		await dispatch('Page.frameNavigated', nav(b.url));
+
+		const c = { id: 3, url: 'https://app/c', transitionType: 'typed' };
+		setHistory({ entries: [a, b, c], currentIndex: 2 });
+		await dispatch('Page.frameNavigated', nav(c.url));
+
+		expect(enqueued.map((p) => [p.navigation_type, p.direction ?? null, p.same_document])).toEqual([
+			['link', null, false],
+			['reload', null, false],
+			['back_forward', 'back', false],
+			['back_forward', 'forward', false],
+			['typed', null, false]
+		]);
+	});
+
+	it('navigasi SPA (navigatedWithinDocument) main frame tercatat same_document; iframe diabaikan', async () => {
+		const { controller, enqueued, dispatch, setHistory } = setup({ entries: [a], currentIndex: 0 });
+		await (controller as any)._seedNavigationHistory(1);
+		setHistory({ entries: [a, { id: 5, url: 'https://app/chat/123', transitionType: 'link' }], currentIndex: 1 });
+		await dispatch('Page.navigatedWithinDocument', { frameId: 'iframe-1', url: 'https://widget/x' });
+		await dispatch('Page.navigatedWithinDocument', { frameId: 'main', url: 'https://app/chat/123' });
+		expect(enqueued).toEqual([
+			expect.objectContaining({ action: 'navigation', url: 'https://app/chat/123', navigation_type: 'same_document', same_document: true })
+		]);
+	});
+
+	it('classifyNavigation: history SPA back terbaca dari frameStartedNavigating', async () => {
+		const { classifyNavigation } = await import('../recorder');
+		expect(classifyNavigation({ startedType: 'historySameDocument', revisited: false, sameDocument: true })).toBe('back_forward');
+		expect(classifyNavigation({ transitionType: 'auto_toplevel', revisited: false, sameDocument: false })).toBe('other');
+	});
+});
+
 describe('extractRequestId', () => {
 	it('case-insensitive dan mengabaikan nilai kosong', async () => {
 		const { extractRequestId } = await import('../recorder');
@@ -134,6 +204,61 @@ describe('RecordingController iframe cross-origin (child session CDP)', () => {
 			unique_locator: "getByRole('button', { name: 'Kirim', exact: true })",
 			frame_locators: ["getByTitle('Live Chat', { exact: true })"]
 		});
+	});
+
+	it('scroll di iframe cross-origin membawa posisi scroll dan locator <iframe> pemilik', async () => {
+		const { enqueued, dispatch } = setup();
+		await dispatch('Target.attachedToTarget', { sessionId: 'S1', targetInfo: { type: 'iframe', targetId: 'F1' } });
+		await dispatch(
+			'Runtime.bindingCalled',
+			{
+				name: '__qaRecorderBinding',
+				payload: JSON.stringify({
+					action: 'scroll',
+					crossOriginFrame: true,
+					element: { tagName: 'DIV', candidates: [{ spec: { kind: 'testId', value: 'pesan' }, count: 1 }] },
+					scroll_x: 0,
+					scroll_y: 480.4,
+					delta_x: 0,
+					delta_y: 240,
+					evil: 'x'
+				})
+			},
+			'S1'
+		);
+		expect(enqueued[0].payload).toMatchObject({
+			action: 'scroll',
+			unique_locator: "getByTestId('pesan')",
+			frame_locators: ["getByTitle('Live Chat', { exact: true })"],
+			scroll_x: 0,
+			scroll_y: 480,
+			delta_y: 240
+		});
+		expect(enqueued[0].payload).not.toHaveProperty('evil');
+	});
+
+	it('keydown meneruskan modifiers yang dikenal; klik meneruskan koordinat', async () => {
+		const { enqueued, dispatch } = setup();
+		await dispatch('Runtime.bindingCalled', { name: '__qaRecorderBinding', payload: JSON.stringify({ action: 'keydown', key: 'Enter', modifiers: ['Control', 'Hyper'], element: null }) });
+		await dispatch('Runtime.bindingCalled', { name: '__qaRecorderBinding', payload: JSON.stringify({ action: 'click', element: { tagName: 'CANVAS' }, client_x: 10, client_y: 20, viewport_w: 1280, viewport_h: 720 }) });
+		expect(enqueued[0].payload).toMatchObject({ action: 'keydown', key: 'Enter', modifiers: ['Control'], element: null });
+		expect(enqueued[1].payload).toMatchObject({ client_x: 10, client_y: 20, viewport_w: 1280, viewport_h: 720 });
+	});
+
+	it('scroll window (element null) tetap tercatat tanpa locator', async () => {
+		const { enqueued, dispatch } = setup();
+		await dispatch('Runtime.bindingCalled', { name: '__qaRecorderBinding', payload: JSON.stringify({ action: 'scroll', element: null, scroll_x: 0, scroll_y: 900, delta_x: 0, delta_y: 900 }) });
+		expect(enqueued[0].payload).toMatchObject({ action: 'scroll', element: null, locators: [], scroll_y: 900 });
+	});
+
+	it('frame yang sudah ada saat attach (context default) ikut dipasangi capture script; isolated world tidak', async () => {
+		const { commands, dispatch } = setup();
+		await dispatch('Runtime.executionContextCreated', { context: { id: 7, auxData: { isDefault: true, frameId: 'iframe-1' } } });
+		await dispatch('Runtime.executionContextCreated', { context: { id: 8, auxData: { isDefault: false, frameId: 'iframe-1' } } });
+		const evaluations = commands.filter((c) => c.method === 'Runtime.evaluate');
+		expect(evaluations).toHaveLength(1);
+		expect(evaluations[0].params).toMatchObject({ contextId: 7 });
+		expect(String(evaluations[0].params.expression)).toContain('__qaRecorderInstalled');
 	});
 
 	it('mengabaikan navigasi dari iframe dan memberi namespace requestId per session', async () => {
@@ -293,6 +418,63 @@ describe('RecordingController file test data upload', () => {
 		});
 		expect(presign).not.toHaveBeenCalled();
 		expect((controller as any)._buffer.pendingCount).toBe(0);
+	});
+});
+
+describe('RecordingController tab baru di group', () => {
+	it('tab yang masuk group saat rekaman dicatat opened (dengan opener bila tab direkam) sebelum switch', async () => {
+		const controller = new RecordingController();
+		const enqueued: Array<{ type: string; payload: Record<string, unknown> }> = [];
+		(controller as any)._enqueue = (type: string, payload: Record<string, unknown>) => enqueued.push({ type, payload });
+		(controller as any)._postToOffscreen = () => {};
+		(controller as any)._sendCommand = async () => ({});
+		(controller as any)._attach = async () => {};
+		(controller as any)._options = { recordingGroupId: 5 };
+		(controller as any)._attachedTabs.add(1);
+		controller.setActiveTab(1, { title: 'A', url: 'https://app/a' });
+		const tabs = [
+			{ id: 1, groupId: 5 },
+			{ id: 2, groupId: 5, openerTabId: 1, pendingUrl: 'https://app/invoice/9?token=rahasia', title: '' },
+			{ id: 3, groupId: 5, openerTabId: 99, url: 'https://app/c' }
+		];
+		globalThis.chrome = { tabs: { query: vi.fn().mockResolvedValue(tabs) } } as unknown as typeof chrome;
+		try {
+			await (controller as any)._reconcileGroup();
+			controller.setActiveTab(2, tabs[1]);
+		} finally {
+			delete (globalThis as any).chrome;
+		}
+		expect(enqueued.map((e) => [e.type, e.payload.kind, e.payload.tab_id ?? e.payload.to_tab_id, e.payload.opener_tab_id ?? null])).toEqual([
+			['tab', 'opened', 2, 1],
+			['tab', 'opened', 3, null],
+			['tab', 'switch', 2, null]
+		]);
+		expect(String(enqueued[0].payload.url)).not.toContain('rahasia');
+	});
+});
+
+describe('RecordingController urutan opened vs switch', () => {
+	it('event opened dicatat segera setelah tab terdaftar, sebelum langkah attach lain (switch tidak bisa mendahului)', async () => {
+		const controller = new RecordingController();
+		const enqueued: string[] = [];
+		(controller as any)._enqueue = (_type: string, payload: Record<string, unknown>) => enqueued.push(String(payload.kind ?? payload.action));
+		(controller as any)._postToOffscreen = () => {};
+		(controller as any)._attach = async () => {};
+		(controller as any)._attachedTabs.add(1);
+		controller.setActiveTab(1, { title: 'A', url: 'https://app/a' });
+		// Langkah attach berikutnya (Runtime.enable dst.) tertahan; reconcile lain memicu switch di tengahnya.
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => (release = resolve));
+		(controller as any)._sendCommand = async () => {
+			await gate;
+			return {};
+		};
+		const attaching = controller.attachTab(2, { opened: { id: 2, openerTabId: 1, url: 'https://app/b' } as chrome.tabs.Tab });
+		await new Promise((resolve) => setTimeout(resolve, 0));
+		controller.setActiveTab(2, { title: 'B', url: 'https://app/b' });
+		release();
+		await attaching;
+		expect(enqueued).toEqual(['opened', 'switch']);
 	});
 });
 

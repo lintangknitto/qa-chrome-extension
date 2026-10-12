@@ -1,7 +1,34 @@
 import type { FabState } from './fab-state';
 
 export type FabMessageToBackground =
-	| { type: 'fab:getState' };
+	| { type: 'fab:getState' }
+	| { type: 'checkpoint:context' };
+
+export interface CheckpointContext {
+	/** Sequence event terakhir saat checkpoint dibuat (null bila recorder tidak aktif). */
+	sequence: number | null;
+	tabId: number | null;
+}
+
+export const requestCheckpointContext = (): Promise<CheckpointContext> =>
+	new Promise((resolve) => {
+		const empty: CheckpointContext = { sequence: null, tabId: null };
+		try {
+			if (typeof chrome === 'undefined' || !chrome.runtime?.sendMessage) return resolve(empty);
+			chrome.runtime.sendMessage(
+				{ type: 'checkpoint:context' } satisfies FabMessageToBackground,
+				(response: Partial<CheckpointContext> | undefined) => {
+					if (chrome.runtime?.lastError) return resolve(empty);
+					resolve({
+						sequence: typeof response?.sequence === 'number' ? response.sequence : null,
+						tabId: typeof response?.tabId === 'number' ? response.tabId : null
+					});
+				}
+			);
+		} catch {
+			resolve(empty);
+		}
+	});
 
 export interface FabStateChanged {
 	type: 'fab:stateChanged';
