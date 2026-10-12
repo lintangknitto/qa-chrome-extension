@@ -17,11 +17,35 @@ export interface ProgramItem {
 	description?: string | null;
 	base_url?: string | null;
 	repo_url?: string | null;
+	/** Branch repo yang di-index codebase memory (null = default branch). */
+	repo_branch?: string | null;
 	project_count?: number;
 	is_active: boolean;
 	created_by_user_id?: number | null;
 	created_at?: string | null;
 	updated_at?: string | null;
+}
+
+export type CodebaseRepoIndexStatus = 'not_indexed' | 'syncing' | 'idle' | 'failed';
+
+export interface CodebaseRepoStatus {
+	repo: string;
+	repo_url: string;
+	branch: string | null;
+	tracks_default_branch: boolean;
+	program: string | null;
+	status: CodebaseRepoIndexStatus;
+	last_indexed_sha: string | null;
+	last_synced_at: string | null;
+	last_checked_at: string | null;
+	last_error: string | null;
+	files_indexed: number;
+}
+
+export interface CodebaseStatus {
+	id_project: number;
+	can_sync: boolean;
+	repos: CodebaseRepoStatus[];
 }
 
 export interface RecordingProject {
@@ -350,6 +374,7 @@ export class RecordingApiClient {
 		grafana_dashboard_url?: string;
 		base_url?: string;
 		repo_url?: string;
+		repo_branch?: string;
 		description?: string;
 	}): Promise<ProgramItem> {
 		return this._request<ProgramItem>('POST', '/programs', input);
@@ -364,6 +389,8 @@ export class RecordingApiClient {
 			grafana_dashboard_url?: string;
 			base_url?: string;
 			repo_url?: string;
+			/** String kosong = kembali ke default branch repo. */
+			repo_branch?: string;
 			description?: string;
 			is_active?: boolean;
 		}
@@ -582,6 +609,16 @@ export class RecordingApiClient {
 
 	listGenerations(idSession: number): Promise<{ items: unknown[] }> {
 		return this._request('GET', `/sessions/${idSession}/generations`);
+	}
+
+	/** Status index kode (codebase memory) per repo project. */
+	getCodebaseStatus(idProject: number): Promise<CodebaseStatus> {
+		return this._request('GET', `/projects/${idProject}/codebase/status`);
+	}
+
+	/** Picu sync index kode semua repo project (berjalan di background di server). */
+	syncCodebase(idProject: number): Promise<{ completed: boolean; repos: Array<{ repo_key: string; branch: string }> }> {
+		return this._request('POST', `/projects/${idProject}/codebase/sync`, {});
 	}
 
 	/** Investigasi kegagalan sesi (rekaman + log Loki dashboard program + codebase memory). */

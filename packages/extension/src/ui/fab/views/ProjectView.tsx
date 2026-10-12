@@ -45,6 +45,7 @@ import { EmptyStateTestCase } from './EmptyStateTestCase';
 import { TestCaseResultModal } from './TestCaseResultModal';
 import type { ParsedImportTestCase } from '../../../recording/spreadsheetParser';
 import type { StoredUser } from '../../../recording/tokenStore';
+import { CodebaseIndexStatus } from './CodebaseIndexStatus';
 import { canManageTestCases, canRecord, canRunTest, canEditProject, canDeleteProject } from '../fab-permissions';
 
 export interface ProjectViewProps {
@@ -974,6 +975,8 @@ export const ProjectView: React.FC<ProjectViewProps> = ({
 							)}
 						</div>
 					</div>
+
+					<CodebaseIndexStatus api={api} idProject={selectedProject.id_project} />
 
 					{/* KPI Summary Chips */}
 					{summary && (
