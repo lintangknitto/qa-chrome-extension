@@ -327,7 +327,8 @@ describe('FabApp — Knitto QA Tools (Sidebar Navigation & Flow)', () => {
 		fireEvent.click(screen.getByRole('button', { name: 'Add Checkpoint' }));
 
 		await waitFor(() => {
-			expect(apiMocks.createCheckpoint).toHaveBeenCalledWith(300, { note: 'Step 1 berhasil dimuat' });
+			// Checkpoint tanpa elemen tetap mengirim URL halaman (assertion toHaveURL di codegen).
+			expect(apiMocks.createCheckpoint).toHaveBeenCalledWith(300, expect.objectContaining({ note: 'Step 1 berhasil dimuat', page_url: window.location.href }));
 		});
 
 		// Klik End Recording -> masuk ke layar Result

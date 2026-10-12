@@ -29,7 +29,9 @@ test('TC1-1 Tambah customer', async ({ page }) => {
 			{ action: 'select', locator: { kind: 'label', value: 'Kota', exact: true }, selector: "getByLabel('Kota', { exact: true })", value: 'Bandung', optionBy: 'label' },
 			{ action: 'check', locator: { kind: 'role', role: 'checkbox', name: 'Aktif', exact: true }, selector: "getByRole('checkbox', { name: 'Aktif', exact: true })", value: 'true' },
 			{ action: 'check', locator: { kind: 'role', role: 'checkbox', nth: 1 }, selector: "getByRole('checkbox').nth(1)", value: 'false' },
-			{ action: 'press', locator: { kind: 'text', value: 'Simpan; lalu tutup', exact: true }, selector: "getByText('Simpan; lalu tutup', { exact: true })", key: 'Enter' }
+			{ action: 'press', locator: { kind: 'text', value: 'Simpan; lalu tutup', exact: true }, selector: "getByText('Simpan; lalu tutup', { exact: true })", key: 'Enter' },
+			// Assertion akhir script juga dijalankan replay.
+			{ action: 'expect', assertion: 'toHaveURL', url: 'https://app.example.test/customer' }
 		]);
 	});
 
@@ -81,7 +83,7 @@ describe('scriptParser kontrak output codegen API (aksi lanjutan)', () => {
 
 	it('mengurai setiap baris aksi menjadi satu langkah replay', () => {
 		const steps = parseScript(script);
-		expect(steps.map((s) => s.action)).toEqual(['goto', 'hover', 'dblclick', 'rightclick', 'drag', 'setInputFiles', 'click']);
+		expect(steps.map((s) => s.action)).toEqual(['goto', 'hover', 'dblclick', 'rightclick', 'drag', 'setInputFiles', 'click', 'expect']);
 		expect(steps[4]).toMatchObject({
 			locator: { kind: 'testId', value: 'card-1' },
 			target: { kind: 'testId', value: 'kolom-selesai' }
@@ -91,6 +93,92 @@ describe('scriptParser kontrak output codegen API (aksi lanjutan)', () => {
 			locator: { kind: 'role', role: 'button', name: 'Kirim', exact: true },
 			selector: "getByTitle('Live Chat', { exact: true }).contentFrame().getByRole('button', { name: 'Kirim', exact: true })"
 		});
+	});
+
+	it('scroll: mouse.wheel → scrollBy, evaluate(scrollTo) → scrollTo (termasuk di iframe)', () => {
+		const steps = parseScript(`
+	await page.mouse.wheel(0, 1000);
+	await page.getByTestId('chat-list').evaluate((el) => el.scrollTo(0, 700));
+	await page.getByTitle('Live Chat', { exact: true }).contentFrame().locator('html').evaluate((el) => el.scrollTo(0, 50));`);
+		expect(strip(steps)).toEqual([
+			{ action: 'scrollBy', x: 0, y: 1000 },
+			{ action: 'scrollTo', locator: { kind: 'testId', value: 'chat-list' }, selector: "getByTestId('chat-list')", x: 0, y: 700 },
+			{
+				action: 'scrollTo',
+				locator: { kind: 'css', value: 'html' },
+				frames: [{ kind: 'title', value: 'Live Chat', exact: true }],
+				selector: "getByTitle('Live Chat', { exact: true }).contentFrame().locator('html')",
+				x: 0,
+				y: 50
+			}
+		]);
+	});
+
+	it('navigasi: reload, goBack, goForward, waitForURL glob dan RegExp', () => {
+		const steps = parseScript(`
+	await page.reload();
+	await page.goBack();
+	await page.goForward();
+	await page.waitForURL('**/chat/*');
+	await page.waitForURL(/\\/chat\\/[^/]+$/);`);
+		expect(strip(steps)).toEqual([
+			{ action: 'reload' },
+			{ action: 'goBack' },
+			{ action: 'goForward' },
+			{ action: 'waitForUrl', url: '**/chat/*' },
+			{ action: 'waitForUrl', url: '\\/chat\\/[^/]+$', urlRegex: { regex: '\\/chat\\/[^/]+$', flags: '' } }
+		]);
+	});
+
+	it('multi-tab: popup Promise.all, context.newPage, langkah di page2, bringToFront', () => {
+		const steps = parseScript(`test('x', async ({ page, context }) => {
+	const [page2] = await Promise.all([page.waitForEvent('popup'), page.getByRole('link', { name: 'Invoice', exact: true }).click()]);
+	await page2.waitForURL('**/invoice/*');
+	await page2.getByRole('button', { name: 'Cetak', exact: true }).click();
+	await page.bringToFront();
+	const page3 = await context.newPage();
+	await page3.goto('https://docs.example.test/');
+	await page3.mouse.wheel(0, 300);
+	await expect(page2).toHaveURL(/x/);
+});`);
+		expect(strip(steps)).toEqual([
+			{ action: 'click', locator: { kind: 'role', role: 'link', name: 'Invoice', exact: true }, selector: "getByRole('link', { name: 'Invoice', exact: true })", opensPage: 'page2' },
+			{ action: 'waitForUrl', url: '**/invoice/*', page: 'page2' },
+			{ action: 'click', locator: { kind: 'role', role: 'button', name: 'Cetak', exact: true }, selector: "getByRole('button', { name: 'Cetak', exact: true })", page: 'page2' },
+			{ action: 'bringToFront' },
+			{ action: 'newPage', page: 'page3' },
+			{ action: 'goto', url: 'https://docs.example.test/', page: 'page3' },
+			{ action: 'scrollBy', x: 0, y: 300, page: 'page3' },
+			{ action: 'expect', assertion: 'toHaveURL', url: 'x', urlRegex: { regex: 'x', flags: '' }, page: 'page2' }
+		]);
+	});
+
+	it('assertion checkpoint: toContainText/toBeVisible pada locator (termasuk iframe & page2), toHaveURL RegExp; matcher lain dilewati', () => {
+		const steps = parseScript(`
+	await expect(page.getByRole('status')).toContainText('Pesan \\'terkirim\\'');
+	await expect(page2.getByTestId('centang')).toBeVisible();
+	await expect(page.getByTitle('Chat').contentFrame().getByText('Halo')).toHaveText('Halo');
+	await expect(page).toHaveURL(/^[a-z][\\w+.-]*:\\/\\/[^/]+\\/chat\\/[^/]+(?:[?#].*)?$/);
+	await expect(page.getByText('x')).not.toBeVisible();
+	await expect(page.getByText('y')).toHaveCount(2);`);
+		expect(strip(steps)).toEqual([
+			{ action: 'expect', assertion: 'toContainText', locator: { kind: 'role', role: 'status' }, selector: "getByRole('status')", value: "Pesan 'terkirim'" },
+			{ action: 'expect', assertion: 'toBeVisible', locator: { kind: 'testId', value: 'centang' }, selector: "getByTestId('centang')", page: 'page2' },
+			{
+				action: 'expect',
+				assertion: 'toHaveText',
+				locator: { kind: 'text', value: 'Halo' },
+				frames: [{ kind: 'title', value: 'Chat' }],
+				selector: "getByTitle('Chat').contentFrame().getByText('Halo')",
+				value: 'Halo'
+			},
+			{
+				action: 'expect',
+				assertion: 'toHaveURL',
+				url: '^[a-z][\\w+.-]*:\\/\\/[^/]+\\/chat\\/[^/]+(?:[?#].*)?$',
+				urlRegex: { regex: '^[a-z][\\w+.-]*:\\/\\/[^/]+\\/chat\\/[^/]+(?:[?#].*)?$', flags: '' }
+			}
+		]);
 	});
 
 	it('frameLocator legacy juga dikenali sebagai frame', () => {

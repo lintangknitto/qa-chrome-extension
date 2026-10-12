@@ -60,6 +60,8 @@ type PageMessage = {
 } | {
   type: 'fab:getState';
 } | {
+  type: 'checkpoint:context';
+} | {
   type: 'fab:openPanel';
   intent: 'start' | 'checkpoint' | 'end' | 'generate' | 'panel';
 } | {
@@ -349,6 +351,13 @@ class PlaywrightExtension {
         sendResponse({
           recording: this._recorder.isRecording,
           pendingEvents: this._recorder.pendingEventCount,
+        });
+        return false;
+      case 'checkpoint:context':
+        // Posisi checkpoint di antara langkah rekaman + tab tempat checkpoint dibuat.
+        sendResponse({
+          sequence: this._recorder.isRecording ? this._recorder.lastSequence : null,
+          tabId: sender.tab?.id ?? null,
         });
         return false;
       case 'fetchSpreadsheetCsv': {

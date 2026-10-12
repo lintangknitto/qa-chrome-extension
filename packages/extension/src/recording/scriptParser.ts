@@ -19,7 +19,25 @@ export type ReplayAction =
 	| 'select'
 	| 'check'
 	| 'press'
-	| 'setInputFiles';
+	| 'setInputFiles'
+	/** `page.mouse.wheel(dx, dy)`: scroll window sebesar delta. */
+	| 'scrollBy'
+	/** `<locator>.evaluate((el) => el.scrollTo(x, y))`: scroll container ke posisi. */
+	| 'scrollTo'
+	| 'reload'
+	| 'goBack'
+	| 'goForward'
+	/** `page.mouse.click(x, y)` / `page.mouse.dblclick(x, y)`: klik koordinat (aksi tanpa locator). */
+	| 'clickAt'
+	| 'dblclickAt'
+	/** `const pageN = await context.newPage()`. */
+	| 'newPage'
+	/** `pageN.bringToFront()`. */
+	| 'bringToFront'
+	/** `expect(locator).toContainText/toBeVisible()` atau `expect(page).toHaveURL()`. */
+	| 'expect';
+
+export type ReplayAssertion = 'toContainText' | 'toHaveText' | 'toBeVisible' | 'toHaveURL';
 
 export interface ParsedStep {
 	action: ReplayAction;
@@ -35,11 +53,25 @@ export interface ParsedStep {
 	/** Untuk select: cocokkan opsi berdasarkan label (teks) atau value. */
 	optionBy?: 'label' | 'value';
 	url?: string;
+	/** `waitForURL(/regex/)`: URL dicocokkan dengan RegExp, bukan glob. */
+	urlRegex?: { regex: string; flags: string };
 	timeoutMs?: number;
 	key?: string;
 	description?: string;
 	/** `setInputFiles`: semua path file (mis. `test-data/invoice.pdf`). */
 	files?: string[];
+	/** Delta (`scrollBy`), posisi (`scrollTo`), atau titik klik (`clickAt`). */
+	x?: number;
+	y?: number;
+	button?: 'left' | 'right';
+	/** Viewport saat rekam (komentar header `Viewport rekaman: WxH`) untuk menskalakan klik koordinat. */
+	viewport?: { w: number; h: number };
+	/** Variabel page tempat langkah dijalankan (`page2`, …); kosong = `page`. */
+	page?: string;
+	/** Langkah ini membuka popup yang disimpan ke variabel ini (`Promise.all([page.waitForEvent('popup'), …])`). */
+	opensPage?: string;
+	/** Jenis assertion untuk langkah `expect`. */
+	assertion?: ReplayAssertion;
 }
 
 type Literal =
@@ -223,6 +255,11 @@ const asText = (value: Literal): string => {
 const regexFlagsOf = (value: Literal): { regexFlags?: string } =>
 	value && typeof value === 'object' && 'regex' in (value as object) ? { regexFlags: String((value as { flags: string }).flags) } : {};
 
+const urlRegexOf = (value: Literal): { urlRegex?: { regex: string; flags: string } } =>
+	value && typeof value === 'object' && 'regex' in (value as object)
+		? { urlRegex: { regex: String((value as { regex: string }).regex), flags: String((value as { flags: string }).flags) } }
+		: {};
+
 const textOpts = (value: Literal, options: Literal) => ({
 	...regexFlagsOf(value),
 	...(opts(options).exact === true ? { exact: true } : {})
@@ -270,6 +307,28 @@ const describe = (step: ParsedStep): string => {
 			return `Menekan tombol "${step.key}"${target}`;
 		case 'waitForUrl':
 			return `Menunggu URL ${step.url}`;
+		case 'expect':
+			if (step.assertion === 'toHaveURL') return `Verifikasi URL ${step.url}`;
+			if (step.assertion === 'toBeVisible') return `Verifikasi${target} terlihat`;
+			return `Verifikasi${target} berisi teks "${step.value}"`;
+		case 'newPage':
+			return `Buka tab baru (${step.page})`;
+		case 'bringToFront':
+			return `Pindah ke tab ${step.page ?? 'page'}`;
+		case 'reload':
+			return 'Muat ulang halaman';
+		case 'goBack':
+			return 'Kembali ke halaman sebelumnya';
+		case 'goForward':
+			return 'Maju ke halaman berikutnya';
+		case 'clickAt':
+			return `${step.button === 'right' ? 'Klik kanan' : 'Klik'} koordinat (${step.x}, ${step.y})`;
+		case 'dblclickAt':
+			return `Double-click koordinat (${step.x}, ${step.y})`;
+		case 'scrollBy':
+			return `Scroll halaman (${step.x}, ${step.y})`;
+		case 'scrollTo':
+			return `Scroll${target} ke (${step.x}, ${step.y})`;
 		case 'wait':
 			return step.selector ? `Menunggu elemen${target} tampil` : `Menunggu jeda ${step.timeoutMs}ms`;
 		default:
@@ -350,13 +409,98 @@ const buildActionStep = (name: string, args: Literal[], locator: LocatorSpec | u
 		}
 		case 'waitFor':
 			return { action: 'wait', ...base, timeoutMs: 1500 };
+		case SCROLL_TO_CALL:
+			return { action: 'scrollTo', ...base, x: Number(args[0]) || 0, y: Number(args[1]) || 0 };
 		default:
 			return null;
 	}
 };
 
-const parseStatement = (statement: string): ParsedStep | null => {
-	const text = statement.trim().replace(/^await\s+/, '').replace(/;\s*$/, '');
+/** Pemanggilan semu pengganti `.evaluate((el) => el.scrollTo(x, y))` (arrow function tidak diurai LiteralReader). */
+const SCROLL_TO_CALL = '__scrollTo';
+const SCROLL_TO_EVALUATE = /\.evaluate\(\s*\(?\s*(\w+)\s*\)?\s*=>\s*\1\.scrollTo\(\s*(-?\d+)\s*,\s*(-?\d+)\s*\)\s*\)/g;
+
+const NEW_PAGE = /^(?:const|let|var)\s+(page\d+)\s*=\s*await\s+context\.newPage\(\s*\)\s*;?$/;
+const POPUP = /^(?:const|let|var)\s+\[\s*(page\d+)\s*\]\s*=\s*await\s+Promise\.all\(\s*\[\s*(page\d*)\.waitForEvent\(\s*['"]popup['"]\s*\)\s*,\s*([\s\S]+?)\s*,?\s*\]\s*\)\s*;?$/;
+const PAGE_VAR = /^(?:await\s+)?(page\d+)(?=[.\s])/;
+
+const EXPECT_START = /^(?:await\s+)?expect\(/;
+const ASSERTIONS: ReplayAssertion[] = ['toContainText', 'toHaveText', 'toBeVisible', 'toHaveURL'];
+
+/**
+ * `await expect(<subjek>).<assertion>(<arg>)`: subjek `page`/`pageN` (URL) atau rantai locator.
+ * Assertion lain (mis. `not.`) tidak didukung replay dan dilewati.
+ */
+const parseExpectStatement = (statement: string): ParsedStep | null => {
+	const text = statement.trim().replace(/;\s*$/, '');
+	const start = EXPECT_START.exec(text);
+	if (!start) return null;
+	let depth = 1;
+	let quote: string | null = null;
+	let index = start[0].length;
+	for (; index < text.length && depth > 0; index++) {
+		const ch = text[index];
+		if (quote) {
+			if (ch === '\\') index++;
+			else if (ch === quote) quote = null;
+		} else if (ch === "'" || ch === '"' || ch === '`') quote = ch;
+		else if (ch === '(') depth++;
+		else if (ch === ')') depth--;
+	}
+	const subject = text.slice(start[0].length, index - 1).trim();
+	const matcher = /^\.(\w+)\(([\s\S]*)\)$/.exec(text.slice(index));
+	const assertion = matcher?.[1] as ReplayAssertion | undefined;
+	if (!matcher || !assertion || !ASSERTIONS.includes(assertion)) return null;
+	const pageVar = /^(page\d*)$/.exec(subject)?.[1];
+	const args = new LiteralReader(`(${matcher[2]})`);
+	args.expect('(');
+	const arg = args.tryConsume(')') ? undefined : args.value();
+	const page = (name: string) => (name !== 'page' ? { page: name } : {});
+
+	if (assertion === 'toHaveURL') {
+		if (!pageVar) return null;
+		return { action: 'expect', assertion, url: asText(arg ?? ''), ...urlRegexOf(arg ?? ''), ...page(pageVar) };
+	}
+	const subjectVar = /^(page\d*)\./.exec(subject)?.[1];
+	if (!subjectVar) return null;
+	const chain = resolveLocatorChain(new LiteralReader(subject.slice(subjectVar.length)).calls());
+	if (!chain.locator || chain.rest.length > 0) return null;
+	const step: ParsedStep = { action: 'expect', assertion, locator: chain.locator, selector: specToCode(chain.locator), ...page(subjectVar) };
+	if (assertion !== 'toBeVisible') step.value = asText(arg ?? '');
+	if (chain.frames.length > 0) {
+		step.frames = chain.frames;
+		step.selector = `${chain.frames.map((frame) => `${specToCode(frame)}.contentFrame()`).join('.')}.${step.selector}`;
+	}
+	return step;
+};
+
+/** Statement multi-tab: variabel page lain, popup, dan `context.newPage()`. */
+const parseTabStatement = (statement: string): ParsedStep | null => {
+	const text = statement.trim();
+	if (EXPECT_START.test(text)) return parseExpectStatement(text);
+	const created = NEW_PAGE.exec(text);
+	if (created) return { action: 'newPage', page: created[1] };
+	const popup = POPUP.exec(text);
+	if (popup) {
+		const step = parseTabStatement(`await ${popup[3]}`);
+		if (step) step.opensPage = popup[1];
+		return step;
+	}
+	const pageVar = PAGE_VAR.exec(text);
+	if (pageVar && pageVar[1] !== 'page') {
+		const step = parsePageStatement(text.replace(/^(await\s+)?page\d+/, '$1page'));
+		if (step) step.page = pageVar[1];
+		return step;
+	}
+	return parsePageStatement(text);
+};
+
+const parsePageStatement = (statement: string): ParsedStep | null => {
+	const text = statement
+		.trim()
+		.replace(/^await\s+/, '')
+		.replace(/;\s*$/, '')
+		.replace(SCROLL_TO_EVALUATE, (_m, _el, x, y) => `.${SCROLL_TO_CALL}(${x}, ${y})`);
 	if (!text.startsWith('page.') && !text.startsWith('page\n')) return null;
 	const reader = new LiteralReader(text.slice(4));
 	const calls = reader.calls();
@@ -367,7 +511,12 @@ const parseStatement = (statement: string): ParsedStep | null => {
 		case 'goto':
 			return { action: 'goto', url: asText(first.args[0]) };
 		case 'waitForURL':
-			return { action: 'waitForUrl', url: asText(first.args[0]) };
+			return { action: 'waitForUrl', url: asText(first.args[0]), ...urlRegexOf(first.args[0]) };
+		case 'reload':
+		case 'goBack':
+		case 'goForward':
+		case 'bringToFront':
+			return { action: first.name };
 		case 'waitForTimeout':
 			return { action: 'wait', timeoutMs: Number(first.args[0]) || 0 };
 		case 'waitForSelector':
@@ -375,6 +524,17 @@ const parseStatement = (statement: string): ParsedStep | null => {
 		case 'keyboard':
 			if (rest[0]?.name === 'press') return { action: 'press', key: asText(rest[0].args[0]) || 'Enter' };
 			if (rest[0]?.name === 'type' || rest[0]?.name === 'insertText') return { action: 'fill', value: asText(rest[0].args[0]) };
+			return null;
+		case 'mouse':
+			if (rest[0]?.name === 'wheel') return { action: 'scrollBy', x: Number(rest[0].args[0]) || 0, y: Number(rest[0].args[1]) || 0 };
+			if (rest[0]?.name === 'click' || rest[0]?.name === 'dblclick') {
+				return {
+					action: rest[0].name === 'dblclick' ? 'dblclickAt' : 'clickAt',
+					x: Number(rest[0].args[0]) || 0,
+					y: Number(rest[0].args[1]) || 0,
+					button: opts(rest[0].args[2]).button === 'right' ? 'right' : 'left'
+				};
+			}
 			return null;
 		default:
 			break;
@@ -449,7 +609,7 @@ const extractStatementsFromScript = (script: string): string[] =>
 		})
 		.map((stmt) => stmt.replace(/^[;\s]+/, ''))
 		.map(resolveVariables())
-		.filter((stmt) => /^(await\s+)?page[.\s]/.test(stmt));
+		.filter((stmt) => /^(await\s+)?page\d*[.\s]/.test(stmt) || NEW_PAGE.test(stmt) || POPUP.test(stmt) || EXPECT_START.test(stmt));
 
 /**
  * `const tombol = page.getByRole(...)` lalu `await tombol.click()` →
@@ -469,15 +629,20 @@ function resolveVariables(): (stmt: string) => string {
 	};
 }
 
+const VIEWPORT_COMMENT = /\/\/\s*Viewport rekaman:\s*(\d+)\s*x\s*(\d+)/i;
+
 export const parseScript = (script: string): ParsedStep[] => {
 	const steps: ParsedStep[] = [];
+	const viewportMatch = VIEWPORT_COMMENT.exec(script);
+	const viewport = viewportMatch ? { w: Number(viewportMatch[1]), h: Number(viewportMatch[2]) } : undefined;
 	for (const statement of extractStatementsFromScript(script)) {
 		let step: ParsedStep | null = null;
 		try {
-			step = parseStatement(statement);
+			step = parseTabStatement(statement);
 		} catch {
 			step = null;
 		}
+		if (step && viewport && (step.action === 'clickAt' || step.action === 'dblclickAt')) step.viewport = viewport;
 		if (step) steps.push({ ...step, description: describe(step) });
 	}
 	return steps;

@@ -1,3 +1,13 @@
+/** Body `POST /sessions/:id/checkpoints`: target dari mode "Pilih elemen" opsional. */
+export interface CreateCheckpointInput {
+	note: string;
+	sequence?: number;
+	target_locators?: string[] | null;
+	target_text?: string | null;
+	page_url?: string | null;
+	tab_id?: number | null;
+}
+
 export interface ProgramItem {
 	id_program: number;
 	name: string;
@@ -522,7 +532,7 @@ export class RecordingApiClient {
 		return this._request<RecordingSession>('POST', `/sessions/${idSession}/end`, input);
 	}
 
-	createCheckpoint(idSession: number, input: { note: string; sequence?: number }): Promise<unknown> {
+	createCheckpoint(idSession: number, input: CreateCheckpointInput): Promise<unknown> {
 		return this._request('POST', `/sessions/${idSession}/checkpoints`, input);
 	}
 

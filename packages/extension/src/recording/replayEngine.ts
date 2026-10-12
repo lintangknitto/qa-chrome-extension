@@ -5,6 +5,7 @@
 
 import { installLocatorEngine, type LocatorSpec } from './locatorEngine';
 import { parseScript, type ParsedStep } from './scriptParser';
+import { describeUrlExpectation, matchesUrl, type UrlExpectation } from './urlMatcher';
 
 export type ReplayActionStep = ParsedStep;
 
@@ -120,11 +121,18 @@ export function uploadIntoPage(
 	return { success: true };
 }
 
-async function executeUploadInTab(
+type StepOutcome = { success: boolean; error?: string };
+
+/**
+ * Jalankan fungsi self-contained di frame milik langkah (frame utama, atau iframe yang memuat locator-nya)
+ * setelah locator engine terpasang.
+ */
+async function executeInStepFrame<Args extends unknown[]>(
 	tabId: number,
 	step: ReplayActionStep,
-	files: UploadFilePayload[]
-): Promise<{ success: boolean; error?: string }> {
+	func: (...args: Args) => StepOutcome,
+	args: Args
+): Promise<StepOutcome> {
 	if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript) return { success: true };
 	try {
 		const frameTarget = step.frames?.length ? await findFrameForStep(tabId, step) : null;
@@ -133,16 +141,239 @@ async function executeUploadInTab(
 		}
 		const target = frameTarget !== null ? { tabId, frameIds: [frameTarget] } : { tabId };
 		if (step.locator && frameTarget === null) await chrome.scripting.executeScript({ target, func: installLocatorEngine as unknown as () => void });
-		const [res] = await chrome.scripting.executeScript({
-			target,
-			func: uploadIntoPage,
-			args: [step.locator ?? null, step.selector ?? '', files]
-		});
-		return (res?.result as { success: boolean; error?: string }) ?? { success: false, error: 'Tidak ada hasil eksekusi upload.' };
+		const [res] = await chrome.scripting.executeScript({ target, func, args } as unknown as chrome.scripting.ScriptInjection<Args, StepOutcome>);
+		return (res?.result as StepOutcome | undefined) ?? { success: false, error: 'Tidak ada hasil eksekusi langkah.' };
 	} catch (err) {
 		return { success: false, error: (err as Error).message };
 	}
 }
+
+const executeUploadInTab = (tabId: number, step: ReplayActionStep, files: UploadFilePayload[]): Promise<StepOutcome> =>
+	executeInStepFrame(tabId, step, uploadIntoPage, [step.locator ?? null, step.selector ?? '', files]);
+
+/**
+ * Dijalankan di halaman (harus self-contained): `scrollBy` menggeser window sebesar delta,
+ * `scrollTo` menggeser elemen (container atau `html` dokumen iframe) ke posisi.
+ */
+export function scrollInPage(mode: 'scrollBy' | 'scrollTo', spec: LocatorSpec | null, selector: string, x: number, y: number): { success: boolean; error?: string } {
+	if (mode === 'scrollBy') {
+		window.scrollBy(x, y);
+		return { success: true };
+	}
+	const engine = (window as Window).__knittoLocator;
+	let element: Element | null = spec && engine ? engine.resolve(spec) : null;
+	if (!element && selector) {
+		try {
+			element = document.querySelector(selector);
+		} catch {
+			element = null;
+		}
+	}
+	if (!element) return { success: false, error: `Elemen scroll "${selector}" tidak ditemukan di halaman.` };
+	element.scrollTo(x, y);
+	return { success: true };
+}
+
+/**
+ * Dijalankan di halaman (harus self-contained): tekan tombol/kombinasi format Playwright (`Control+Shift+Enter`)
+ * pada elemen locator, atau elemen fokus bila tanpa locator. Event sintetis tidak menjalankan aksi bawaan
+ * browser, jadi tombol scroll (PageDown/panah/Home/End/Space di luar field teks) digeser manual dan Enter
+ * di dalam form memicu submit.
+ */
+export function pressKeyInPage(spec: LocatorSpec | null, selector: string, combo: string): { success: boolean; error?: string } {
+	let element: HTMLElement | null = null;
+	if (spec) {
+		const engine = (window as Window).__knittoLocator;
+		element = engine ? (engine.resolve(spec) as HTMLElement | null) : null;
+		if (!element) return { success: false, error: `Elemen "${selector}" tidak ditemukan di halaman.` };
+	} else if (selector) {
+		try {
+			element = document.querySelector(selector) as HTMLElement | null;
+		} catch {
+			element = null;
+		}
+		if (!element) return { success: false, error: `Elemen "${selector}" tidak ditemukan di halaman.` };
+	}
+	const target = element ?? (document.activeElement as HTMLElement | null) ?? document.body;
+	if (element) element.focus();
+
+	// "Control++" → tombol "+"; selain itu bagian terakhir adalah tombol.
+	const parts = combo.endsWith('++') ? [...combo.slice(0, -2).split('+'), '+'] : combo.split('+');
+	const rawKey = parts.pop() || 'Enter';
+	const mods = new Set(parts);
+	const key = rawKey === 'Space' ? ' ' : rawKey;
+	const KEY_CODES: Record<string, number> = { Enter: 13, Tab: 9, Escape: 27, ' ': 32, PageUp: 33, PageDown: 34, End: 35, Home: 36, ArrowLeft: 37, ArrowUp: 38, ArrowRight: 39, ArrowDown: 40, Backspace: 8, Delete: 46 };
+	const keyCode = KEY_CODES[key] ?? (key.length === 1 ? key.toUpperCase().charCodeAt(0) : 0);
+	const code = key === ' ' ? 'Space' : key.length === 1 && /[a-z]/i.test(key) ? `Key${key.toUpperCase()}` : key.length === 1 && /\d/.test(key) ? `Digit${key}` : key;
+	const init: KeyboardEventInit = {
+		key,
+		code,
+		keyCode,
+		which: keyCode,
+		bubbles: true,
+		cancelable: true,
+		composed: true,
+		ctrlKey: mods.has('Control') || (mods.has('ControlOrMeta') && !/Mac/i.test(navigator.platform)),
+		metaKey: mods.has('Meta') || (mods.has('ControlOrMeta') && /Mac/i.test(navigator.platform)),
+		altKey: mods.has('Alt'),
+		shiftKey: mods.has('Shift')
+	};
+	const notPrevented = target.dispatchEvent(new KeyboardEvent('keydown', init));
+	if (key.length === 1 && !init.ctrlKey && !init.metaKey) target.dispatchEvent(new KeyboardEvent('keypress', init));
+	target.dispatchEvent(new KeyboardEvent('keyup', init));
+	if (!notPrevented || mods.size > 0) return { success: true };
+
+	const tag = target.tagName;
+	const editable = tag === 'TEXTAREA' || (tag === 'INPUT' && !['checkbox', 'radio', 'button', 'submit'].includes((target as HTMLInputElement).type)) || target.isContentEditable;
+	if (key === 'Enter' && tag === 'INPUT' && (target as HTMLInputElement).form) {
+		const form = (target as HTMLInputElement).form!;
+		if (typeof form.requestSubmit === 'function') form.requestSubmit();
+		else form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+		return { success: true };
+	}
+	if (editable) return { success: true };
+	// Aksi bawaan tombol scroll: geser container scrollable terdekat, atau window.
+	let scroller: Element | null = target;
+	while (scroller && scroller !== document.body && scroller !== document.documentElement) {
+		const style = getComputedStyle(scroller);
+		if (/(auto|scroll)/.test(style.overflowY) && scroller.scrollHeight > scroller.clientHeight) break;
+		scroller = scroller.parentElement;
+	}
+	const useWindow = !scroller || scroller === document.body || scroller === document.documentElement;
+	const page = Math.round((useWindow ? window.innerHeight : (scroller as Element).clientHeight) * 0.875);
+	const deltas: Record<string, [number, number]> = { ArrowDown: [0, 40], ArrowUp: [0, -40], ArrowRight: [40, 0], ArrowLeft: [-40, 0], PageDown: [0, page], ' ': [0, page], PageUp: [0, -page] };
+	const scrollBy = (x: number, y: number) => (useWindow ? window.scrollBy(x, y) : (scroller as Element).scrollBy(x, y));
+	const scrollTo = (y: number) => (useWindow ? window.scrollTo(window.scrollX, y) : (scroller as Element).scrollTo((scroller as Element).scrollLeft, y));
+	if (deltas[key]) scrollBy(deltas[key][0], deltas[key][1]);
+	else if (key === 'Home') scrollTo(0);
+	else if (key === 'End') scrollTo(useWindow ? document.documentElement.scrollHeight : (scroller as Element).scrollHeight);
+	return { success: true };
+}
+
+const executePressInTab = (tabId: number, step: ReplayActionStep): Promise<StepOutcome> =>
+	executeInStepFrame(tabId, step, pressKeyInPage, [step.locator ?? null, step.selector ?? '', step.key || 'Enter']);
+
+/**
+ * Dijalankan di halaman (harus self-contained): assertion elemen seperti Playwright —
+ * `toBeVisible` (ada & terlihat), `toContainText` (teks mengandung, spasi dirapikan), `toHaveText` (sama persis).
+ */
+export function assertInPage(
+	spec: LocatorSpec | null,
+	selector: string,
+	assertion: string,
+	expected: string
+): { success: boolean; error?: string } {
+	const engine = (window as Window).__knittoLocator;
+	const element = spec && engine ? (engine.resolve(spec) as HTMLElement | null) : null;
+	if (!element) return { success: false, error: `Assertion gagal: elemen ${selector} tidak ditemukan.` };
+	const style = window.getComputedStyle(element);
+	const visible = element.getClientRects().length > 0 && style.visibility !== 'hidden' && style.display !== 'none';
+	if (assertion === 'toBeVisible') return visible ? { success: true } : { success: false, error: `Assertion gagal: elemen ${selector} tidak terlihat.` };
+	const norm = (text: string) => text.replace(/\s+/g, ' ').trim();
+	const actual = norm(element.innerText ?? element.textContent ?? '');
+	const wanted = norm(expected);
+	const ok = assertion === 'toHaveText' ? actual === wanted : actual.includes(wanted);
+	return ok
+		? { success: true }
+		: { success: false, error: `Assertion gagal: ${selector} diharapkan ${assertion === 'toHaveText' ? 'berteks' : 'berisi teks'} "${wanted}", teks aktual "${actual.slice(0, 200)}".` };
+}
+
+/** Batas tunggu assertion (sama dengan default `expect` Playwright). */
+export const ASSERTION_TIMEOUT_MS = 5_000;
+
+export interface PointClickResult {
+	success: boolean;
+	error?: string;
+	/** Viewport saat replay berbeda dari rekaman: koordinat diskalakan proporsional. */
+	scaled?: { from: string; to: string };
+}
+
+/**
+ * Dijalankan di halaman (harus self-contained): klik koordinat viewport untuk langkah tanpa locator.
+ * Bila ukuran viewport berbeda dari saat rekam, koordinat diskalakan proporsional.
+ */
+export function clickAtPoint(
+	kind: 'click' | 'dblclick' | 'rightclick',
+	x: number,
+	y: number,
+	recorded: { w: number; h: number } | null
+): PointClickResult {
+	const width = window.innerWidth;
+	const height = window.innerHeight;
+	const differs = Boolean(recorded && recorded.w > 0 && recorded.h > 0 && (recorded.w !== width || recorded.h !== height));
+	const px = differs && recorded ? Math.round((x * width) / recorded.w) : x;
+	const py = differs && recorded ? Math.round((y * height) / recorded.h) : y;
+	const target = document.elementFromPoint(px, py);
+	if (!target) return { success: false, error: `Tidak ada elemen di koordinat (${px}, ${py}).` };
+	const button = kind === 'rightclick' ? 2 : 0;
+	const init: MouseEventInit = { bubbles: true, cancelable: true, composed: true, clientX: px, clientY: py, button, buttons: button === 2 ? 2 : 1 };
+	const press = (detail: number) => {
+		target.dispatchEvent(new PointerEvent('pointerdown', { ...init, detail }));
+		target.dispatchEvent(new MouseEvent('mousedown', { ...init, detail }));
+		target.dispatchEvent(new PointerEvent('pointerup', { ...init, detail }));
+		target.dispatchEvent(new MouseEvent('mouseup', { ...init, detail }));
+		if (kind === 'rightclick') target.dispatchEvent(new MouseEvent('contextmenu', init));
+		else target.dispatchEvent(new MouseEvent('click', { ...init, detail }));
+	};
+	press(1);
+	if (kind === 'dblclick') {
+		press(2);
+		target.dispatchEvent(new MouseEvent('dblclick', { ...init, detail: 2 }));
+	}
+	return differs && recorded
+		? { success: true, scaled: { from: `${recorded.w}x${recorded.h}`, to: `${width}x${height}` } }
+		: { success: true };
+}
+
+declare global {
+	interface Window {
+		__knittoReplayClick?: (target: Element, kind: string, clientX: number, clientY: number) => void;
+	}
+}
+
+/**
+ * Dijalankan di halaman (harus self-contained): memasang `window.__knittoReplayClick` untuk langkah click/dblclick.
+ * Urutan pointerdown → mousedown → pointerup → mouseup → click. Event `click` sintetis sudah menjalankan
+ * activation behavior (navigasi <a>, submit form, toggle checkbox, forward <label>), jadi TIDAK ada `.click()`
+ * tambahan — itu yang dulu membuat handler aplikasi terpanggil dua kali. dblclick = 2× click + 1× dblclick.
+ */
+export function installReplayClick(): void {
+	(window as Window).__knittoReplayClick = (target: Element, kind: string, clientX: number, clientY: number) => {
+		const base: MouseEventInit = { bubbles: true, cancelable: true, composed: true, clientX, clientY, button: 0 };
+		const press = (detail: number) => {
+			target.dispatchEvent(new PointerEvent('pointerdown', { ...base, buttons: 1, detail }));
+			target.dispatchEvent(new MouseEvent('mousedown', { ...base, buttons: 1, detail }));
+			target.dispatchEvent(new PointerEvent('pointerup', { ...base, detail }));
+			target.dispatchEvent(new MouseEvent('mouseup', { ...base, detail }));
+			target.dispatchEvent(new MouseEvent('click', { ...base, detail }));
+		};
+		press(1);
+		if (kind === 'dblclick') {
+			press(2);
+			target.dispatchEvent(new MouseEvent('dblclick', { ...base, detail: 2 }));
+		}
+	};
+}
+
+const executeClickAtInTab = async (tabId: number, step: ReplayActionStep): Promise<PointClickResult> => {
+	if (typeof chrome === 'undefined' || !chrome.scripting?.executeScript) return { success: true };
+	const kind = step.action === 'dblclickAt' ? 'dblclick' : step.button === 'right' ? 'rightclick' : 'click';
+	try {
+		const [res] = await chrome.scripting.executeScript({ target: { tabId }, func: clickAtPoint, args: [kind, step.x ?? 0, step.y ?? 0, step.viewport ?? null] });
+		return (res?.result as PointClickResult | undefined) ?? { success: false, error: 'Tidak ada hasil eksekusi klik koordinat.' };
+	} catch (err) {
+		return { success: false, error: (err as Error).message };
+	}
+};
+
+const executeScrollInTab =(tabId: number, step: ReplayActionStep): Promise<StepOutcome> =>
+	executeInStepFrame(tabId, step, scrollInPage, [
+		step.action === 'scrollBy' ? 'scrollBy' : 'scrollTo',
+		step.locator ?? null,
+		step.selector ?? '',
+		step.x ?? 0,
+		step.y ?? 0
+	]);
 
 export interface ReplayResult {
 	success: boolean;
@@ -154,6 +385,8 @@ export interface ReplayResult {
 	/** Nomor langkah (1-based) yang gagal, bila replay gagal pada suatu langkah. */
 	failedStepNo?: number;
 	failedStep?: ReplayActionStep;
+	/** Peringatan non-fatal (mis. klik koordinat diskalakan karena viewport berbeda). */
+	warnings?: string[];
 }
 
 /**
@@ -169,6 +402,88 @@ export function parseScriptToReplaySteps(script: string, fallbackUrl?: string): 
 }
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+export const URL_WAIT_TIMEOUT_MS = 10_000;
+
+const historyStepInTab = async (tabId: number, direction: 'back' | 'forward'): Promise<void> => {
+	if (!chrome.scripting?.executeScript) return;
+	await chrome.scripting.executeScript({
+		target: { tabId },
+		func: (dir: 'back' | 'forward') => (dir === 'back' ? history.back() : history.forward()),
+		args: [direction]
+	});
+};
+export const POPUP_WAIT_TIMEOUT_MS = 5_000;
+
+/**
+ * Tunggu tab baru yang dibuka dari `openerTabId` (popup/target=_blank). Listener dipasang sebelum aksi
+ * pemicu dijalankan agar tab yang muncul cepat tidak terlewat.
+ */
+export const waitForPopupTab = (openerTabId: number, timeoutMs: number): { promise: Promise<number | null> } => {
+	if (typeof chrome === 'undefined' || !chrome.tabs?.onCreated) return { promise: Promise.resolve(null) };
+	const promise = new Promise<number | null>((resolve) => {
+		const listener = (tab: chrome.tabs.Tab) => {
+			if (tab.openerTabId !== openerTabId || typeof tab.id !== 'number') return;
+			chrome.tabs.onCreated.removeListener(listener);
+			clearTimeout(timer);
+			resolve(tab.id);
+		};
+		const timer = setTimeout(() => {
+			chrome.tabs.onCreated.removeListener(listener);
+			resolve(null);
+		}, timeoutMs);
+		chrome.tabs.onCreated.addListener(listener);
+	});
+	return { promise };
+};
+
+const addTabToGroup = async (tabId: number, groupId: number | undefined): Promise<void> => {
+	if (groupId === undefined || typeof chrome === 'undefined' || !chrome.tabs?.group) return;
+	try {
+		await chrome.tabs.group({ tabIds: [tabId], groupId });
+	} catch {
+		// Tab di jendela lain tidak bisa digabung ke group.
+	}
+};
+
+/** `context.newPage()`: tab kosong baru di jendela & group replay. */
+const openReplayTab = async (rootTabId: number, groupId: number | undefined): Promise<number | null> => {
+	if (typeof chrome === 'undefined' || !chrome.tabs?.create) return null;
+	try {
+		const root = chrome.tabs.get ? await chrome.tabs.get(rootTabId).catch(() => undefined) : undefined;
+		const tab = await chrome.tabs.create({ url: 'about:blank', active: true, ...(root?.windowId !== undefined ? { windowId: root.windowId } : {}) });
+		if (typeof tab.id !== 'number') return null;
+		await addTabToGroup(tab.id, groupId);
+		return tab.id;
+	} catch {
+		return null;
+	}
+};
+
+const urlExpectationOf = (step: ReplayActionStep): UrlExpectation =>
+	step.urlRegex ? { regex: step.urlRegex.regex, flags: step.urlRegex.flags } : { glob: step.url ?? '' };
+
+const currentTabUrl = async (tabId: number): Promise<string> => {
+	if (typeof chrome === 'undefined' || !chrome.tabs?.get) return '';
+	try {
+		const tab = await chrome.tabs.get(tabId);
+		return tab?.url || tab?.pendingUrl || '';
+	} catch {
+		return '';
+	}
+};
+
+/** Tunggu URL tab cocok dengan glob/RegExp. Mengembalikan URL yang cocok, atau null bila waktu habis. */
+export const waitForTabUrl = async (tabId: number, expected: UrlExpectation, timeoutMs: number, pollMs = 250): Promise<string | null> => {
+	if (typeof chrome === 'undefined' || !chrome.tabs?.get) return '';
+	const deadline = Date.now() + timeoutMs;
+	for (;;) {
+		const url = await currentTabUrl(tabId);
+		if (url && matchesUrl(url, expected)) return url;
+		if (Date.now() >= deadline) return null;
+		await sleep(pollMs);
+	}
+};
 
 const waitForTabLoaded = (tabId: number, timeoutMs = 15000): Promise<void> =>
 	new Promise((resolve) => {
@@ -387,17 +702,29 @@ async function updateReplayOverlay(tabId: number, options: ReplayHudOptions): Pr
 async function findFrameForStep(tabId: number, step: ReplayActionStep): Promise<number | null> {
 	if (!step.locator) return null;
 	await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: installLocatorEngine as unknown as () => void });
+	const ownerSpec = step.frames?.[step.frames.length - 1] ?? null;
 	const probes = await chrome.scripting.executeScript({
 		target: { tabId, allFrames: true },
-		func: (spec: LocatorSpec) => {
-			if (window === window.top) return false;
+		// 2 = elemen ada dan <iframe> pemilik cocok dengan frame terdalam (same-origin), 1 = elemen ada, 0 = tidak.
+		func: (spec: LocatorSpec, owner: LocatorSpec | null) => {
+			if (window === window.top) return 0;
 			const engine = (window as Window).__knittoLocator;
-			return Boolean(engine && engine.resolve(spec));
+			if (!engine || !engine.resolve(spec)) return 0;
+			try {
+				const parentEngine = (window.parent as Window).__knittoLocator;
+				if (owner && parentEngine && window.frameElement && parentEngine.resolve(owner) === window.frameElement) return 2;
+			} catch {
+				// Parent cross-origin: pemilik tidak bisa diperiksa.
+			}
+			return 1;
 		},
-		args: [step.locator]
+		args: [step.locator, ownerSpec]
 	});
-	const hit = probes.find((probe) => probe.result === true);
-	return hit ? hit.frameId : null;
+	const best = probes.reduce<{ frameId: number; score: number } | null>((acc, probe) => {
+		const score = Number(probe.result) || 0;
+		return score > 0 && (!acc || score > acc.score) ? { frameId: probe.frameId, score } : acc;
+	}, null);
+	return best ? best.frameId : null;
 }
 
 /**
@@ -418,6 +745,9 @@ async function executeStepInTab(
 			return { success: false, error: `Iframe untuk langkah "${step.selector ?? ''}" belum ditemukan.` };
 		}
 		const target = frameTarget !== null ? { tabId, frameIds: [frameTarget] } : { tabId };
+		if (step.action === 'click' || step.action === 'dblclick') {
+			await chrome.scripting.executeScript({ target, func: installReplayClick });
+		}
 		if (step.locator && frameTarget === null) {
 			// Locator engine yang sama dengan recorder → elemen yang dinilai unik saat rekam ditemukan persis.
 			await chrome.scripting.executeScript({ target, func: installLocatorEngine as unknown as () => void });
@@ -581,7 +911,7 @@ async function executeStepInTab(
 					return null;
 				};
 
-				const element = actionType === 'press' && !selector && !spec ? (document.activeElement as HTMLElement | null) : findElement(selector);
+				const element = findElement(selector);
 
 				const centerOf = (el: Element) => {
 					const rect = el.getBoundingClientRect();
@@ -676,19 +1006,9 @@ async function executeStepInTab(
 						const clientX = rect.left + rect.width / 2;
 						const clientY = rect.top + rect.height / 2;
 
-						const eventInit: MouseEventInit = { bubbles: true, cancelable: true, view: window, clientX, clientY };
-						clickable.dispatchEvent(new PointerEvent('pointerdown', eventInit));
-						clickable.dispatchEvent(new MouseEvent('mousedown', eventInit));
-						clickable.dispatchEvent(new PointerEvent('pointerup', eventInit));
-						clickable.dispatchEvent(new MouseEvent('mouseup', eventInit));
-						clickable.dispatchEvent(new MouseEvent('click', eventInit));
-						if (typeof (clickable as any).click === 'function') {
-							(clickable as any).click();
-						}
-						if (actionType === 'dblclick') {
-							(clickable as any).click?.();
-							clickable.dispatchEvent(new MouseEvent('dblclick', eventInit));
-						}
+						const replayClick = (window as Window).__knittoReplayClick;
+						if (!replayClick) return { success: false, error: 'Helper klik replay belum terpasang di halaman.' };
+						replayClick(clickable, actionType, clientX, clientY);
 					} else if (actionType === 'select') {
 						element.focus();
 						const selectEl = element as HTMLSelectElement;
@@ -704,18 +1024,6 @@ async function executeStepInTab(
 						if (checkEl.type === 'checkbox' || checkEl.type === 'radio') {
 							checkEl.checked = val === 'true';
 							checkEl.dispatchEvent(new Event('change', { bubbles: true, composed: true }));
-						}
-					} else if (actionType === 'press') {
-						element.focus();
-						const key = keyName || 'Enter';
-						const code = key === 'Enter' ? 'Enter' : key === 'Tab' ? 'Tab' : key === 'Escape' ? 'Escape' : key;
-						const keyCode = key === 'Enter' ? 13 : key === 'Tab' ? 9 : key === 'Escape' ? 27 : 0;
-						const keyInit: KeyboardEventInit = { key, code, keyCode, which: keyCode, bubbles: true, cancelable: true, view: window };
-						element.dispatchEvent(new KeyboardEvent('keydown', keyInit));
-						element.dispatchEvent(new KeyboardEvent('keypress', keyInit));
-						element.dispatchEvent(new KeyboardEvent('keyup', keyInit));
-						if (key === 'Enter' && (element as HTMLInputElement).form) {
-							(element as HTMLInputElement).form?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 						}
 					}
 				}
@@ -752,6 +1060,7 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 	let groupId: number | undefined;
 	let executed = 0;
 	let failedStepNo: number | undefined;
+	const warnings: string[] = [];
 
 	try {
 		const initialUrl = steps.find((s) => s.action === 'goto')?.url || options.targetUrl || 'about:blank';
@@ -819,11 +1128,39 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 		}
 
 		const pacingDelay = options.stepDelayMs ?? (options.speedMode === 'fast' ? 300 : options.speedMode === 'slow' ? 1500 : 800);
+		// Variabel page script (`page`, `page2`, …) → tab replay.
+		const pageTabs = new Map<string, number>([['page', targetTabId]]);
+		const rootTabId = targetTabId;
 
 		for (let i = 0; i < steps.length; i++) {
 			const step = steps[i];
 			const stepNo = i + 1;
 			const total = steps.length;
+			const pageVar = step.page ?? 'page';
+
+			if (step.action === 'newPage') {
+				const created = await openReplayTab(rootTabId, groupId);
+				if (created === null) {
+					failedStepNo = stepNo;
+					throw new Error(`Gagal membuka tab baru untuk ${pageVar}.`);
+				}
+				pageTabs.set(pageVar, created);
+				executed++;
+				continue;
+			}
+			const stepTabId = pageTabs.get(pageVar);
+			if (stepTabId === undefined) {
+				failedStepNo = stepNo;
+				throw new Error(`Tab untuk ${pageVar} belum dibuka sebelum langkah ${stepNo}.`);
+			}
+			if (step.action === 'bringToFront') {
+				if (typeof chrome !== 'undefined' && chrome.tabs?.update) await chrome.tabs.update(stepTabId, { active: true });
+				await sleep(Math.min(pacingDelay, 300));
+				executed++;
+				continue;
+			}
+			// Langkah pembuka popup: mulai mendengarkan tab baru sebelum aksi dijalankan.
+			const popup = step.opensPage ? waitForPopupTab(stepTabId, POPUP_WAIT_TIMEOUT_MS) : null;
 
 			// Tentukan nilai override jika ada
 			let valueToUse = step.value;
@@ -833,7 +1170,7 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 
 			const actionDesc = step.description || `${step.action.toUpperCase()} ${step.selector || step.url || ''}`;
 
-			await updateReplayOverlay(targetTabId, {
+			await updateReplayOverlay(stepTabId, {
 				stepNo,
 				totalSteps: total,
 				title: options.testCaseNo,
@@ -846,8 +1183,8 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 			if (step.action === 'goto') {
 				const dest = step.url || initialUrl;
 				if (typeof chrome !== 'undefined' && chrome.tabs?.update) {
-					await chrome.tabs.update(targetTabId, { url: dest });
-					await waitForTabLoaded(targetTabId);
+					await chrome.tabs.update(stepTabId, { url: dest });
+					await waitForTabLoaded(stepTabId);
 					await sleep(Math.max(600, pacingDelay));
 				}
 			} else if (step.action === 'setInputFiles') {
@@ -859,12 +1196,90 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 				const payloads = await loadUploadPayloads(matched, options.fetchTestDataFile);
 				let res: { success: boolean; error?: string } = { success: false };
 				for (let attempt = 0; attempt < 8 && !res.success; attempt++) {
-					res = await executeUploadInTab(targetTabId, step, payloads);
+					res = await executeUploadInTab(stepTabId, step, payloads);
 					if (!res.success) await sleep(350);
 				}
 				if (!res.success) {
 					failedStepNo = stepNo;
 					throw new Error(res.error || 'Gagal memasang file upload.');
+				}
+				await sleep(pacingDelay);
+			} else if (step.action === 'reload' || step.action === 'goBack' || step.action === 'goForward') {
+				if (typeof chrome !== 'undefined' && chrome.tabs) {
+					if (step.action === 'reload') await chrome.tabs.reload(stepTabId);
+					// history.back/forward di halaman: chrome.tabs.goBack melewati entri pushState tanpa aktivasi pengguna
+					// (intervensi riwayat Chrome), sedangkan replay SPA membuat entri lewat event sintetis.
+					else await historyStepInTab(stepTabId, step.action === 'goBack' ? 'back' : 'forward');
+					// Back/forward SPA tidak memuat ulang dokumen: jangan tunggu "complete" terlalu lama.
+					await waitForTabLoaded(stepTabId, step.action === 'reload' ? 15000 : 5000);
+				}
+				await sleep(Math.max(600, pacingDelay));
+			} else if (step.action === 'waitForUrl') {
+				const expected = urlExpectationOf(step);
+				const url = await waitForTabUrl(stepTabId, expected, URL_WAIT_TIMEOUT_MS);
+				if (url === null) {
+					failedStepNo = stepNo;
+					const current = await currentTabUrl(stepTabId);
+					throw new Error(`URL tidak sesuai setelah ${URL_WAIT_TIMEOUT_MS / 1000} detik. Diharapkan ${describeUrlExpectation(expected)}, URL sekarang ${current || '(tidak diketahui)'}.`);
+				}
+				await sleep(pacingDelay);
+			} else if (step.action === 'expect') {
+				// Assertion gagal menggagalkan run (laporan replay_failure memicu investigasi).
+				let res: StepOutcome = { success: false };
+				if (step.assertion === 'toHaveURL') {
+					const expected = urlExpectationOf(step);
+					const url = await waitForTabUrl(stepTabId, expected, ASSERTION_TIMEOUT_MS);
+					if (url !== null) res = { success: true };
+					else res = { success: false, error: `Assertion gagal: URL diharapkan cocok ${describeUrlExpectation(expected)}, URL aktual ${(await currentTabUrl(stepTabId)) || '(tidak diketahui)'}.` };
+				} else {
+					const deadline = Date.now() + ASSERTION_TIMEOUT_MS;
+					do {
+						res = await executeInStepFrame(stepTabId, step, assertInPage, [step.locator ?? null, step.selector ?? '', step.assertion ?? 'toBeVisible', step.value ?? '']);
+						if (!res.success) await sleep(250);
+					} while (!res.success && Date.now() < deadline);
+				}
+				if (!res.success) {
+					failedStepNo = stepNo;
+					await updateReplayOverlay(stepTabId, { stepNo, totalSteps: total, title: options.testCaseNo, actionDesc, isError: true, errorMessage: res.error });
+					throw new Error(res.error || 'Assertion gagal.');
+				}
+				await sleep(Math.min(pacingDelay, 300));
+			} else if (step.action === 'press') {
+				let res: StepOutcome = { success: false };
+				for (let attempt = 0; attempt < 8 && !res.success; attempt++) {
+					res = await executePressInTab(stepTabId, step);
+					if (!res.success) await sleep(350);
+				}
+				if (!res.success) {
+					failedStepNo = stepNo;
+					throw new Error(res.error || `Gagal menekan tombol ${step.key ?? ''}.`);
+				}
+				await sleep(pacingDelay);
+			} else if (step.action === 'clickAt' || step.action === 'dblclickAt') {
+				let res: PointClickResult = { success: false };
+				for (let attempt = 0; attempt < 8 && !res.success; attempt++) {
+					res = await executeClickAtInTab(stepTabId, step);
+					if (!res.success) await sleep(350);
+				}
+				if (!res.success) {
+					failedStepNo = stepNo;
+					throw new Error(res.error || 'Gagal klik koordinat.');
+				}
+				if (res.scaled) {
+					const warning = `Langkah ${stepNo}: viewport berbeda (rekam ${res.scaled.from}, replay ${res.scaled.to}); koordinat klik diskalakan, hasil bisa meleset.`;
+					warnings.push(warning);
+					await updateReplayOverlay(stepTabId, { stepNo, totalSteps: total, title: options.testCaseNo, actionDesc: `⚠ ${warning}` });
+				}
+				await sleep(pacingDelay);
+			} else if (step.action === 'scrollBy' || step.action === 'scrollTo') {
+				let res: StepOutcome = { success: false };
+				for (let attempt = 0; attempt < 8 && !res.success; attempt++) {
+					res = await executeScrollInTab(stepTabId, step);
+					if (!res.success) await sleep(350);
+				}
+				if (!res.success) {
+					failedStepNo = stepNo;
+					throw new Error(res.error || 'Gagal menjalankan scroll.');
 				}
 				await sleep(pacingDelay);
 			} else if (step.action === 'wait') {
@@ -876,7 +1291,7 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 				let lastErr: string | undefined;
 
 				for (let attempt = 0; attempt < 8; attempt++) {
-					const res = await executeStepInTab(targetTabId, step, valueToUse);
+					const res = await executeStepInTab(stepTabId, step, valueToUse);
 					if (res.success) {
 						stepSuccess = true;
 						break;
@@ -886,7 +1301,7 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 				}
 
 				if (!stepSuccess && lastErr) {
-					await updateReplayOverlay(targetTabId, {
+					await updateReplayOverlay(stepTabId, {
 						stepNo,
 						totalSteps: total,
 						title: options.testCaseNo,
@@ -899,6 +1314,17 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 				}
 
 				await sleep(pacingDelay);
+			}
+
+			if (popup && step.opensPage) {
+				const popupTabId = await popup.promise;
+				if (popupTabId === null) {
+					failedStepNo = stepNo;
+					throw new Error(`Tab popup (${step.opensPage}) tidak terbuka dalam ${POPUP_WAIT_TIMEOUT_MS / 1000} detik setelah langkah ${stepNo}.`);
+				}
+				pageTabs.set(step.opensPage, popupTabId);
+				await addTabToGroup(popupTabId, groupId);
+				await waitForTabLoaded(popupTabId, 10000);
 			}
 
 			executed++;
@@ -917,7 +1343,8 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 			totalSteps: steps.length,
 			executedSteps: executed,
 			tabId: targetTabId,
-			groupId
+			groupId,
+			...(warnings.length > 0 ? { warnings } : {})
 		};
 	} catch (err) {
 		const message = (err as Error).message || 'Terjadi kesalahan saat replay';
@@ -939,7 +1366,8 @@ export async function executeReplay(options: ReplayOptions): Promise<ReplayResul
 			tabId: targetTabId,
 			groupId,
 			failedStepNo,
-			failedStep: failedStepNo ? steps[failedStepNo - 1] : undefined
+			failedStep: failedStepNo ? steps[failedStepNo - 1] : undefined,
+			...(warnings.length > 0 ? { warnings } : {})
 		};
 	}
 }

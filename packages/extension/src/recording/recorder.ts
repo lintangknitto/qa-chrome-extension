@@ -56,6 +56,50 @@ export const extractRequestId = (headers: Record<string, unknown> | undefined): 
 	return null;
 }
 
+export type NavigationType = 'reload' | 'typed' | 'back_forward' | 'link' | 'same_document' | 'other';
+
+interface TabNavigationState {
+	mainFrameId: string | null;
+	/** Indeks riwayat terakhir yang tercatat. */
+	lastIndex: number | null;
+	/** Id entri riwayat yang sudah pernah dikunjungi (kembali ke sini = back/forward). */
+	seenEntryIds: Set<number>;
+	/** `Page.frameRequestedNavigation` reason per frame (navigasi dari renderer). */
+	requested: Map<string, string>;
+	/** `Page.frameStartedNavigating` navigationType per frame. */
+	started: Map<string, string>;
+}
+
+interface NavigationHistory {
+	currentIndex: number;
+	entries?: Array<{ id?: number; url?: string; transitionType?: string }>;
+}
+
+const TYPED_TRANSITIONS = ['typed', 'address_bar', 'generated', 'keyword', 'keyword_generated', 'auto_bookmark'];
+const LINK_TRANSITIONS = ['link', 'form_submit'];
+
+/** Urutan sinyal: jenis dari `frameStartedNavigating` > riwayat > alasan renderer > transition type entri. */
+export const classifyNavigation = (signals: {
+	startedType?: string;
+	requestedReason?: string;
+	transitionType?: string;
+	revisited: boolean;
+	sameDocument: boolean;
+}): NavigationType => {
+	const { startedType = '', requestedReason = '', transitionType = '', revisited, sameDocument } = signals;
+	if (startedType.startsWith('reload') || requestedReason === 'reload' || (!sameDocument && !revisited && transitionType === 'reload')) return 'reload';
+	if (startedType.startsWith('history') || revisited) return 'back_forward';
+	if (sameDocument) return 'same_document';
+	if (requestedReason) return 'link';
+	if (TYPED_TRANSITIONS.includes(transitionType)) return 'typed';
+	if (LINK_TRANSITIONS.includes(transitionType)) return 'link';
+	return 'other';
+};
+
+/** Field angka dari capture script yang diteruskan apa adanya: posisi scroll dan koordinat klik. */
+const NUMERIC_ACTION_FIELDS = ['scroll_x', 'scroll_y', 'delta_x', 'delta_y', 'client_x', 'client_y', 'viewport_w', 'viewport_h'] as const;
+const MODIFIER_KEYS = ['Control', 'Meta', 'Alt', 'Shift'];
+
 const DEBUGGER_PROTOCOL_VERSION = '1.3';
 const DEFAULT_MAX_BODY_BYTES = 256 * 1024;
 const DEFAULT_FLUSH_INTERVAL_MS = 2000;
@@ -83,6 +127,8 @@ export class RecordingController {
 	private _uploadQueue: Promise<void> = Promise.resolve();
 	/** Tab group yang sedang aktif: hanya frame tab ini yang digambar ke video (offscreen). */
 	private _activeTabId: number | null = null;
+	/** Status navigasi per tab untuk menentukan `navigation_type`. */
+	private readonly _navigation = new Map<number, TabNavigationState>();
 
 	get isRecording(): boolean {
 		return this._options !== null;
@@ -90,6 +136,11 @@ export class RecordingController {
 
 	get pendingEventCount(): number {
 		return this._buffer.pendingCount;
+	}
+
+	/** Sequence event terakhir yang sudah dicatat (0 bila belum ada): posisi checkpoint di antara langkah. */
+	get lastSequence(): number {
+		return this._buffer.nextSequence - 1;
 	}
 
 	async start(options: RecordingStartOptions): Promise<void> {
@@ -149,6 +200,7 @@ export class RecordingController {
 		this._socket = null;
 		this._api = null;
 		this._pendingRequests.clear();
+		this._navigation.clear();
 		this._buffer.clear();
 		this._options = null;
 		this._activeTabId = null;
@@ -180,17 +232,24 @@ export class RecordingController {
 		}
 	}
 
-	async attachTab(tabId: number): Promise<void> {
+	/**
+	 * `opened` diisi untuk tab yang masuk group selama rekaman: event `tab opened` dicatat segera setelah tab
+	 * terdaftar, sebelum capture script terpasang, sehingga selalu mendahului aksi dan event `switch` tab itu.
+	 */
+	async attachTab(tabId: number, options: { opened?: chrome.tabs.Tab } = {}): Promise<void> {
 		if (this._attachedTabs.has(tabId)) return;
 
 		await this._attach(tabId);
+		if (this._attachedTabs.has(tabId)) return;
 		this._attachedTabs.add(tabId);
+		if (options.opened) this._recordTabOpened(options.opened);
 
 		await this._sendCommand(tabId, 'Runtime.enable').catch(() => {});
 		await this._sendCommand(tabId, 'Log.enable').catch(() => {});
 		await this._sendCommand(tabId, 'Network.enable').catch(() => {});
 		await this._sendCommand(tabId, 'Page.enable').catch(() => {});
 		await this._sendCommand(tabId, 'Runtime.addBinding', { name: ACTION_BINDING_NAME }).catch(() => {});
+		await this._seedNavigationHistory(tabId);
 
 		const script = actionCaptureScript();
 		await this._sendCommand(tabId, 'Page.addScriptToEvaluateOnNewDocument', { source: script }).catch(() => {});
@@ -217,6 +276,7 @@ export class RecordingController {
 	async detachTab(tabId: number): Promise<void> {
 		if (!this._attachedTabs.has(tabId)) return;
 		this._attachedTabs.delete(tabId);
+		this._navigation.delete(tabId);
 		await this._sendCommand(tabId, 'Page.stopScreencast').catch(() => {});
 		await new Promise<void>((resolve) => {
 			chrome.debugger.detach({ tabId }, () => {
@@ -315,6 +375,21 @@ export class RecordingController {
 		if (typeof next?.id === 'number') this.setActiveTab(next.id, next);
 	}
 
+	/**
+	 * Tab baru masuk group selama rekaman (bukan tab awal): dicatat agar codegen bisa membuat variabel page
+	 * baru. `opener_tab_id` hanya diisi bila pembukanya tab yang direkam (popup dari aksi tester).
+	 */
+	private _recordTabOpened(tab?: chrome.tabs.Tab): void {
+		if (typeof tab?.id !== 'number') return;
+		const opener = typeof tab.openerTabId === 'number' && this._attachedTabs.has(tab.openerTabId) ? tab.openerTabId : null;
+		const url = tab.url || tab.pendingUrl || '';
+		this._enqueue(
+			'tab',
+			{ kind: 'opened', tab_id: tab.id, opener_tab_id: opener, url: url ? redactUrl(url) : null, title: tab.title || null },
+			{ tabId: tab.id, url: url || undefined }
+		);
+	}
+
 	private async _reconcileGroup(): Promise<void> {
 		if (!this._options) return;
 		const tabs = await chrome.tabs.query({});
@@ -323,7 +398,7 @@ export class RecordingController {
 			tabs,
 			this._options.recordingGroupId
 		);
-		for (const tabId of added) await this.attachTab(tabId).catch(() => {});
+		for (const tabId of added) await this.attachTab(tabId, { opened: tabs.find((tab) => tab.id === tabId) }).catch(() => {});
 		for (const tabId of removed) await this.detachTab(tabId);
 		if (this._activeTabId !== null && removed.includes(this._activeTabId)) await this._pickActiveTab();
 	}
@@ -344,6 +419,10 @@ export class RecordingController {
 				break;
 			case 'Target.detachedFromTarget':
 				if (typeof params.sessionId === 'string') this._frameOwnerLocators.delete(params.sessionId);
+				break;
+			case 'Runtime.executionContextCreated':
+				// Frame yang sudah ada saat attach (mis. iframe same-origin) tidak tersentuh addScriptToEvaluateOnNewDocument.
+				await this._installInContext(tabId, params, sessionId);
 				break;
 			case 'Runtime.bindingCalled':
 				this._onBindingCalled(tabId, params, sessionId);
@@ -371,7 +450,16 @@ export class RecordingController {
 				break;
 			case 'Page.frameNavigated':
 				// Navigasi di dalam iframe (child session) bukan langkah tester.
-				if (!sessionId) this._onFrameNavigated(tabId, params);
+				if (!sessionId) await this._onFrameNavigated(tabId, params);
+				break;
+			case 'Page.navigatedWithinDocument':
+				if (!sessionId) await this._onNavigatedWithinDocument(tabId, params);
+				break;
+			case 'Page.frameRequestedNavigation':
+				if (!sessionId && typeof params.frameId === 'string') this._navState(tabId).requested.set(params.frameId, String(params.reason ?? ''));
+				break;
+			case 'Page.frameStartedNavigating':
+				if (!sessionId && typeof params.frameId === 'string') this._navState(tabId).started.set(params.frameId, String(params.navigationType ?? ''));
 				break;
 			case 'Page.screencastFrame':
 				this._onScreencastFrame(tabId, params);
@@ -379,6 +467,13 @@ export class RecordingController {
 			default:
 				break;
 		}
+	}
+
+	/** Pasang capture script di world utama setiap frame (guard `__qaRecorderInstalled` mencegah pemasangan ganda). */
+	private async _installInContext(tabId: number, params: Record<string, unknown>, sessionId?: string): Promise<void> {
+		const context = (params.context ?? {}) as { id?: number; auxData?: { isDefault?: boolean } };
+		if (typeof context.id !== 'number' || context.auxData?.isDefault !== true) return;
+		await this._sendCommand(tabId, 'Runtime.evaluate', { expression: actionCaptureScript(), contextId: context.id }, sessionId).catch(() => {});
 	}
 
 	/** Pasang capture script & binding di iframe cross-origin, lalu cari locator <iframe> pemiliknya. */
@@ -527,7 +622,8 @@ export class RecordingController {
 		);
 		if (parsed.action === 'upload' && typeof parsed.upload_ref === 'string') this._uploadSequences.set(parsed.upload_ref, sequence);
 
-		void this._captureScreenshot(tabId);
+		// Scroll bisa sering: tidak perlu screenshot per scroll.
+		if (parsed.action !== 'scroll') void this._captureScreenshot(tabId);
 	}
 
 	/** Field tambahan aksi: rantai locator iframe, target drag, dan nama file upload. */
@@ -546,6 +642,12 @@ export class RecordingController {
 			extra.target_unique_locator = rankedTarget?.uniqueLocator ?? null;
 		}
 		if (Array.isArray(parsed.files)) extra.files = parsed.files.filter((name): name is string => typeof name === 'string').slice(0, 20);
+		for (const field of NUMERIC_ACTION_FIELDS) {
+			const value = (parsed as Record<string, unknown>)[field];
+			if (typeof value === 'number' && Number.isFinite(value)) extra[field] = Math.round(value);
+		}
+		const modifiers = (parsed as Record<string, unknown>).modifiers;
+		if (Array.isArray(modifiers)) extra.modifiers = modifiers.filter((m): m is string => typeof m === 'string' && MODIFIER_KEYS.includes(m));
 		return extra;
 	}
 
@@ -662,15 +764,73 @@ export class RecordingController {
 		);
 	}
 
-	private _onFrameNavigated(tabId: number, params: Record<string, unknown>): void {
+	private _navState(tabId: number): TabNavigationState {
+		let state = this._navigation.get(tabId);
+		if (!state) {
+			state = { mainFrameId: null, lastIndex: null, seenEntryIds: new Set(), requested: new Map(), started: new Map() };
+			this._navigation.set(tabId, state);
+		}
+		return state;
+	}
+
+	/** Entri riwayat yang sudah ada sebelum rekaman: kembali ke salah satunya = back/forward. */
+	private async _seedNavigationHistory(tabId: number): Promise<void> {
+		const history = await this._sendCommand<NavigationHistory>(tabId, 'Page.getNavigationHistory').catch(() => null);
+		if (!history) return;
+		const state = this._navState(tabId);
+		for (const entry of history.entries ?? []) if (entry.id !== undefined) state.seenEntryIds.add(entry.id);
+		state.lastIndex = history.currentIndex;
+	}
+
+	private async _onFrameNavigated(tabId: number, params: Record<string, unknown>): Promise<void> {
 		const frame = (params.frame ?? {}) as Record<string, unknown>;
 		// Navigasi iframe (iklan, analytics, about:blank) bukan langkah tester.
 		if (frame.parentId) return;
-		this._enqueue(
-			'action',
-			{ action: 'navigation', locators: [], url: frame.url ?? null },
-			{ tabId, url: String(frame.url ?? '') }
-		);
+		const frameId = typeof frame.id === 'string' ? frame.id : '';
+		this._navState(tabId).mainFrameId = frameId || null;
+		await this._emitNavigation(tabId, frameId, String(frame.url ?? ''), false);
+	}
+
+	private async _onNavigatedWithinDocument(tabId: number, params: Record<string, unknown>): Promise<void> {
+		const frameId = typeof params.frameId === 'string' ? params.frameId : '';
+		const state = this._navState(tabId);
+		if (state.mainFrameId === null) {
+			const tree = await this._sendCommand<{ frameTree?: { frame?: { id?: string } } }>(tabId, 'Page.getFrameTree').catch(() => null);
+			state.mainFrameId = tree?.frameTree?.frame?.id ?? null;
+		}
+		// Perubahan URL di dalam iframe bukan langkah tester.
+		if (!frameId || frameId !== state.mainFrameId) return;
+		await this._emitNavigation(tabId, frameId, String(params.url ?? ''), true);
+	}
+
+	/**
+	 * Jenis navigasi dari sinyal CDP + riwayat tab: reload, back/forward (indeks riwayat ke entri yang sudah
+	 * pernah dikunjungi), link (diminta renderer: klik/form/script), same_document (SPA), typed (address bar).
+	 */
+	private async _emitNavigation(tabId: number, frameId: string, url: string, sameDocument: boolean): Promise<void> {
+		const state = this._navState(tabId);
+		const requested = state.requested.get(frameId);
+		const started = state.started.get(frameId);
+		state.requested.delete(frameId);
+		state.started.delete(frameId);
+
+		const history = await this._sendCommand<NavigationHistory>(tabId, 'Page.getNavigationHistory').catch(() => null);
+		const entry = history ? history.entries?.[history.currentIndex] : undefined;
+		const index = history?.currentIndex ?? null;
+		const revisited = entry?.id !== undefined && state.seenEntryIds.has(entry.id) && index !== state.lastIndex;
+		const navigation = classifyNavigation({
+			startedType: started,
+			requestedReason: requested,
+			transitionType: entry?.transitionType,
+			revisited,
+			sameDocument
+		});
+		const payload: Record<string, unknown> = { action: 'navigation', locators: [], url: url || null, navigation_type: navigation, same_document: sameDocument };
+		if (navigation === 'back_forward' && index !== null && state.lastIndex !== null)
+			payload.direction = index < state.lastIndex ? 'back' : 'forward';
+		if (entry?.id !== undefined) state.seenEntryIds.add(entry.id);
+		if (index !== null) state.lastIndex = index;
+		this._enqueue('action', payload, { tabId, url });
 	}
 
 	/**

@@ -4,7 +4,8 @@ import {
 	type FabSettings,
 	type FabView
 } from './fab-state';
-import { isFabStateChanged, requestFabState } from './fab-messaging';
+import { isFabStateChanged, requestCheckpointContext, requestFabState } from './fab-messaging';
+import { startElementPicker, type ElementPickerHandle, type PickedTarget } from './elementPicker';
 import { saveFabSettings } from './fab-settings';
 import { FabLogo } from './FabLogo';
 import {
@@ -938,14 +939,34 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 		[api, baseUrl, prefilledTestCase, showNotice]
 	);
 
+	const pickerRef = useRef<ElementPickerHandle | null>(null);
+	const handlePickElement = useCallback(() => {
+		pickerRef.current?.cancel();
+		const handle = startElementPicker();
+		pickerRef.current = handle;
+		return handle.promise.finally(() => {
+			if (pickerRef.current === handle) pickerRef.current = null;
+		});
+	}, []);
+	const handleCancelPick = useCallback(() => pickerRef.current?.cancel(), []);
+	useEffect(() => () => pickerRef.current?.cancel(), []);
+
 	const handleCheckpoint = useCallback(
-		async (note: string) => {
+		async (note: string, target?: PickedTarget | null) => {
 			const currentSession = activeSession;
 			if (!currentSession) return;
 			setBusy(true);
 			setError(null);
 			try {
-				await api.createCheckpoint(currentSession.id_session, { note });
+				// Posisi checkpoint di antara langkah + URL/tab halaman: dipakai codegen sebagai assertion.
+				const context = await requestCheckpointContext();
+				await api.createCheckpoint(currentSession.id_session, {
+					note,
+					...(context.sequence !== null ? { sequence: context.sequence } : {}),
+					page_url: window.location.href,
+					tab_id: context.tabId,
+					...(target ? { target_locators: target.locators, target_text: target.text || null } : {})
+				});
 				showNotice('Checkpoint tersimpan.', 'success');
 			} catch (caught) {
 				setError((caught as Error).message);
@@ -1759,6 +1780,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 											busy={busy}
 											error={error}
 											onCheckpoint={handleCheckpoint}
+										onPickElement={handlePickElement}
+										onCancelPick={handleCancelPick}
 											onNavigateEnd={() => setView('result')}
 											onDiscard={handleDiscardActiveSession}
 										/>
@@ -1780,6 +1803,8 @@ export const FabApp = (props: FabAppProps): React.ReactElement => {
 											busy={busy}
 											error={error}
 											onCheckpoint={handleCheckpoint}
+										onPickElement={handlePickElement}
+										onCancelPick={handleCancelPick}
 											onNavigateEnd={() => setView('result')}
 											onDiscard={handleDiscardActiveSession}
 										/>

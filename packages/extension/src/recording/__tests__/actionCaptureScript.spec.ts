@@ -83,6 +83,75 @@ describe('actionCaptureScript aksi lanjutan', () => {
 		expect(sent.map((s) => s.action)).toEqual(['click', 'dblclick']);
 	});
 
+	it('klik, dblclick, dan klik kanan menyertakan koordinat dan ukuran viewport', () => {
+		const w = freshWindow('<canvas id="c"></canvas>');
+		install(w);
+		const c = w.document.getElementById('c')!;
+		c.dispatchEvent(new w.MouseEvent('click', { bubbles: true, detail: 1, clientX: 120.6, clientY: 45 }));
+		c.dispatchEvent(new w.MouseEvent('dblclick', { bubbles: true, detail: 2, clientX: 10, clientY: 20 }));
+		c.dispatchEvent(new w.MouseEvent('contextmenu', { bubbles: true, clientX: 30, clientY: 40 }));
+		expect(sent.map((s) => [s.action, s.client_x, s.client_y])).toEqual([
+			['click', 121, 45],
+			['dblclick', 10, 20],
+			['rightclick', 30, 40]
+		]);
+		expect(sent[0].viewport_w).toBe(w.innerWidth);
+		expect(sent[0].viewport_h).toBe(w.innerHeight);
+	});
+
+	it('keyboard: shortcut modifier, tombol navigasi, Enter; ketikan biasa dan Ctrl+C/V/X/A tidak direkam', () => {
+		const w = freshWindow('<textarea id="t" placeholder="Pesan"></textarea><input id="i" value="isi">');
+		install(w);
+		const t = w.document.getElementById('t')!;
+		const press = (target: EventTarget, key: string, mods: KeyboardEventInit = {}) =>
+			target.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true, ...mods }));
+		press(t, 'h');
+		press(t, 'Shift');
+		press(t, 'v', { ctrlKey: true });
+		press(t, 'A', { metaKey: true, shiftKey: false });
+		press(t, 'Enter', { ctrlKey: true });
+		press(t, 'ArrowDown');
+		press(t, 'k', { altKey: true, shiftKey: true });
+		press(w.document.body, 'k', { altKey: true, shiftKey: true });
+		press(w.document.body, 'PageDown');
+		press(w.document.body, ' ', { ctrlKey: true });
+		expect(sent.map((s) => [s.key, s.modifiers, s.element?.tagName ?? null])).toEqual([
+			['Enter', ['Control'], 'TEXTAREA'],
+			['ArrowDown', [], 'TEXTAREA'],
+			['k', ['Alt', 'Shift'], null],
+			['PageDown', [], null],
+			['Space', ['Control'], null]
+		]);
+	});
+
+	it('ketikan AltGr/Alt/Option dan semua tombol di field password tidak direkam', () => {
+		const w = freshWindow('<input id="p" type="password"><input id="i"><div id="row" tabindex="0">Baris</div>');
+		install(w);
+		const press = (id: string, key: string, mods: KeyboardEventInit = {}) =>
+			w.document.getElementById(id)!.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true, ...mods }));
+		press('p', '@', { ctrlKey: true, altKey: true });
+		press('p', 'Enter');
+		press('p', 's', { ctrlKey: true });
+		press('i', '@', { ctrlKey: true, altKey: true });
+		press('i', '™', { altKey: true });
+		press('row', '€', { ctrlKey: true, altKey: true });
+		press('i', 's', { ctrlKey: true });
+		expect(sent.map((s) => [s.key, s.modifiers])).toEqual([['s', ['Control']]]);
+	});
+
+	it('Backspace/Delete hanya direkam di luar field teks atau saat field kosong', () => {
+		const w = freshWindow('<textarea id="t"></textarea><input id="i" value="isi"><div id="row" tabindex="0">Baris</div>');
+		install(w);
+		const press = (id: string, key: string) => w.document.getElementById(id)!.dispatchEvent(new w.KeyboardEvent('keydown', { key, bubbles: true }));
+		press('i', 'Backspace');
+		press('t', 'Backspace');
+		press('row', 'Delete');
+		expect(sent.map((s) => [s.key, s.element.tagName])).toEqual([
+			['Backspace', 'TEXTAREA'],
+			['Delete', 'DIV']
+		]);
+	});
+
 	it('klik kanan tercatat sebagai rightclick', () => {
 		const w = freshWindow('<div id="row" role="row">Baris</div>');
 		install(w);
@@ -225,6 +294,77 @@ describe('actionCaptureScript aksi lanjutan', () => {
 		w.document.getElementById('app')!.dispatchEvent(new w.MouseEvent('click', { bubbles: true, detail: 1 }));
 		expect(sent).toHaveLength(1);
 		expect(sent[0].element.accessibleName).toBe('Simpan');
+	});
+
+	const waitScroll = () => new Promise((resolve) => setTimeout(resolve, 350));
+	const setPos = (target: object, props: Record<string, number>) => {
+		for (const [key, value] of Object.entries(props)) Object.defineProperty(target, key, { value, configurable: true, writable: true });
+	};
+
+	it('scroll window oleh tester (wheel) dikirim sekali setelah debounce dengan posisi akhir dan delta', async () => {
+		const w = freshWindow('<p>isi</p>');
+		install(w);
+		w.dispatchEvent(new w.Event('wheel'));
+		setPos(w, { scrollX: 0, scrollY: 200 });
+		w.document.dispatchEvent(new w.Event('scroll'));
+		setPos(w, { scrollY: 600 });
+		w.document.dispatchEvent(new w.Event('scroll'));
+		expect(sent).toHaveLength(0);
+		await waitScroll();
+		expect(sent).toEqual([expect.objectContaining({ action: 'scroll', element: null, scroll_x: 0, scroll_y: 600, delta_x: 0, delta_y: 600 })]);
+	});
+
+	it('scroll container mencatat elemen container; scroll kedua memakai posisi sebelumnya sebagai awal', async () => {
+		const w = freshWindow('<div id="list" data-testid="chat-list" style="overflow:auto"><p>a</p></div>');
+		install(w);
+		const list = w.document.getElementById('list')!;
+		w.dispatchEvent(new w.Event('wheel'));
+		setPos(list, { scrollTop: 300, scrollLeft: 0 });
+		list.dispatchEvent(new w.Event('scroll'));
+		await waitScroll();
+		w.dispatchEvent(new w.Event('wheel'));
+		setPos(list, { scrollTop: 500 });
+		list.dispatchEvent(new w.Event('scroll'));
+		await waitScroll();
+		expect(sent.map((s) => [s.action, s.element?.testId, s.scroll_y, s.delta_y])).toEqual([
+			['scroll', 'chat-list', 300, 300],
+			['scroll', 'chat-list', 500, 200]
+		]);
+	});
+
+	it('scroll tanpa aksi tester sebelumnya (scroll dari script) diabaikan', async () => {
+		const w = freshWindow('<div id="list"></div>');
+		install(w);
+		const list = w.document.getElementById('list')!;
+		setPos(list, { scrollTop: 400 });
+		list.dispatchEvent(new w.Event('scroll'));
+		await waitScroll();
+		expect(sent).toHaveLength(0);
+	});
+
+	it('klik saat scroll masih ditunda mengirim scroll lebih dulu', () => {
+		const w = freshWindow('<button id="b">Muat lagi</button>');
+		install(w);
+		w.dispatchEvent(new w.KeyboardEvent('keydown', { key: 'PageDown' }));
+		setPos(w, { scrollY: 800 });
+		w.document.dispatchEvent(new w.Event('scroll'));
+		w.document.getElementById('b')!.dispatchEvent(new w.MouseEvent('click', { bubbles: true, detail: 1 }));
+		expect(sent.map((s) => s.action)).toEqual(['scroll', 'click']);
+	});
+
+	it('scroll di iframe same-origin membawa rantai frame', async () => {
+		const w = freshWindow('<iframe id="chat" title="Live Chat"></iframe>');
+		install(w);
+		const child = (w.document.getElementById('chat') as HTMLIFrameElement).contentWindow as Win;
+		child.document.body.innerHTML = '<div id="msgs" data-testid="pesan"></div>';
+		install(child);
+		const msgs = child.document.getElementById('msgs')!;
+		child.dispatchEvent(new child.Event('wheel'));
+		setPos(msgs, { scrollTop: 120 });
+		msgs.dispatchEvent(new child.Event('scroll'));
+		await waitScroll();
+		expect(sent[0]).toMatchObject({ action: 'scroll', scroll_y: 120, element: { testId: 'pesan' } });
+		expect(sent[0].frames[0][0].spec).toEqual({ kind: 'title', value: 'Live Chat', exact: true });
 	});
 
 	it('aksi di iframe same-origin membawa kandidat locator <iframe> pemilik', () => {
