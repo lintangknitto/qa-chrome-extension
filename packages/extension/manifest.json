@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Knitto QA Tools",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Knitto QA Tools — koneksi browser ke recorder QA, AI agents via Knitto QA MCP, dan asistensi pengujian.",
   "permissions": [
     "debugger",
