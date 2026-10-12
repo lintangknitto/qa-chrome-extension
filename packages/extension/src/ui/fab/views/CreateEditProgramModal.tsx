@@ -17,6 +17,7 @@ export interface CreateEditProgramModalProps {
 		grafana_dashboard_url?: string;
 		base_url?: string;
 		repo_url?: string;
+		repo_branch?: string;
 		description?: string;
 		is_active?: boolean;
 	}) => Promise<void>;
@@ -36,6 +37,7 @@ export const CreateEditProgramModal: React.FC<CreateEditProgramModalProps> = ({
 	const [grafanaDashboardUrl, setGrafanaDashboardUrl] = useState('');
 	const [baseUrl, setBaseUrl] = useState('');
 	const [repoUrl, setRepoUrl] = useState('');
+	const [repoBranch, setRepoBranch] = useState('');
 	const [description, setDescription] = useState('');
 	const [isActive, setIsActive] = useState(true);
 	const [busy, setBusy] = useState(false);
@@ -50,6 +52,7 @@ export const CreateEditProgramModal: React.FC<CreateEditProgramModalProps> = ({
 				setGrafanaDashboardUrl(program.grafana_dashboard_url || '');
 				setBaseUrl(program.base_url || '');
 				setRepoUrl(program.repo_url || '');
+				setRepoBranch(program.repo_branch || '');
 				setDescription(program.description || '');
 				setIsActive(program.is_active !== false);
 			} else {
@@ -59,6 +62,7 @@ export const CreateEditProgramModal: React.FC<CreateEditProgramModalProps> = ({
 				setGrafanaDashboardUrl('');
 				setBaseUrl('');
 				setRepoUrl('');
+				setRepoBranch('');
 				setDescription('');
 				setIsActive(true);
 			}
@@ -81,6 +85,8 @@ export const CreateEditProgramModal: React.FC<CreateEditProgramModalProps> = ({
 				grafana_dashboard_url: grafanaDashboardUrl.trim() || undefined,
 				base_url: baseUrl.trim() || undefined,
 				repo_url: repoUrl.trim() || undefined,
+				// Edit: string kosong mengembalikan ke default branch; buat baru: kosong tidak dikirim.
+				repo_branch: isEditMode ? repoBranch.trim() : repoBranch.trim() || undefined,
 				description: description.trim() || undefined,
 				is_active: isEditMode ? isActive : true
 			});
@@ -260,6 +266,20 @@ export const CreateEditProgramModal: React.FC<CreateEditProgramModalProps> = ({
 							onChange={(e) => setRepoUrl(e.target.value)}
 							disabled={busy}
 						/>
+					</div>
+
+					<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+						<label htmlFor="program-repo-branch" style={{ fontSize: '11px', fontWeight: 600, color: '#475569' }}>
+							BRANCH (OPSIONAL)
+						</label>
+						<Input
+							id="program-repo-branch"
+							placeholder="default branch repo"
+							value={repoBranch}
+							onChange={(e) => setRepoBranch(e.target.value)}
+							disabled={busy || !repoUrl.trim()}
+						/>
+						<span style={{ fontSize: '10px', color: '#64748b' }}>Branch yang di-index untuk konteks kode Investigasi. Kosong = default branch repo.</span>
 					</div>
 
 					<div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
