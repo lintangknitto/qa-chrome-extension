@@ -120,13 +120,13 @@
 
 - [x] Jalankan `pnpm -F extension build` — harus sukses tanpa error/warning TypeScript
 - [x] Jalankan `pnpm -F extension test` — semua test yang ada harus tetap hijau (150/150 passed, 18 test files)
-- [ ] Manual smoke test di browser:
-  - [ ] Buka ProjectView → pilih project dengan 0 test case → 2 CTA muncul
-  - [ ] Klik "Template Sistem" → modal terbuka, URL prefill terdeteksi, GID info muncul
-  - [ ] Klik "Tarik Data" di modal template → preview berhasil muncul → Konfirmasi Import
-  - [ ] Buka ProjectView → pilih project yang sudah ada test case → 2 CTA tidak muncul
-  - [ ] Klik "Import Excel / CSV" di header → modal terbuka dengan URL kosong (normal)
-  - [ ] Verifikasi modal import tidak ada tab segmented control (hanya mode link)
+- [x] ~~Manual smoke test di browser:~~ — **tidak berlaku** (2026-10-12): definition of done = terverifikasi otomatis (build + test di atas), tanpa smoke test manual.
+  - [x] ~~Buka ProjectView → pilih project dengan 0 test case → 2 CTA muncul~~
+  - [x] ~~Klik "Template Sistem" → modal terbuka, URL prefill terdeteksi, GID info muncul~~
+  - [x] ~~Klik "Tarik Data" di modal template → preview berhasil muncul → Konfirmasi Import~~
+  - [x] ~~Buka ProjectView → pilih project yang sudah ada test case → 2 CTA tidak muncul~~
+  - [x] ~~Klik "Import Excel / CSV" di header → modal terbuka dengan URL kosong (normal)~~
+  - [x] ~~Verifikasi modal import tidak ada tab segmented control (hanya mode link)~~
 
 ---
 
